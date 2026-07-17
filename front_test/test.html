@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>SJIOT API 테스트</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h2 { font-size: 18px; margin-top: 32px; }
+  label { display: block; font-size: 13px; color: #666; margin-top: 12px; margin-bottom: 4px; }
+  input, select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  button { margin-top: 16px; width: 100%; padding: 10px; border: none; border-radius: 6px; background: #222; color: white; font-size: 14px; cursor: pointer; }
+  button:hover { background: #444; }
+  pre { background: #f5f5f5; padding: 12px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; word-break: break-all; margin-top: 12px; }
+  .ok { color: #0a7d34; }
+  .err { color: #c0392b; }
+  hr { margin: 32px 0; border: none; border-top: 1px solid #eee; }
+</style>
+</head>
+<body>
+
+<h2>서버 주소</h2>
+<label>Base URL (마지막 슬래시 없이)</label>
+<input id="baseUrl" value="http://127.0.0.1:5000" placeholder="http://127.0.0.1:5000 또는 https://sjiot-backend-294910862364.asia-northeast1.run.app">
+
+<hr>
+
+<h2>1. 주문 생성 (POST /order)</h2>
+<label>board (2 또는 4)</label>
+<input id="board" value="4">
+<label>keycap (board 길이와 같아야 함)</label>
+<input id="keycap" value="L0VE">
+<label>colors (콤마로 구분, board 길이와 같아야 함)</label>
+<input id="colors" value="r,y,b,g">
+<button onclick="createOrder()">주문 생성</button>
+<pre id="orderResult">결과 대기 중...</pre>
+
+<hr>
+
+<h2>2. 주문 상태 조회 (GET /order/&lt;id&gt;/status)</h2>
+<label>order_id</label>
+<input id="orderId" placeholder="위에서 생성된 order_id가 자동으로 채워집니다">
+<button onclick="checkStatus()">상태 조회</button>
+<pre id="statusResult">결과 대기 중...</pre>
+
+<script>
+function getBase() {
+  return document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+}
+
+async function createOrder() {
+  const el = document.getElementById('orderResult');
+  el.textContent = "요청 중...";
+  el.className = "";
+  try {
+    const board = parseInt(document.getElementById('board').value);
+    const keycap = document.getElementById('keycap').value;
+    const colors = document.getElementById('colors').value.split(',').map(s => s.trim());
+
+    const res = await fetch(getBase() + "/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ board, keycap, colors })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      el.className = "ok";
+      el.textContent = "성공 (" + res.status + ")\n" + JSON.stringify(data, null, 2);
+      const oid = data.order_status && data.order_status.order_id;
+      if (oid) document.getElementById('orderId').value = oid;
+    } else {
+      el.className = "err";
+      el.textContent = "에러 (" + res.status + ")\n" + JSON.stringify(data, null, 2);
+    }
+  } catch (e) {
+    el.className = "err";
+    el.textContent = "서버 연결 실패: " + e.message + "\n\n(서버 주소가 맞는지, 서버가 실행 중인지, CORS가 허용되어 있는지 확인하세요)";
+  }
+}
+
+async function checkStatus() {
+  const el = document.getElementById('statusResult');
+  const orderId = document.getElementById('orderId').value.trim();
+  if (!orderId) {
+    el.className = "err";
+    el.textContent = "order_id를 입력하세요.";
+    return;
+  }
+  el.textContent = "요청 중...";
+  el.className = "";
+  try {
+    const res = await fetch(getBase() + "/order/" + orderId + "/status");
+    const data = await res.json();
+    el.className = res.ok ? "ok" : "err";
+    el.textContent = (res.ok ? "성공" : "에러") + " (" + res.status + ")\n" + JSON.stringify(data, null, 2);
+  } catch (e) {
+    el.className = "err";
+    el.textContent = "서버 연결 실패: " + e.message;
+  }
+}
+</script>
+
+</body>
+</html>
