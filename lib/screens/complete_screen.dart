@@ -26,7 +26,7 @@ class CompleteScreen extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('STEP 03 / 03', style: AppTextStyles.label),
+        const Text('STEP 07 / 07', style: AppTextStyles.label),
         const SizedBox(height: 8),
         Text(isDone ? '완성! 🎉' : '제작 중...', style: AppTextStyles.heading),
         const SizedBox(height: 24),
@@ -71,7 +71,7 @@ class CompleteScreen extends StatelessWidget {
             decoration: BoxDecoration(border: Border.all(color: AppColors.green, width: 2)),
             child: const Column(
               children: [
-                Text('맞춤 딸깍 키링 완성!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                Text('맞춤 MBTI 키링 완성!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
                 SizedBox(height: 8),
                 Text('수령 창구에서 받아가세요', style: AppTextStyles.body),
               ],

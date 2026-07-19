@@ -3,7 +3,7 @@ import '../theme/app_theme.dart';
 
 class KeycapFillScreen extends StatelessWidget {
   final String boardShape; // '1x4' | '2x2'
-  final List<String> letters;
+  final List<String> letters; // 이미 MBTI 결과로 채워진 상태 (수정 불가)
   final int cursor;
   final Color Function(int index) colorAt;
 
@@ -17,44 +17,63 @@ class KeycapFillScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filled = letters.where((l) => l.isNotEmpty).length;
+    final filled = letters.asMap().entries.where((e) => colorAt(e.key) != AppColors.tileEmpty).length;
     final complete = filled == letters.length;
+    final cols = boardShape == '2x2' ? 2 : 4;
+    final rows = boardShape == '2x2' ? 2 : 1;
+    final boardWidth = cols == 4 ? 460.0 : 260.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('STEP 02 / 03', style: AppTextStyles.label),
+        const Text('STEP 06 / 07', style: AppTextStyles.label),
         const SizedBox(height: 8),
-        const Text('키를 눌러 채우세요', style: AppTextStyles.heading),
+        const Text('키캡 색을 선택하세요', style: AppTextStyles.heading),
         const SizedBox(height: 8),
         const Text(
-          '알파벳 키 → 글자 입력  ·  화살표 → 이동  ·  TAB → 색상 변경  ·  ENTER로 완료',
+          '숫자 1~4 → 색상 선택(자동으로 다음 칸 이동)  ·  화살표 → 이동  ·  ENTER로 제작',
           style: AppTextStyles.body,
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 40),
         Stack(
           children: [
-            Positioned(left: -8, top: -8, child: Container(width: 460, height: 180, color: AppColors.yellow)),
+            Positioned(
+              left: -8,
+              top: -8,
+              child: Container(width: boardWidth, height: rows == 2 ? boardWidth : 150, color: AppColors.yellow),
+            ),
             Container(
-              width: 460,
+              width: boardWidth,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 2)),
-              child: Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: List.generate(letters.length, (i) {
-                  final isCursor = i == cursor;
-                  return Container(
-                    width: 84,
-                    height: 84,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: colorAt(i),
-                      border: Border.all(color: isCursor ? AppColors.ink : Colors.transparent, width: 3),
-                    ),
-                    child: Text(
-                      letters[i],
-                      style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(rows, (r) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(cols, (c) {
+                        final i = r * cols + c;
+                        final isCursor = i == cursor;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Container(
+                            width: 84,
+                            height: 84,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: colorAt(i),
+                              border: Border.all(color: isCursor ? AppColors.ink : Colors.transparent, width: 3),
+                            ),
+                            child: Text(
+                              letters[i],
+                              style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        );
+                      }),
                     ),
                   );
                 }),
@@ -70,20 +89,13 @@ class KeycapFillScreen extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('채움', style: AppTextStyles.body),
+                const Text('색상 선택', style: AppTextStyles.body),
                 const SizedBox(height: 8),
-                Row(
-                  children: List.generate(
-                    letters.length,
-                    (i) => Container(
-                      margin: const EdgeInsets.only(right: 4),
-                      width: 18,
-                      height: 18,
-                      color: letters[i].isNotEmpty ? colorAt(i) : AppColors.tileEmpty,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
+                _legendRow('1', const Color.fromARGB(255, 111, 191, 115), '초록'),
+                _legendRow('2', AppColors.yellow, '노랑'),
+                _legendRow('3', AppColors.blue, '파랑'),
+                _legendRow('4', AppColors.coral, '빨강'),
+                const SizedBox(height: 8),
                 Text('$filled / ${letters.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
               ],
             ),
@@ -93,7 +105,7 @@ class KeycapFillScreen extends StatelessWidget {
         ),
         const SizedBox(height: 32),
         Container(
-          width: 460,
+          width: boardWidth,
           padding: const EdgeInsets.symmetric(vertical: 16),
           alignment: Alignment.center,
           color: complete ? AppColors.ink : AppColors.muted,
@@ -107,13 +119,34 @@ class KeycapFillScreen extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                '제작 시작',
+                complete ? '엔터! 제작!' : '색을 모두 선택하세요',
                 style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _legendRow(String num, Color color, String name) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+            child: Text(num, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 8),
+          Container(width: 18, height: 18, color: color),
+          const SizedBox(width: 8),
+          Text(name, style: AppTextStyles.body),
+        ],
+      ),
     );
   }
 }

@@ -34,7 +34,8 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 16),
         Container(width: 260, height: 2, color: AppColors.ink),
         const SizedBox(height: 32),
-        const Text('나만의 키보드 키링을 만들어 보세요', style: AppTextStyles.body),
+        // '키보드 키링' -> 'MBTI 키링'
+        const Text('나만의 MBTI 키링을 만들어 보세요', style: AppTextStyles.body),
         const SizedBox(height: 48),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
