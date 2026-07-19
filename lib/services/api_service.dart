@@ -10,11 +10,24 @@ class ApiService {
     required int board,
     required String keycap,
     required List<String> colors,
+    String? axis, // 'blue' | 'brown' | 'red' | 'black' — 백엔드에는 'switch' 키로 전송
   }) async {
+    final payload = {
+      'board': board,
+      'keycap': keycap,
+      'colors': colors,
+      // [수정] 축 정보는 필드명을 axis가 아닌 switch로 보냄
+      if (axis != null) 'switch': axis,
+    };
+
+    // [수정] http.post 실행 직전에 로그를 남깁니다.
+    print(">>> [DEBUG] 전송 시작!");
+    print(">>> [DEBUG] 전송 데이터: ${jsonEncode(payload)}");
+
     final res = await http.post(
       Uri.parse('$baseUrl/order'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'board': board, 'keycap': keycap, 'colors': colors}),
+      body: jsonEncode(payload),
     );
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;

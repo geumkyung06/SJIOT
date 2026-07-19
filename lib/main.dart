@@ -406,12 +406,11 @@ class _AppRootState extends State<AppRoot> {
     _startAutoRestartTimer();
     try {
       final colors = List.generate(_boardCount, _colorCode);
-      // TODO: 축(_axis) 정보도 백엔드에 함께 전달하려면 api_service.dart의
-      // createOrder 시그니처를 확장해야 합니다 (현재는 board/keycap/colors만 전송).
       final result = await _api.createOrder(
         board: _boardCount,
         keycap: _letters.join(),
         colors: colors,
+        axis: _axis, // api_service.dart에서 'switch' 키로 전송됨
       );
       if (!mounted) return;
       setState(() {
