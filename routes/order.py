@@ -89,6 +89,9 @@ def post_order_list():
             board:
               type: integer
               example: 4
+            switch:
+              type: string
+              example: "black"
             keycap:
               type: string
               example: "L0VE"
@@ -108,15 +111,19 @@ def post_order_list():
     data = request.get_json()
 
     board = data.get("board")
+    switch = data.get("switch")
     keycap = data.get("keycap")
     colors = data.get("colors")
 
     color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,o,y,g,b,p,w
     board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
+    switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
 
     try:
         if board not in board_list:
             return jsonify({'error': '지원하지 않는 본판'}), 400
+        if switch not in switch_list:
+            return jsonify({'error': '지원하지 않는 축'}), 400
         if not len(keycap) == board:
             return jsonify({'error': '본판과 키캡 수 불일치'}), 400
         if not len(colors) == board:
@@ -139,6 +146,7 @@ def post_order_list():
         r.rpush(QUEUE_KEY, order_id)
         r.hset(f"order:{order_id}", mapping={
             "board": board,
+            "switch": switch,
             "keycap": keycap,
             "colors": ",".join(colors),
             "status": "waiting",
