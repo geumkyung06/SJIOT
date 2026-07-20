@@ -71,6 +71,35 @@ def _try_assign_next():
 
     return next_order_id
 
+@bp.route('/queue/status', methods=['GET'])
+def queue_status():
+    """
+    현재 대기열 상태 조회
+    ---
+    tags:
+      - Queue
+    responses:
+      200:
+        description: 대기열 상태
+        schema:
+          type: object
+          properties:
+            queue_length:
+              type: integer
+              example: 2
+            max_queue_len:
+              type: integer
+              example: 3
+            full:
+              type: boolean
+              example: false
+    """
+    qlen = r.llen(QUEUE_KEY)
+    return jsonify({
+        'queue_length': qlen,
+        'max_queue_len': MAX_QUEUE_LEN,
+        'full': qlen >= MAX_QUEUE_LEN,
+    })
 
 @bp.route('/order', methods=['POST'])
 def post_order_list():
@@ -115,11 +144,11 @@ def post_order_list():
     keycap = data.get("keycap")
     colors = data.get("colors")
 
-    color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,o,y,g,b,p,w
-    board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
-    switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
-
     try:
+        color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,o,y,g,b,p,w
+        board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
+        switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
+
         if board not in board_list:
             return jsonify({'error': '지원하지 않는 본판'}), 400
         if switch not in switch_list:
