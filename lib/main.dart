@@ -57,6 +57,7 @@ class _AppRootState extends State<AppRoot> {
   final ApiService _api = ApiService();
 
   AppStep _step = AppStep.home;
+  bool _checkingQueue = false;
 
   // ---------------- MBTI 검사 (4지선다 모드) ----------------
   static const List<Map<String, dynamic>> _mbtiQuestions = [
@@ -211,6 +212,26 @@ class _AppRootState extends State<AppRoot> {
     });
   }
 
+  Future<void> _checkQueueAndEnter() async {
+    setState(() => _checkingQueue = true);
+    try {
+      final status = await _api.getQueueStatus();
+      if (!mounted) return;
+      if (status['full'] == true) {
+        // 다이얼로그/스낵바 등으로 안내, home에 머무름
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요')),
+        );
+      } else {
+        setState(() => _step = AppStep.mbtiChoice);
+      }
+    } catch (_) {
+      // 조회 자체가 실패한 경우 정책 필요: 그냥 진행시킬지, 에러 안내할지
+    } finally {
+      if (mounted) setState(() => _checkingQueue = false);
+    }
+  }
+
   // 물리적 키 위치 기준 매핑 (logicalKey/keyLabel은 한/영 입력 소스에 따라 값이
   // 바뀌어서 한글 입력 상태일 때 글자 입력이 먹통이 될 수 있음 -> physicalKey로 고정)
   static final Map<PhysicalKeyboardKey, String> _keyCharMap = {
@@ -260,8 +281,8 @@ class _AppRootState extends State<AppRoot> {
 
     switch (_step) {
       case AppStep.home:
-        if (isEnter) {
-          setState(() => _step = AppStep.mbtiChoice);
+        if (isEnter && !_checkingQueue) {   // ← 여기에 들어가야 함
+          _checkQueueAndEnter();
         }
         break;
 
