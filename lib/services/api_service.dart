@@ -45,4 +45,13 @@ class ApiService {
     }
     return body;
   }
+
+  Future<Map<String, dynamic>> getQueueStatus() async {
+    final res = await http.get(Uri.parse('$baseUrl/queue/status'));
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200) {
+      throw Exception(body['error'] ?? '대기열 조회 실패 (${res.statusCode})');
+    }
+    return body;
+  }
 }
