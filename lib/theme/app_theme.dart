@@ -5,15 +5,22 @@ import 'package:flutter/material.dart';
 /// 6색이 백엔드 COLOR_LIST 코드와 매핑됩니다.
 class AppColors {
   static const background = Color(0xFFFDF6E8);
-  static const coral = Color(0xFFE8593C);
-  static const orange = Color(0xFFE8933C);
-  static const purple = Color(0xFF9B6BC7);
-  static const yellow = Color(0xFFF0C93C);
-  static const green = Color(0xFF6FBF73);
-  static const blue = Color(0xFF4A90D9);
+  static const coral = Color(0xFFFB7185);
+  static const orange = Color(0xFFFB923C);
+  static const purple = Color(0xFFA78BFA);
+  static const yellow = Color(0xFFFCD34D);
+  static const green = Color(0xFF34D399);
+  static const blue = Color(0xFF38BDF8);
   static const ink = Color(0xFF1A1A1A);
   static const muted = Color(0xFF8A8A82);
   static const tileEmpty = Color(0xFFEDEAE0);
+}
+
+class KeycapColors {
+  static const red = Color(0xFFF4A7B0);
+  static const yellow = Color(0xFFFDE38C);
+  static const green = Color(0xFF9EE6BC);
+  static const blue = Color(0xFFA9DFF4);
 }
 
 class AppTextStyles {

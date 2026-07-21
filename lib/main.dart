@@ -137,11 +137,11 @@ class _AppRootState extends State<AppRoot> {
   // 파스텔 4색만 사용: 1 초록, 2 노랑, 3 파랑, 4 빨강
   static const List<String> _pastelColorCycle = ['g', 'y', 'b', 'r'];
   static const Map<String, Color> _colorMap = {
-    'r': AppColors.coral,
+    'r': KeycapColors.red,
     'o': AppColors.orange,
-    'y': AppColors.yellow,
-    'g': AppColors.green,
-    'b': AppColors.blue,
+    'y': KeycapColors.yellow,
+    'g': KeycapColors.green,
+    'b': KeycapColors.blue,
     'p': AppColors.purple,
   };
 
