@@ -7,6 +7,10 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from services.extensions import r
+from services.mobius import (send_order_cin, 
+                             #mark_station_in_progress, 
+                             # mark_station_empty
+                            )
 
 bp = Blueprint('order', __name__)
 
@@ -19,13 +23,27 @@ WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order"
 STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order:")
 MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 처리 못 함)
 
+STATION_STARTED_PREFIX = os.getenv("STATION_STARTED_PREFIX", "station:started_at:")
+STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
+
+# 테스트 기간 전용: 설정돼 있으면 건드리는 키마다 이 초만큼 TTL을 계속 갱신함.
+# 운영 전환 시 이 env var만 빼면(또는 0으로) 원래대로 영구 보존됨.
+TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
+
+def _touch(*keys):
+    """테스트 모드일 때 해당 키들의 TTL을 TEST_KEY_TTL로 (재)설정"""
+    if not TEST_KEY_TTL:
+        return
+    for key in keys:
+        r.expire(key, TEST_KEY_TTL)
+
 def _ensure_initial_state():
     """warehouse/station 상태키가 없으면 초기값으로 세팅"""
     if not r.exists(WAREHOUSE_KEY):
         r.set(WAREHOUSE_KEY, "idle")
     if not r.exists(STATION_KEY):
         r.hset(STATION_KEY, mapping={"1": "idle", "2": "idle", "3": "idle"})
-
+    _touch(WAREHOUSE_KEY, STATION_KEY)
 
 def _check_inventory(keycap, colors):
     """
@@ -66,10 +84,138 @@ def _try_assign_next():
         "status": "assigned",
         "station_id": free_station
     })
-
-    # send_to_mobius(next_order_id, ..., free_station)  # 나중에 연결
+    _touch(
+        WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY,
+        f"{STATION_ORDER_PREFIX}{free_station}", f"order:{next_order_id}"
+    )
 
     return next_order_id
+
+def check_station_timeouts():
+    """in_progress 상태로 STATION_TIMEOUT_SEC 넘은 조립대를 자동 완료 처리."""
+    now = datetime.now()
+    started_keys = r.keys(f"{STATION_STARTED_PREFIX}*")
+
+    for key in started_keys:
+        station_id = key.replace(STATION_STARTED_PREFIX, "")
+        started_at = datetime.fromisoformat(r.get(key))
+
+        if (now - started_at).total_seconds() > STATION_TIMEOUT_SEC:
+            _complete_station(station_id)
+
+def _complete_station(station_id):
+    """조립대 완료 처리 공통 로직. 버튼/타임아웃 둘 다 여기로 모임."""
+    station_id = str(station_id)
+    order_key = f"{STATION_ORDER_PREFIX}{station_id}"
+    order_id = r.get(order_key)
+
+    r.hset(STATION_KEY, station_id, "idle")
+    r.delete(order_key)
+    r.delete(f"{STATION_STARTED_PREFIX}{station_id}")
+    _touch(STATION_KEY)
+
+    if order_id:
+        r.hset(f"order:{order_id}", "status", "done")
+        _touch(f"order:{order_id}")
+
+    #mark_station_empty(station_id)  # coss 저장
+    _try_assign_next()
+
+    return order_id
+
+@bp.route('/station/<int:station_id>/start', methods=['POST'])
+def station_start(station_id):
+    """
+    조립대 시작
+    ---
+    tags:
+      - Station
+    parameters:
+      - in: path
+        name: station_id
+        type: integer
+        required: true
+        example: 1
+    responses:
+      200:
+        description: 시작 처리 성공
+        schema:
+          type: object
+          properties:
+            ok:
+              type: boolean
+              example: true
+      400:
+        description: 이 조립대에 배정된 주문이 없음
+    """
+    station_id = str(station_id)
+    order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
+    if not order_id:
+        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
+
+    r.hset(STATION_KEY, station_id, "busy")
+    r.hset(f"order:{order_id}", "status", "in_progress")
+    r.set(f"{STATION_STARTED_PREFIX}{station_id}", datetime.now().isoformat())
+    _touch(STATION_KEY, f"order:{order_id}", f"{STATION_STARTED_PREFIX}{station_id}")
+
+    #mark_station_in_progress(station_id, order_id)  # coss 저장
+
+    return jsonify({'ok': True}), 200
+
+
+@bp.route('/station/<int:station_id>/complete', methods=['POST'])
+def station_complete(station_id):
+    """
+    조립대 완료
+    ---
+    tags:
+      - Station
+    parameters:
+      - in: path
+        name: station_id
+        type: integer
+        required: true
+        example: 1
+    responses:
+      200:
+        description: 완료 처리 성공
+        schema:
+          type: object
+          properties:
+            ok:
+              type: boolean
+              example: true
+      400:
+        description: 이 조립대에 진행 중인 주문이 없음
+    """
+    order_id = _complete_station(station_id)
+    if not order_id:
+        return jsonify({'error': '이 조립대에 진행 중인 주문이 없습니다'}), 400
+    return jsonify({'ok': True}), 200
+
+
+@bp.route('/station/free', methods=['GET'])
+def free_stations():
+    """
+    빈 조립대 목록 조회 (AGV용)
+    ---
+    tags:
+      - Station
+    responses:
+      200:
+        description: 빈 조립대 번호 목록
+        schema:
+          type: object
+          properties:
+            free_stations:
+              type: array
+              items:
+                type: string
+              example: ["2", "3"]
+    """
+    station_status = r.hgetall(STATION_KEY)
+    free = [sid for sid, status in station_status.items() if status == "idle"]
+    return jsonify({'free_stations': free}), 200
 
 @bp.route('/queue/status', methods=['GET'])
 def queue_status():
@@ -182,6 +328,7 @@ def post_order_list():
             "created_at": datetime.now().isoformat()
         })
         r.expire(f"order:{order_id}", 3600)  # TTL 1시간
+        _touch(QUEUE_KEY)
 
         # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
         _try_assign_next()
@@ -203,6 +350,8 @@ def post_order_list():
             "position_in_queue": position_in_queue,
             "station_id": station_id
         }
+
+        send_order_cin(order_id, board, switch, keycap, colors) # coss 저장
 
         return jsonify({'order_status': order_status}), 200
 
@@ -252,17 +401,16 @@ def mobius_callback():
           properties:
             source:
               type: string
-              enum: [warehouse, station]
-            station_id:
-              type: integer
-              example: 2
-              description: source가 station일 때만 필요
+              enum: [warehouse]
+              example: warehouse
     responses:
       200:
         description: 처리 완료
       400:
         description: 잘못된 payload
     """
+    data = request.get_json()
+    ...
     data = request.get_json()
     source = data.get("source")
 
@@ -275,6 +423,7 @@ def mobius_callback():
 
             if current_order_id:
                 r.hset(f"order:{current_order_id}", "status", "in_progress")
+                _touch(f"order:{current_order_id}")
 
             _try_assign_next()  # 창고가 풀렸으니 다음 대기 주문 pick 시도
 
@@ -288,9 +437,11 @@ def mobius_callback():
 
             r.hset(STATION_KEY, station_id, "idle")
             r.delete(order_key)
+            _touch(STATION_KEY)
 
             if current_order_id:
                 r.hset(f"order:{current_order_id}", "status", "done")
+                _touch(f"order:{current_order_id}")
 
             _try_assign_next()  # 조립대가 풀렸으니 다음 대기 주문 배정 시도
 
