@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class CompleteScreen extends StatelessWidget {
+  final String boardShape; // '1x4' | '2x2'
   final List<String> letters;
   final Color Function(int index) colorAt;
   final Map<String, dynamic>? orderStatus;
@@ -9,6 +10,7 @@ class CompleteScreen extends StatelessWidget {
 
   const CompleteScreen({
     super.key,
+    required this.boardShape,
     required this.letters,
     required this.colorAt,
     required this.orderStatus,
@@ -41,8 +43,16 @@ class CompleteScreen extends StatelessWidget {
                 child: Stack(
                   children: [
                     const Positioned(left: 40, top: 60, child: Icon(Icons.smart_toy, size: 60, color: AppColors.coral)),
-                    Positioned(right: 24, top: 20, child: _TileRow(label: '부품창고', letters: letters, colorAt: colorAt)),
-                    Positioned(left: 200, top: 84, child: _TileRow(label: '조립', letters: letters, colorAt: colorAt)),
+                    Positioned(
+                      right: 24,
+                      top: 20,
+                      child: _TileRow(label: '부품창고', letters: letters, colorAt: colorAt, boardShape: boardShape),
+                    ),
+                    Positioned(
+                      left: 200,
+                      top: 70,
+                      child: _TileRow(label: '조립', letters: letters, colorAt: colorAt, boardShape: boardShape),
+                    ),
                   ],
                 ),
               ),
@@ -150,28 +160,48 @@ class _TileRow extends StatelessWidget {
   final String label;
   final List<String> letters;
   final Color Function(int index) colorAt;
-  const _TileRow({required this.label, required this.letters, required this.colorAt});
+  final String boardShape; // '1x4' | '2x2'
+  const _TileRow({
+    required this.label,
+    required this.letters,
+    required this.colorAt,
+    required this.boardShape,
+  });
+
+  Widget _tile(int i, double size) {
+    return Container(
+      width: size,
+      height: size,
+      margin: const EdgeInsets.only(right: 4, bottom: 4),
+      alignment: Alignment.center,
+      color: colorAt(i),
+      child: Text(
+        letters[i],
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: size > 30 ? 14 : 12),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final is2x2 = boardShape == '2x2';
+    final tileSize = is2x2 ? 28.0 : 34.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: AppTextStyles.body),
         const SizedBox(height: 6),
-        Row(
-          children: List.generate(
-            letters.length,
-            (i) => Container(
-              width: 34,
-              height: 34,
-              margin: const EdgeInsets.only(right: 4),
-              alignment: Alignment.center,
-              color: colorAt(i),
-              child: Text(letters[i], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ),
+        if (is2x2)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [_tile(0, tileSize), _tile(1, tileSize)]),
+              Row(children: [_tile(2, tileSize), _tile(3, tileSize)]),
+            ],
+          )
+        else
+          Row(children: List.generate(letters.length, (i) => _tile(i, tileSize))),
       ],
     );
   }
