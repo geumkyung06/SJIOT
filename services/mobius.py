@@ -33,7 +33,8 @@ def get_latest_con(cnt_rn):
     res = requests.get(url, headers=_headers())
     if res.status_code != 200:
         return None
-    return json.loads(res.json()["m2m:cin"]["con"])
+    con = res.json()["m2m:cin"]["con"]
+    return json.loads(con) if isinstance(con, str) else con
 
 # order
 def send_order_cin(order_id, board, switch, keycap, colors):
@@ -53,13 +54,12 @@ def handle_stock_notification(con):
     r.set("warehouse:stock", json.dumps(con))
 
 def get_out_of_stock():
-    raw = r.get("warehouse:stock")
-    if raw is None:
+    """cnt_stock 최신 con을 Mobius에서 직접 가져와 재고 0인 항목만 추림."""
+    stock = get_latest_con("cnt_stock")
+    if stock is None:
         return None
 
-    stock = json.loads(raw)
     out = {}
-
     for board, qty in stock.get("board", {}).items():
         if qty <= 0:
             out.setdefault("board", []).append(board)
