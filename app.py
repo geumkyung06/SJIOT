@@ -15,6 +15,7 @@ from services.extensions import r, init_robot_status
 
 # 라우트 임포트
 from routes.order import bp as order_bp
+from routes.stock import bp as stock_bp
 
 def create_app():
     app = Flask(__name__)
@@ -54,8 +55,10 @@ def create_app():
     app.config['JSON_AS_ASCII'] = False 
 
     init_robot_status()
+    
     # 블루프린트 등록
     app.register_blueprint(order_bp)
+    app.register_blueprint(stock_bp)
 
     return app
 
