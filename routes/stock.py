@@ -30,7 +30,7 @@ def get_out_of_stock_status():
               type: array
               items:
                 type: string
-              description: "글자_색상" 조합 형식
+              description: 글자_색상 조합 형식
               example: ["E_r", "J_b"]
       503:
         description: 재고 정보를 아직 캐시하지 못함 (cnt_stock 구독 알림 미수신)
