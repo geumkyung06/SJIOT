@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 /// Flask 백엔드(POST /order, GET /order/<id>/status) 연동.
 /// baseUrl은 실제 EC2 도메인으로 교체해서 쓰세요.
 class ApiService {
-  static const String baseUrl = 'https://sjiot-backend-294910862364.asia-northeast1.run.app';
+  static const String baseUrl =
+      'https://sjiot-backend-294910862364.asia-northeast1.run.app';
 
   Future<Map<String, dynamic>> createOrder({
     required int board,
@@ -53,5 +54,33 @@ class ApiService {
       throw Exception(body['error'] ?? '대기열 조회 실패 (${res.statusCode})');
     }
     return body;
+  }
+
+  Future<Map<String, List<String>>> getSoldOutStock() async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/stock/out'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (res.statusCode == 200) {
+      final Map<String, dynamic> body =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+
+      return {
+        // 품절 항목이 없는 카테고리는 응답에 키가 없을 수 있으므로
+        // 없으면 빈 리스트로 처리
+        'board': List<String>.from(body['board'] ?? []),
+        'keycap': List<String>.from(body['keycap'] ?? []),
+        'switch': List<String>.from(body['switch'] ?? []),
+      };
+    }
+
+    if (res.statusCode == 503) {
+      throw Exception('재고 정보가 아직 준비되지 않았습니다.');
+    }
+
+    throw Exception('재고 조회 실패 (${res.statusCode})');
   }
 }

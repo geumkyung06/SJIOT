@@ -118,6 +118,15 @@ class _AppRootState extends State<AppRoot> {
   int _boardCount = 4;
   String? _axis; // 'blue' | 'brown' | 'red' | 'black'
 
+  // ---------------- 품절 재고 ----------------
+
+  Set<String> _soldOutBoards = {};
+  Set<String> _soldOutKeycaps = {};
+  Set<String> _soldOutSwitches = {};
+
+  bool _stockLoading = false;
+  String? _stockError;
+
   // ---------------- 키캡 색상 ----------------
   late List<String> _letters;
   late List<String?> _colorCodes; // 슬롯별 색상 코드. null = 아직 색 없음(빈 칸)
@@ -148,7 +157,8 @@ class _AppRootState extends State<AppRoot> {
   void initState() {
     super.initState();
     _resetLetters();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _focusNode.requestFocus());
   }
 
   void _resetLetters() {
@@ -165,6 +175,79 @@ class _AppRootState extends State<AppRoot> {
   void _resetManual() {
     _manualIndex = 0;
     _manualAnswers = List<String?>.filled(4, null);
+  }
+
+  //------------ 재고 조회 함수 -------------
+  Future<bool> _loadSoldOutStock() async {
+    if (_stockLoading) return false;
+
+    setState(() {
+      _stockLoading = true;
+      _stockError = null;
+    });
+
+    try {
+      print('>>> 재고 조회 시작'); // 테스트 시 터미널 확인용
+      final stock = await _api.getSoldOutStock();
+      print('>>> 재고 조회 성공: $stock'); // 테스트 시 터미널 확인용
+
+      if (!mounted) return false;
+
+      setState(() {
+        _soldOutBoards = Set<String>.from(stock['board'] ?? const <String>[]);
+
+        _soldOutKeycaps = Set<String>.from(stock['keycap'] ?? const <String>[]);
+
+        _soldOutSwitches =
+            Set<String>.from(stock['switch'] ?? const <String>[]);
+
+        _stockLoading = false;
+      });
+
+      return true;
+    } catch (e) {
+      print('>>> 재고 조회 실패: $e'); // 테스트 시 터미널 확인용
+
+      if (!mounted) return false;
+
+      setState(() {
+        _stockLoading = false;
+        _stockError = e.toString();
+      });
+
+      return false;
+    }
+  }
+
+  // 주문 시작 전 품절 재고 불러오고,
+  // 조회 성공 시에만 MBTI 선택 화면으로 넘어가게 하는 함수
+  Future<void> _startOrder() async {
+    final success = await _loadSoldOutStock();
+
+    if (!mounted) return;
+
+    if (!success) {
+      // 재고를 못 가져오면 다음 화면으로 이동하지 않음
+      return;
+    }
+
+    setState(() {
+      _step = AppStep.mbtiChoice;
+    });
+  }
+
+  // ------------- MBTI 키캡 글자 별 전체 품절 판단 함수 -----------
+  bool _isLetterSoldOut(String letter) {
+    const colors = ['r', 'g', 'b', 'y'];
+
+    return colors.every(
+      (color) => _soldOutKeycaps.contains('${letter}_$color'),
+    );
+  }
+
+  // ------------- 축 품절 판단 함수 -----------
+  bool _isAxisSoldOut(String axis) {
+    return _soldOutSwitches.contains(axis);
   }
 
   // 색이 아직 없는 슬롯은 빈 칸(회색)으로 표시
@@ -214,18 +297,41 @@ class _AppRootState extends State<AppRoot> {
   // 물리적 키 위치 기준 매핑 (logicalKey/keyLabel은 한/영 입력 소스에 따라 값이
   // 바뀌어서 한글 입력 상태일 때 글자 입력이 먹통이 될 수 있음 -> physicalKey로 고정)
   static final Map<PhysicalKeyboardKey, String> _keyCharMap = {
-    PhysicalKeyboardKey.keyA: 'A', PhysicalKeyboardKey.keyB: 'B', PhysicalKeyboardKey.keyC: 'C',
-    PhysicalKeyboardKey.keyD: 'D', PhysicalKeyboardKey.keyE: 'E', PhysicalKeyboardKey.keyF: 'F',
-    PhysicalKeyboardKey.keyG: 'G', PhysicalKeyboardKey.keyH: 'H', PhysicalKeyboardKey.keyI: 'I',
-    PhysicalKeyboardKey.keyJ: 'J', PhysicalKeyboardKey.keyK: 'K', PhysicalKeyboardKey.keyL: 'L',
-    PhysicalKeyboardKey.keyM: 'M', PhysicalKeyboardKey.keyN: 'N', PhysicalKeyboardKey.keyO: 'O',
-    PhysicalKeyboardKey.keyP: 'P', PhysicalKeyboardKey.keyQ: 'Q', PhysicalKeyboardKey.keyR: 'R',
-    PhysicalKeyboardKey.keyS: 'S', PhysicalKeyboardKey.keyT: 'T', PhysicalKeyboardKey.keyU: 'U',
-    PhysicalKeyboardKey.keyV: 'V', PhysicalKeyboardKey.keyW: 'W', PhysicalKeyboardKey.keyX: 'X',
-    PhysicalKeyboardKey.keyY: 'Y', PhysicalKeyboardKey.keyZ: 'Z',
-    PhysicalKeyboardKey.digit0: '0', PhysicalKeyboardKey.digit1: '1', PhysicalKeyboardKey.digit2: '2',
-    PhysicalKeyboardKey.digit3: '3', PhysicalKeyboardKey.digit4: '4', PhysicalKeyboardKey.digit5: '5',
-    PhysicalKeyboardKey.digit6: '6', PhysicalKeyboardKey.digit7: '7', PhysicalKeyboardKey.digit8: '8',
+    PhysicalKeyboardKey.keyA: 'A',
+    PhysicalKeyboardKey.keyB: 'B',
+    PhysicalKeyboardKey.keyC: 'C',
+    PhysicalKeyboardKey.keyD: 'D',
+    PhysicalKeyboardKey.keyE: 'E',
+    PhysicalKeyboardKey.keyF: 'F',
+    PhysicalKeyboardKey.keyG: 'G',
+    PhysicalKeyboardKey.keyH: 'H',
+    PhysicalKeyboardKey.keyI: 'I',
+    PhysicalKeyboardKey.keyJ: 'J',
+    PhysicalKeyboardKey.keyK: 'K',
+    PhysicalKeyboardKey.keyL: 'L',
+    PhysicalKeyboardKey.keyM: 'M',
+    PhysicalKeyboardKey.keyN: 'N',
+    PhysicalKeyboardKey.keyO: 'O',
+    PhysicalKeyboardKey.keyP: 'P',
+    PhysicalKeyboardKey.keyQ: 'Q',
+    PhysicalKeyboardKey.keyR: 'R',
+    PhysicalKeyboardKey.keyS: 'S',
+    PhysicalKeyboardKey.keyT: 'T',
+    PhysicalKeyboardKey.keyU: 'U',
+    PhysicalKeyboardKey.keyV: 'V',
+    PhysicalKeyboardKey.keyW: 'W',
+    PhysicalKeyboardKey.keyX: 'X',
+    PhysicalKeyboardKey.keyY: 'Y',
+    PhysicalKeyboardKey.keyZ: 'Z',
+    PhysicalKeyboardKey.digit0: '0',
+    PhysicalKeyboardKey.digit1: '1',
+    PhysicalKeyboardKey.digit2: '2',
+    PhysicalKeyboardKey.digit3: '3',
+    PhysicalKeyboardKey.digit4: '4',
+    PhysicalKeyboardKey.digit5: '5',
+    PhysicalKeyboardKey.digit6: '6',
+    PhysicalKeyboardKey.digit7: '7',
+    PhysicalKeyboardKey.digit8: '8',
     PhysicalKeyboardKey.digit9: '9',
   };
 
@@ -250,7 +356,8 @@ class _AppRootState extends State<AppRoot> {
       AppStep.keycapFill,
     };
 
-    if (event.physicalKey == PhysicalKeyboardKey.escape && backableSteps.contains(_step)) {
+    if (event.physicalKey == PhysicalKeyboardKey.escape &&
+        backableSteps.contains(_step)) {
       _goBack();
       return;
     }
@@ -259,12 +366,16 @@ class _AppRootState extends State<AppRoot> {
         event.physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     switch (_step) {
+      // case AppStep.home:
+      //   if (isEnter) {
+      //     setState(() => _step = AppStep.mbtiChoice);
+      //   }
+      //   break;
       case AppStep.home:
-        if (isEnter) {
-          setState(() => _step = AppStep.mbtiChoice);
+        if (isEnter && !_stockLoading) {
+          _startOrder();
         }
         break;
-
       case AppStep.mbtiChoice:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
           setState(() {
@@ -341,10 +452,18 @@ class _AppRootState extends State<AppRoot> {
   void _handleManualKey(KeyEvent event) {
     final letter = _keyCharMap[event.physicalKey];
     if (letter == null) return;
+
     final pair = _manualPairs[_manualIndex];
-    if (letter != pair[0] && letter != pair[1]) return; // 유효하지 않은 키는 무시
+
+    // 현재 단계의 글자가 아니면 무시
+    if (letter != pair[0] && letter != pair[1]) return;
+
+    // 네 색상이 전부 품절된 글자는 선택 불가
+    if (_isLetterSoldOut(letter)) return;
+
     setState(() {
       _manualAnswers[_manualIndex] = letter;
+
       if (_manualIndex < _manualPairs.length - 1) {
         _manualIndex++;
       } else {
@@ -357,13 +476,20 @@ class _AppRootState extends State<AppRoot> {
   void _handleAxisKey(KeyEvent event) {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
+
     const axes = ['blue', 'brown', 'red', 'black'];
+    final selectedAxis = axes[digit - 1];
+
+    // 품절 축이면 입력 무시
+    if (_isAxisSoldOut(selectedAxis)) return;
+
     setState(() {
-      _axis = axes[digit - 1];
-      // MBTI 결과를 본판 위에 순서대로 배치 (수정 불가, 색상만 나중에 선택)
+      _axis = selectedAxis;
+
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;
+
       _step = AppStep.keycapFill;
     });
   }
@@ -384,9 +510,11 @@ class _AppRootState extends State<AppRoot> {
       setState(() => _cursor = (_cursor - 1).clamp(0, _boardCount - 1));
     } else if (physicalKey == PhysicalKeyboardKey.arrowRight) {
       setState(() => _cursor = (_cursor + 1).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowUp && _boardShape == '2x2') {
+    } else if (physicalKey == PhysicalKeyboardKey.arrowUp &&
+        _boardShape == '2x2') {
       setState(() => _cursor = (_cursor - 2).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowDown && _boardShape == '2x2') {
+    } else if (physicalKey == PhysicalKeyboardKey.arrowDown &&
+        _boardShape == '2x2') {
       setState(() => _cursor = (_cursor + 2).clamp(0, _boardCount - 1));
     } else if (physicalKey == PhysicalKeyboardKey.backspace) {
       setState(() => _colorCodes[_cursor] = null);
@@ -496,17 +624,21 @@ class _AppRootState extends State<AppRoot> {
           questionIndex: _quizIndex,
           totalQuestions: _mbtiQuestions.length,
           question: q['question'] as String,
-          optionTexts: (q['options'] as List).map((o) => o['text'] as String).toList(),
+          optionTexts:
+              (q['options'] as List).map((o) => o['text'] as String).toList(),
         );
         break;
 
       case AppStep.mbtiManual:
         final pair = _manualPairs[_manualIndex];
+
         screen = MbtiManualScreen(
           questionIndex: _manualIndex,
           totalQuestions: _manualPairs.length,
           letterA: pair[0],
           letterB: pair[1],
+          letterASoldOut: _isLetterSoldOut(pair[0]),
+          letterBSoldOut: _isLetterSoldOut(pair[1]),
         );
         break;
 
@@ -519,7 +651,9 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        screen = const AxisSelectScreen();
+        screen = AxisSelectScreen(
+          soldOutAxes: _soldOutSwitches,
+        );
         break;
 
       case AppStep.keycapFill:
@@ -561,7 +695,8 @@ class _AppRootState extends State<AppRoot> {
                     return SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                        constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight - 48),
                         child: Center(child: screen),
                       ),
                     );
@@ -601,7 +736,11 @@ class _BackButton extends StatelessWidget {
           children: [
             Icon(Icons.arrow_back, size: 16, color: AppColors.ink),
             SizedBox(width: 6),
-            Text('이전 (ESC)', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.ink, fontSize: 13)),
+            Text('이전 (ESC)',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.ink,
+                    fontSize: 13)),
           ],
         ),
       ),

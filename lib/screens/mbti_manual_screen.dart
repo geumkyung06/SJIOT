@@ -7,12 +7,17 @@ class MbtiManualScreen extends StatelessWidget {
   final String letterA;
   final String letterB;
 
+  final bool letterASoldOut;
+  final bool letterBSoldOut;
+
   const MbtiManualScreen({
     super.key,
     required this.questionIndex,
     required this.totalQuestions,
     required this.letterA,
     required this.letterB,
+    required this.letterASoldOut,
+    required this.letterBSoldOut,
   });
 
   @override
@@ -20,7 +25,8 @@ class MbtiManualScreen extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('STEP 02 / 07  ·  질문 ${questionIndex + 1} / $totalQuestions', style: AppTextStyles.label),
+        Text('STEP 02 / 07  ·  질문 ${questionIndex + 1} / $totalQuestions',
+            style: AppTextStyles.label),
         const SizedBox(height: 8),
         const Text('MBTI를 직접 입력하세요', style: AppTextStyles.heading),
         const SizedBox(height: 8),
@@ -29,13 +35,21 @@ class MbtiManualScreen extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _LetterBadge(letter: letterA),
+            _LetterBadge(
+              letter: letterA,
+              soldOut: letterASoldOut,
+            ),
             const SizedBox(width: 20),
-            const Text('입니까?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+            const Text('입니까?',
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
             const SizedBox(width: 40),
-            _LetterBadge(letter: letterB),
+            _LetterBadge(
+              letter: letterB,
+              soldOut: letterBSoldOut,
+            ),
             const SizedBox(width: 20),
-            const Text('입니까?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+            const Text('입니까?',
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
           ],
         ),
         const SizedBox(height: 40),
@@ -58,16 +72,48 @@ class MbtiManualScreen extends StatelessWidget {
 
 class _LetterBadge extends StatelessWidget {
   final String letter;
-  const _LetterBadge({required this.letter});
+  final bool soldOut;
+
+  const _LetterBadge({required this.letter, required this.soldOut});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 100,
-      height: 100,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 3)),
-      child: Text(letter, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: AppColors.ink)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 100,
+          height: 100,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(
+              color: AppColors.ink,
+              width: 3,
+            ),
+          ),
+          child: Text(
+            letter,
+            style: const TextStyle(
+              fontSize: 48,
+              fontWeight: FontWeight.w900,
+              color: AppColors.ink,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (soldOut)
+          const Text(
+            '재고없음',
+            style: TextStyle(
+              color: Colors.red,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          )
+        else
+          const SizedBox(height: 16),
+      ],
     );
   }
 }
