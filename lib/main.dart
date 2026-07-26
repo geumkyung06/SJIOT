@@ -219,6 +219,33 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
+  // 재고를 확인 후 화면 변경
+  Future<bool> _moveToStep(
+    AppStep nextStep, {
+    VoidCallback? beforeMove,
+  }) async {
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) {
+      // 재고 조회 실패 시 현재 화면 유지
+      return false;
+    }
+
+    setState(() {
+      beforeMove?.call();
+      _step = nextStep;
+    });
+
+    // 화면 이동 후 키보드 포커스 다시 요청
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
+
+    return true;
+  }
+
   // 주문 시작 전 품절 재고 불러오고,
   // 조회 성공 시에만 MBTI 선택 화면으로 넘어가게 하는 함수
   Future<void> _startOrder() async {
@@ -227,7 +254,6 @@ class _AppRootState extends State<AppRoot> {
     if (!mounted) return;
 
     if (!success) {
-      // 재고를 못 가져오면 다음 화면으로 이동하지 않음
       return;
     }
 
@@ -343,7 +369,7 @@ class _AppRootState extends State<AppRoot> {
     PhysicalKeyboardKey.digit4: 4,
   };
 
-  void _handleKey(KeyEvent event) {
+  void _handleKey(KeyEvent event) async {
     if (event is! KeyDownEvent) return;
 
     const backableSteps = {
@@ -378,24 +404,24 @@ class _AppRootState extends State<AppRoot> {
         break;
       case AppStep.mbtiChoice:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          setState(() {
-            _resetQuiz();
-            _step = AppStep.mbtiQuiz;
-          });
+          await _moveToStep(
+            AppStep.mbtiQuiz,
+            beforeMove: _resetQuiz,
+          );
         } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          setState(() {
-            _resetManual();
-            _step = AppStep.mbtiManual;
-          });
+          await _moveToStep(
+            AppStep.mbtiManual,
+            beforeMove: _resetManual,
+          );
         }
         break;
 
       case AppStep.mbtiQuiz:
-        _handleQuizKey(event);
+        await _handleQuizKey(event);
         break;
 
       case AppStep.mbtiManual:
-        _handleManualKey(event);
+        await _handleManualKey(event);
         break;
 
       case AppStep.mbtiResult:
@@ -421,7 +447,7 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        _handleAxisKey(event);
+        await _handleAxisKey(event);
         break;
 
       case AppStep.keycapFill:
@@ -433,23 +459,46 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
-  void _handleQuizKey(KeyEvent event) {
+  Future<void> _handleQuizKey(KeyEvent event) async {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
+
     final options = _mbtiQuestions[_quizIndex]['options'] as List;
     final letter = options[digit - 1]['letter'] as String;
-    setState(() {
-      _quizAnswers[_quizIndex] = letter;
-      if (_quizIndex < _mbtiQuestions.length - 1) {
+
+    // 선택한 E/I/N/S/F/T/J/P의 모든 색상이 품절이면 입력 무시
+    if (_isLetterSoldOut(letter)) return;
+
+    if (_quizIndex < _mbtiQuestions.length - 1) {
+      // 다음 질문으로 넘어가기 전 재고 재조회
+      final success = await _loadSoldOutStock();
+
+      if (!mounted || !success) return;
+
+      // 조회 중 재고가 바뀌었을 수 있으므로 다시 검사
+      if (_isLetterSoldOut(letter)) return;
+
+      setState(() {
+        _quizAnswers[_quizIndex] = letter;
         _quizIndex++;
-      } else {
+      });
+    } else {
+      // 결과 화면으로 넘어가기 전 재고 재조회
+      final success = await _loadSoldOutStock();
+
+      if (!mounted || !success) return;
+
+      if (_isLetterSoldOut(letter)) return;
+
+      setState(() {
+        _quizAnswers[_quizIndex] = letter;
         _mbtiResult = _quizAnswers.map((e) => e!).join();
         _step = AppStep.mbtiResult;
-      }
-    });
+      });
+    }
   }
 
-  void _handleManualKey(KeyEvent event) {
+  Future<void> _handleManualKey(KeyEvent event) async {
     final letter = _keyCharMap[event.physicalKey];
     if (letter == null) return;
 
@@ -458,7 +507,12 @@ class _AppRootState extends State<AppRoot> {
     // 현재 단계의 글자가 아니면 무시
     if (letter != pair[0] && letter != pair[1]) return;
 
-    // 네 색상이 전부 품절된 글자는 선택 불가
+    // 화면 전환 직전에 최신 재고 확인
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    // 최신 재고 기준으로 다시 품절 확인
     if (_isLetterSoldOut(letter)) return;
 
     setState(() {
@@ -473,14 +527,19 @@ class _AppRootState extends State<AppRoot> {
     });
   }
 
-  void _handleAxisKey(KeyEvent event) {
+  Future<void> _handleAxisKey(KeyEvent event) async {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
 
     const axes = ['blue', 'brown', 'red', 'black'];
     final selectedAxis = axes[digit - 1];
 
-    // 품절 축이면 입력 무시
+    // 화면 이동 직전에 최신 재고 조회
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    // 최신 재고에서 품절된 축이면 입력 무시
     if (_isAxisSoldOut(selectedAxis)) return;
 
     setState(() {
@@ -494,14 +553,29 @@ class _AppRootState extends State<AppRoot> {
     });
   }
 
-  void _handleKeycapFillKey(KeyEvent event) {
+  Future<void> _handleKeycapFillKey(KeyEvent event) async {
     final physicalKey = event.physicalKey;
 
     final digit = _digitMap[physicalKey];
     if (digit != null) {
+      final selectedColor = _pastelColorCycle[digit - 1];
+      final selectedLetter = _letters[_cursor];
+      final stockCode = '${selectedLetter}_$selectedColor';
+
+      // 색상 선택 직전에 최신 재고 확인
+      final success = await _loadSoldOutStock();
+
+      if (!mounted || !success) return;
+
+      // 예: I_r이 품절이면 빨간색 선택 무시
+      if (_soldOutKeycaps.contains(stockCode)) return;
+
       setState(() {
-        _colorCodes[_cursor] = _pastelColorCycle[digit - 1];
-        if (_cursor < _boardCount - 1) _cursor++;
+        _colorCodes[_cursor] = selectedColor;
+
+        if (_cursor < _boardCount - 1) {
+          _cursor++;
+        }
       });
       return;
     }
