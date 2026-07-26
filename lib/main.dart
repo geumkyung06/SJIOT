@@ -119,13 +119,15 @@ class _AppRootState extends State<AppRoot> {
   String? _axis; // 'blue' | 'brown' | 'red' | 'black'
 
   // ---------------- 품절 재고 ----------------
-
   Set<String> _soldOutBoards = {};
   Set<String> _soldOutKeycaps = {};
   Set<String> _soldOutSwitches = {};
 
   bool _stockLoading = false;
   String? _stockError;
+
+  // 키캡 색상 선택 화면 안내 문구
+  String? _keycapMessage;
 
   // ---------------- 키캡 색상 ----------------
   late List<String> _letters;
@@ -269,6 +271,80 @@ class _AppRootState extends State<AppRoot> {
     return colors.every(
       (color) => _soldOutKeycaps.contains('${letter}_$color'),
     );
+  }
+
+  // 특정 글자와 색상의 품절 여부
+  bool _isKeycapColorSoldOut(String letter, String colorCode) {
+    return _soldOutKeycaps.contains('${letter}_$colorCode');
+  }
+
+  // 현재 커서에 있는 글자의 품절 색상 집합
+  Set<String> _soldOutColorsAtCursor() {
+    if (_letters.isEmpty || _cursor < 0 || _cursor >= _letters.length) {
+      return {};
+    }
+
+    final letter = _letters[_cursor];
+
+    return _pastelColorCycle
+        .where((color) => _isKeycapColorSoldOut(letter, color))
+        .toSet();
+  }
+
+  // 현재 글자의 모든 색상이 품절인지 확인하는 함수
+  bool _areAllColorsSoldOutAtCursor() {
+    return _soldOutColorsAtCursor().length == _pastelColorCycle.length;
+  }
+
+  // 현재 선택된 키캡 색상 중 새로 품절된 항목을 해제
+// 반환값: 처음 발견된 품절 키캡의 인덱스
+  int? _removeInvalidColorSelections() {
+    int? firstInvalidIndex;
+
+    for (int i = 0; i < _colorCodes.length; i++) {
+      final selectedColor = _colorCodes[i];
+
+      // 아직 색상을 선택하지 않은 칸은 검사하지 않음
+      if (selectedColor == null) continue;
+
+      final letter = _letters[i];
+      final stockCode = '${letter}_$selectedColor';
+
+      if (_soldOutKeycaps.contains(stockCode)) {
+        _colorCodes[i] = null;
+        firstInvalidIndex ??= i;
+      }
+    }
+
+    return firstInvalidIndex;
+  }
+
+  Future<bool> _refreshKeycapStockForCursor() async {
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) {
+      return false;
+    }
+
+    setState(() {
+      // 선택한 색상이 재고 조회 중 품절됐다면 해제
+      final invalidIndex = _removeInvalidColorSelections();
+
+      if (invalidIndex != null) {
+        _cursor = invalidIndex;
+        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+        return;
+      }
+
+      // 현재 글자의 모든 색상이 품절된 경우
+      if (_areAllColorsSoldOutAtCursor()) {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+      } else {
+        _keycapMessage = null;
+      }
+    });
+
+    return true;
   }
 
   // ------------- 축 품절 판단 함수 -----------
@@ -451,7 +527,7 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.keycapFill:
-        _handleKeycapFillKey(event);
+        await _handleKeycapFillKey(event);
         break;
 
       case AppStep.complete:
@@ -548,81 +624,237 @@ class _AppRootState extends State<AppRoot> {
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;
+      _keycapMessage = null;
 
       _step = AppStep.keycapFill;
     });
+    await _refreshKeycapStockForCursor();
   }
 
   Future<void> _handleKeycapFillKey(KeyEvent event) async {
-    final physicalKey = event.physicalKey;
+    // 재고 조회 중에는 중복 입력 방지
+    if (_stockLoading) return;
 
+    final physicalKey = event.physicalKey;
     final digit = _digitMap[physicalKey];
+
+    // --------------------------------------------------
+    // 1~4 숫자키: 키캡 색상 선택 또는 변경
+    // --------------------------------------------------
     if (digit != null) {
       final selectedColor = _pastelColorCycle[digit - 1];
-      final selectedLetter = _letters[_cursor];
-      final stockCode = '${selectedLetter}_$selectedColor';
 
-      // 색상 선택 직전에 최신 재고 확인
+      // 선택 직전 최신 재고 조회
       final success = await _loadSoldOutStock();
 
       if (!mounted || !success) return;
 
-      // 예: I_r이 품절이면 빨간색 선택 무시
-      if (_soldOutKeycaps.contains(stockCode)) return;
+      final selectedLetter = _letters[_cursor];
+      final stockCode = '${selectedLetter}_$selectedColor';
 
       setState(() {
-        _colorCodes[_cursor] = selectedColor;
+        // 기존 선택 중 새로 품절된 색상이 있으면 해제
+        final invalidIndex = _removeInvalidColorSelections();
 
+        if (invalidIndex != null) {
+          _cursor = invalidIndex;
+          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+          return;
+        }
+
+        // 현재 글자의 모든 색상이 품절
+        if (_isLetterSoldOut(selectedLetter)) {
+          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+          return;
+        }
+
+        // 사용자가 누른 색상이 품절이면 기존 선택 유지
+        // 커서도 다음 칸으로 이동하지 않음
+        if (_soldOutKeycaps.contains(stockCode)) {
+          _keycapMessage = '$selectedLetter 키캡의 해당 색상은 재고가 없습니다.';
+          return;
+        }
+
+        // 선택 가능한 색상이므로 저장
+        _colorCodes[_cursor] = selectedColor;
+        _keycapMessage = null;
+
+        // 마지막 칸이 아닐 때만 다음 칸으로 자동 이동
         if (_cursor < _boardCount - 1) {
           _cursor++;
         }
+
+        // 자동 이동한 글자의 모든 색상이 품절인지 검사
+        if (_isLetterSoldOut(_letters[_cursor])) {
+          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+        }
+      });
+
+      return;
+    }
+
+    // --------------------------------------------------
+    // 화살표: 커서 이동 후 해당 글자의 재고를 다시 조회
+    // --------------------------------------------------
+    int? nextCursor;
+
+    if (physicalKey == PhysicalKeyboardKey.arrowLeft) {
+      nextCursor = (_cursor - 1).clamp(0, _boardCount - 1);
+    } else if (physicalKey == PhysicalKeyboardKey.arrowRight) {
+      nextCursor = (_cursor + 1).clamp(0, _boardCount - 1);
+    } else if (physicalKey == PhysicalKeyboardKey.arrowUp &&
+        _boardShape == '2x2') {
+      nextCursor = (_cursor - 2).clamp(0, _boardCount - 1);
+    } else if (physicalKey == PhysicalKeyboardKey.arrowDown &&
+        _boardShape == '2x2') {
+      nextCursor = (_cursor + 2).clamp(0, _boardCount - 1);
+    }
+
+    if (nextCursor != null) {
+      // 우선 커서를 이동
+      setState(() {
+        _cursor = nextCursor!;
+        _keycapMessage = null;
+      });
+
+      // 이동한 키캡 글자의 최신 재고 확인
+      await _refreshKeycapStockForCursor();
+      return;
+    }
+
+    // --------------------------------------------------
+    // Backspace: 현재 칸의 색상 삭제
+    // --------------------------------------------------
+    if (physicalKey == PhysicalKeyboardKey.backspace) {
+      setState(() {
+        _colorCodes[_cursor] = null;
+        _keycapMessage = '현재 키캡의 색상 선택을 삭제했습니다.';
       });
       return;
     }
 
-    if (physicalKey == PhysicalKeyboardKey.arrowLeft) {
-      setState(() => _cursor = (_cursor - 1).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowRight) {
-      setState(() => _cursor = (_cursor + 1).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowUp &&
-        _boardShape == '2x2') {
-      setState(() => _cursor = (_cursor - 2).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowDown &&
-        _boardShape == '2x2') {
-      setState(() => _cursor = (_cursor + 2).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.backspace) {
-      setState(() => _colorCodes[_cursor] = null);
-    } else if (physicalKey == PhysicalKeyboardKey.enter ||
-        physicalKey == PhysicalKeyboardKey.numpadEnter) {
-      if (_colorCodes.every((c) => c != null)) {
-        _submitOrder();
+    // --------------------------------------------------
+    // ENTER: 전체 선택 여부 및 주문 직전 재고 검사
+    // --------------------------------------------------
+    final isEnter = physicalKey == PhysicalKeyboardKey.enter ||
+        physicalKey == PhysicalKeyboardKey.numpadEnter;
+
+    if (isEnter) {
+      // 색상을 선택하지 않은 첫 번째 칸 찾기
+      final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
+
+      if (firstEmptyIndex != -1) {
+        setState(() {
+          _cursor = firstEmptyIndex;
+          _keycapMessage = '색을 모두 선택하세요.';
+        });
+
+        await _refreshKeycapStockForCursor();
+        return;
       }
+
+      // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
+      final success = await _loadSoldOutStock();
+
+      if (!mounted || !success) return;
+
+      int? firstInvalidIndex;
+
+      setState(() {
+        firstInvalidIndex = _removeInvalidColorSelections();
+
+        if (firstInvalidIndex != null) {
+          _cursor = firstInvalidIndex!;
+          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+        }
+      });
+
+      // 품절된 선택이 하나라도 있었다면 주문하지 않음
+      if (firstInvalidIndex != null) {
+        return;
+      }
+
+      // 현재 커서의 글자가 모든 색상 품절인지 마지막으로 검사
+      if (_isLetterSoldOut(_letters[_cursor])) {
+        setState(() {
+          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+        });
+        return;
+      }
+
+      await _submitOrder();
     }
   }
 
   Future<void> _submitOrder() async {
+    // 주문 생성 직전 마지막 재고 확인
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    int? invalidIndex;
+
+    setState(() {
+      invalidIndex = _removeInvalidColorSelections();
+
+      if (invalidIndex != null) {
+        _cursor = invalidIndex!;
+        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+      }
+    });
+
+    // 재고가 변경된 키캡이 있으면 주문 생성 금지
+    if (invalidIndex != null) {
+      return;
+    }
+
+    // 선택하지 않은 색상이 남아 있으면 주문 생성 금지
+    final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
+
+    if (firstEmptyIndex != -1) {
+      setState(() {
+        _cursor = firstEmptyIndex;
+        _keycapMessage = '색을 모두 선택하세요.';
+      });
+      return;
+    }
+
+    // 모든 검사를 통과한 뒤에만 완료 화면으로 이동
     setState(() {
       _step = AppStep.complete;
       _orderStatus = null;
+      _keycapMessage = null;
     });
+
     _startAutoRestartTimer();
+
     try {
       final colors = List.generate(_boardCount, _colorCode);
+
       final result = await _api.createOrder(
         board: _boardCount,
         keycap: _letters.join(),
         colors: colors,
-        axis: _axis, // api_service.dart에서 'switch' 키로 전송됨
+        axis: _axis,
       );
+
       if (!mounted) return;
+
       setState(() {
         _orderId = result['order_id'] as String?;
         _orderStatus = result;
       });
+
       _pollStatus();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _orderStatus = {'status': 'error', 'error': e.toString()});
+
+      setState(() {
+        _orderStatus = {
+          'status': 'error',
+          'error': e.toString(),
+        };
+      });
     }
   }
 
@@ -665,6 +897,7 @@ class _AppRootState extends State<AppRoot> {
       _boardShape = null;
       _axis = null;
       _mbtiResult = null;
+      _keycapMessage = null;
       _resetQuiz();
       _resetManual();
       _orderId = null;
@@ -736,6 +969,15 @@ class _AppRootState extends State<AppRoot> {
           letters: _letters,
           cursor: _cursor,
           colorAt: _colorAt,
+
+          // 현재 선택된 키캡 글자의 품절 색상
+          soldOutColors: _soldOutColorsAtCursor(),
+
+          // 화면 하단 안내 문구
+          message: _keycapMessage,
+
+          // 재고 조회 중 표시용
+          stockLoading: _stockLoading,
         );
         break;
 

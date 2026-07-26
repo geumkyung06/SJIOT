@@ -7,17 +7,28 @@ class KeycapFillScreen extends StatelessWidget {
   final int cursor;
   final Color Function(int index) colorAt;
 
+  final Set<String> soldOutColors;
+  final String? message;
+  final bool stockLoading;
+
   const KeycapFillScreen({
     super.key,
     required this.boardShape,
     required this.letters,
     required this.cursor,
     required this.colorAt,
+    required this.soldOutColors,
+    this.message,
+    required this.stockLoading,
   });
 
   @override
   Widget build(BuildContext context) {
-    final filled = letters.asMap().entries.where((e) => colorAt(e.key) != AppColors.tileEmpty).length;
+    final filled = letters
+        .asMap()
+        .entries
+        .where((e) => colorAt(e.key) != AppColors.tileEmpty)
+        .length;
     final complete = filled == letters.length;
     final cols = boardShape == '2x2' ? 2 : 4;
     final rows = boardShape == '2x2' ? 2 : 1;
@@ -41,12 +52,17 @@ class KeycapFillScreen extends StatelessWidget {
             Positioned(
               left: -8,
               top: -8,
-              child: Container(width: boardWidth, height: rows == 2 ? boardWidth : 150, color: AppColors.yellow),
+              child: Container(
+                  width: boardWidth,
+                  height: rows == 2 ? boardWidth : 150,
+                  color: AppColors.yellow),
             ),
             Container(
               width: boardWidth,
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 2)),
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.ink, width: 2)),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(rows, (r) {
@@ -65,11 +81,18 @@ class KeycapFillScreen extends StatelessWidget {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: colorAt(i),
-                              border: Border.all(color: isCursor ? AppColors.ink : Colors.transparent, width: 3),
+                              border: Border.all(
+                                  color: isCursor
+                                      ? AppColors.ink
+                                      : Colors.transparent,
+                                  width: 3),
                             ),
                             child: Text(
                               letters[i],
-                              style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w900),
                             ),
                           ),
                         );
@@ -91,18 +114,44 @@ class KeycapFillScreen extends StatelessWidget {
               children: [
                 const Text('색상 선택', style: AppTextStyles.body),
                 const SizedBox(height: 8),
-                _legendRow('1', KeycapColors.green, '초록'),
-                _legendRow('2', KeycapColors.yellow, '노랑'),
-                _legendRow('3', KeycapColors.blue, '파랑'),
-                _legendRow('4', KeycapColors.red, '빨강'),
+                _legendRow('1', 'g', KeycapColors.green, '초록'),
+                _legendRow('2', 'y', KeycapColors.yellow, '노랑'),
+                _legendRow('3', 'b', KeycapColors.blue, '파랑'),
+                _legendRow('4', 'r', KeycapColors.red, '빨강'),
                 const SizedBox(height: 8),
-                Text('$filled / ${letters.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('$filled / ${letters.length}',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
               ],
             ),
             const SizedBox(width: 48),
             const _ArrowKeys(),
           ],
         ),
+        if (stockLoading)
+          const Padding(
+            padding: EdgeInsets.only(top: 16),
+            child: Text(
+              '재고 확인 중...',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
+          )
+        else if (message != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Text(
+              message!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+          ),
         const SizedBox(height: 32),
         Container(
           width: boardWidth,
@@ -113,14 +162,18 @@ class KeycapFillScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 color: Colors.white,
-                child: const Text('ENTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text('ENTER',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 12),
               Text(
                 complete ? '엔터! 제작!' : '색을 모두 선택하세요',
-                style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: complete ? AppColors.green : Colors.white70,
+                    fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -129,22 +182,84 @@ class KeycapFillScreen extends StatelessWidget {
     );
   }
 
-  Widget _legendRow(String num, Color color, String name) {
+  Widget _legendRow(
+    String num,
+    String colorCode,
+    Color color,
+    String name,
+  ) {
+    final isSoldOut = soldOutColors.contains(colorCode);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
+          // 번호 칸은 항상 같은 크기 유지
           Container(
-            width: 22,
-            height: 22,
+            width: 44,
+            height: 44,
             alignment: Alignment.center,
-            decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-            child: Text(num, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+            decoration: BoxDecoration(
+              color: isSoldOut ? Colors.grey.shade300 : Colors.transparent,
+              border: Border.all(
+                color: isSoldOut ? Colors.grey.shade500 : AppColors.ink,
+                width: 2,
+              ),
+            ),
+            child: Text(
+              num,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: isSoldOut ? Colors.grey.shade600 : AppColors.ink,
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          Container(width: 18, height: 18, color: color),
-          const SizedBox(width: 8),
-          Text(name, style: AppTextStyles.body),
+
+          const SizedBox(width: 14),
+
+          // 색상 표시
+          Container(
+            width: 36,
+            height: 36,
+            color: isSoldOut ? Colors.grey.shade400 : color,
+          ),
+
+          const SizedBox(width: 14),
+
+          // 색상 이름
+          SizedBox(
+            width: 70,
+            child: Text(
+              name,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: isSoldOut ? Colors.grey.shade600 : AppColors.ink,
+              ),
+            ),
+          ),
+
+          // 품절 표시
+          if (isSoldOut)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '재고 없음',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -161,13 +276,18 @@ class _ArrowKeys extends StatelessWidget {
           height: 38,
           alignment: Alignment.center,
           margin: const EdgeInsets.all(2),
-          decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+          decoration:
+              BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
           child: Icon(icon, size: 18),
         );
     return Column(
       children: [
         key(Icons.arrow_upward),
-        Row(children: [key(Icons.arrow_back), key(Icons.arrow_downward), key(Icons.arrow_forward)]),
+        Row(children: [
+          key(Icons.arrow_back),
+          key(Icons.arrow_downward),
+          key(Icons.arrow_forward)
+        ]),
       ],
     );
   }
