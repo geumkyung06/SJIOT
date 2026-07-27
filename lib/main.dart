@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:animations/animations.dart';
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
@@ -18,6 +19,11 @@ import 'screens/complete_screen.dart';
 void main() {
   runApp(const ClickyKeyringApp());
 }
+
+// 팀장 확정 전 임시 조치: 4구 고정으로 보드 선택 화면을 건너뜁니다.
+// board_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
+// true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
+const bool kBoardSelectEnabled = false;
 
 enum AppStep {
   home,
@@ -57,6 +63,10 @@ class _AppRootState extends State<AppRoot> {
   final ApiService _api = ApiService();
 
   AppStep _step = AppStep.home;
+
+  // 화면 전환 방향. 1 = 앞으로(오른쪽에서 슬라이드 인),
+  // -1 = 뒤로가기(왼쪽에서 슬라이드 인). 피그마의 `d`(direction) 값과 대응됩니다.
+  int _direction = 1;
 
   // ---------------- MBTI 검사 (4지선다 모드) ----------------
   static const List<Map<String, dynamic>> _mbtiQuestions = [
@@ -178,6 +188,7 @@ class _AppRootState extends State<AppRoot> {
 
   void _goBack() {
     setState(() {
+      _direction = -1; // 뒤로가기는 항상 -1
       switch (_step) {
         case AppStep.mbtiChoice:
           _step = AppStep.home;
@@ -197,8 +208,13 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.mbtiResult;
           break;
         case AppStep.axisSelect:
-          _boardShape = null;
-          _step = AppStep.boardSelect;
+          // 보드 선택 비활성화 시, axisSelect의 이전 화면은 mbtiResult
+          if (kBoardSelectEnabled) {
+            _boardShape = null;
+            _step = AppStep.boardSelect;
+          } else {
+            _step = AppStep.mbtiResult;
+          }
           break;
         case AppStep.keycapFill:
           _axis = null;
@@ -255,6 +271,8 @@ class _AppRootState extends State<AppRoot> {
       return;
     }
 
+    _direction = 1; // 여기서부터 아래는 전부 "앞으로" 이동이므로 미리 표시
+
     final isEnter = event.physicalKey == PhysicalKeyboardKey.enter ||
         event.physicalKey == PhysicalKeyboardKey.numpadEnter;
 
@@ -289,7 +307,15 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.mbtiResult:
         if (isEnter) {
-          setState(() => _step = AppStep.boardSelect);
+          setState(() {
+            if (kBoardSelectEnabled) {
+              _step = AppStep.boardSelect;
+            } else {
+              _boardShape = '1x4';
+              _boardCount = 4;
+              _step = AppStep.axisSelect;
+            }
+          });
         }
         break;
 
@@ -360,7 +386,6 @@ class _AppRootState extends State<AppRoot> {
     const axes = ['blue', 'brown', 'red', 'black'];
     setState(() {
       _axis = axes[digit - 1];
-      // MBTI 결과를 본판 위에 순서대로 배치 (수정 불가, 색상만 나중에 선택)
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;
@@ -410,7 +435,7 @@ class _AppRootState extends State<AppRoot> {
         board: _boardCount,
         keycap: _letters.join(),
         colors: colors,
-        axis: _axis, // api_service.dart에서 'switch' 키로 전송됨
+        axis: _axis,
       );
       if (!mounted) return;
       setState(() {
@@ -427,8 +452,6 @@ class _AppRootState extends State<AppRoot> {
   void _startAutoRestartTimer() {
     _autoRestartTimer?.cancel();
     _autoRestartTimer = Timer(_stuckTimeout, () {
-      // 콜백(/mobius/callback)이 아직 실제로 안 들어와서 상태가 'done'까지
-      // 못 간 경우 -> 무한정 '제작 중...'에 멈춰있지 않도록 홈으로 복귀
       if (mounted && _orderStatus?['status'] != 'done') {
         _restart();
       }
@@ -459,6 +482,7 @@ class _AppRootState extends State<AppRoot> {
   void _restart() {
     _autoRestartTimer?.cancel();
     setState(() {
+      _direction = -1;
       _step = AppStep.home;
       _boardShape = null;
       _axis = null;
@@ -562,7 +586,29 @@ class _AppRootState extends State<AppRoot> {
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
-                        child: Center(child: screen),
+                        // 화면 전환 애니메이션 (슬라이드 + 페이드, 방향 인식)
+                        // fillColor: Colors.transparent 로 지정해서 전환 중
+                        // Scaffold의 AppColors.background 위에 별도 흰색 판이
+                        // 덧씌워지지 않도록 함.
+                        child: Center(
+                          child: PageTransitionSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            reverse: _direction == -1,
+                            transitionBuilder: (child, primaryAnimation, secondaryAnimation) {
+                              return SharedAxisTransition(
+                                animation: primaryAnimation,
+                                secondaryAnimation: secondaryAnimation,
+                                transitionType: SharedAxisTransitionType.horizontal,
+                                fillColor: Colors.transparent,
+                                child: child,
+                              );
+                            },
+                            child: KeyedSubtree(
+                              key: ValueKey(_step),
+                              child: screen,
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
