@@ -317,39 +317,103 @@ class WaitingScreen extends StatelessWidget {
 }
 
 /// 대기 중 원형 표시
-class StatusCircle extends StatelessWidget {
+/// 대기 중 원형 애니메이션
+class StatusCircle extends StatefulWidget {
   const StatusCircle({super.key});
+
+  @override
+  State<StatusCircle> createState() => _StatusCircleState();
+}
+
+class _StatusCircleState extends State<StatusCircle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _outerScale;
+  late final Animation<double> _middleScale;
+  late final Animation<double> _centerScale;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    // 바깥 원
+    _outerScale = Tween<double>(
+      begin: 0.92,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+    // 가운데 원
+    _middleScale = Tween<double>(begin: 0.94, end: 1.03).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.15, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+
+    // 중앙 점
+    _centerScale = Tween<double>(begin: 0.88, end: 1.12).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.3, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 145,
-      height: 145,
+      width: 160,
+      height: 160,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: 145,
-            height: 145,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.lightGray, width: 3),
+          // 바깥 원
+          ScaleTransition(
+            scale: _outerScale,
+            child: Container(
+              width: 145,
+              height: 145,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.lightGray, width: 3),
+              ),
             ),
           ),
-          Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.lightGray, width: 3),
+
+          // 가운데 원
+          ScaleTransition(
+            scale: _middleScale,
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.lightGray, width: 3),
+              ),
             ),
           ),
-          Container(
-            width: 34,
-            height: 34,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFF444444),
+
+          // 중앙 점
+          ScaleTransition(
+            scale: _centerScale,
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFF444444),
+              ),
             ),
           ),
         ],
