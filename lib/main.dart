@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:animations/animations.dart';
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
@@ -18,6 +19,11 @@ import 'screens/complete_screen.dart';
 void main() {
   runApp(const ClickyKeyringApp());
 }
+
+// 팀장 확정 전 임시 조치: 4구 고정으로 보드 선택 화면을 건너뜁니다.
+// board_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
+// true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
+const bool kBoardSelectEnabled = false;
 
 enum AppStep {
   home,
@@ -57,6 +63,10 @@ class _AppRootState extends State<AppRoot> {
   final ApiService _api = ApiService();
 
   AppStep _step = AppStep.home;
+
+  // 화면 전환 방향. 1 = 앞으로(오른쪽에서 슬라이드 인),
+  // -1 = 뒤로가기(왼쪽에서 슬라이드 인). 피그마의 `d`(direction) 값과 대응됩니다.
+  int _direction = 1;
 
   // ---------------- MBTI 검사 (4지선다 모드) ----------------
   static const List<Map<String, dynamic>> _mbtiQuestions = [
@@ -159,8 +169,9 @@ class _AppRootState extends State<AppRoot> {
   void initState() {
     super.initState();
     _resetLetters();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _focusNode.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _focusNode.requestFocus(),
+    );
   }
 
   void _resetLetters() {
@@ -200,8 +211,9 @@ class _AppRootState extends State<AppRoot> {
 
         _soldOutKeycaps = Set<String>.from(stock['keycap'] ?? const <String>[]);
 
-        _soldOutSwitches =
-            Set<String>.from(stock['switch'] ?? const <String>[]);
+        _soldOutSwitches = Set<String>.from(
+          stock['switch'] ?? const <String>[],
+        );
 
         _stockLoading = false;
       });
@@ -222,10 +234,7 @@ class _AppRootState extends State<AppRoot> {
   }
 
   // 재고를 확인 후 화면 변경
-  Future<bool> _moveToStep(
-    AppStep nextStep, {
-    VoidCallback? beforeMove,
-  }) async {
+  Future<bool> _moveToStep(AppStep nextStep, {VoidCallback? beforeMove}) async {
     final success = await _loadSoldOutStock();
 
     if (!mounted || !success) {
@@ -297,7 +306,7 @@ class _AppRootState extends State<AppRoot> {
   }
 
   // 현재 선택된 키캡 색상 중 새로 품절된 항목을 해제
-// 반환값: 처음 발견된 품절 키캡의 인덱스
+  // 반환값: 처음 발견된 품절 키캡의 인덱스
   int? _removeInvalidColorSelections() {
     int? firstInvalidIndex;
 
@@ -363,6 +372,7 @@ class _AppRootState extends State<AppRoot> {
 
   void _goBack() {
     setState(() {
+      _direction = -1; // 뒤로가기는 항상 -1
       switch (_step) {
         case AppStep.mbtiChoice:
           _step = AppStep.home;
@@ -382,8 +392,13 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.mbtiResult;
           break;
         case AppStep.axisSelect:
-          _boardShape = null;
-          _step = AppStep.boardSelect;
+          // 보드 선택 비활성화 시, axisSelect의 이전 화면은 mbtiResult
+          if (kBoardSelectEnabled) {
+            _boardShape = null;
+            _step = AppStep.boardSelect;
+          } else {
+            _step = AppStep.mbtiResult;
+          }
           break;
         case AppStep.keycapFill:
           _axis = null;
@@ -464,7 +479,10 @@ class _AppRootState extends State<AppRoot> {
       return;
     }
 
-    final isEnter = event.physicalKey == PhysicalKeyboardKey.enter ||
+    _direction = 1; // 여기서부터 아래는 전부 "앞으로" 이동이므로 미리 표시
+
+    final isEnter =
+        event.physicalKey == PhysicalKeyboardKey.enter ||
         event.physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     switch (_step) {
@@ -480,15 +498,9 @@ class _AppRootState extends State<AppRoot> {
         break;
       case AppStep.mbtiChoice:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          await _moveToStep(
-            AppStep.mbtiQuiz,
-            beforeMove: _resetQuiz,
-          );
+          await _moveToStep(AppStep.mbtiQuiz, beforeMove: _resetQuiz);
         } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          await _moveToStep(
-            AppStep.mbtiManual,
-            beforeMove: _resetManual,
-          );
+          await _moveToStep(AppStep.mbtiManual, beforeMove: _resetManual);
         }
         break;
 
@@ -502,7 +514,15 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.mbtiResult:
         if (isEnter) {
-          setState(() => _step = AppStep.boardSelect);
+          setState(() {
+            if (kBoardSelectEnabled) {
+              _step = AppStep.boardSelect;
+            } else {
+              _boardShape = '1x4';
+              _boardCount = 4;
+              _step = AppStep.axisSelect;
+            }
+          });
         }
         break;
 
@@ -619,8 +639,7 @@ class _AppRootState extends State<AppRoot> {
     if (_isAxisSoldOut(selectedAxis)) return;
 
     setState(() {
-      _axis = selectedAxis;
-
+      _axis = axes[digit - 1];
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;
@@ -736,7 +755,8 @@ class _AppRootState extends State<AppRoot> {
     // --------------------------------------------------
     // ENTER: 전체 선택 여부 및 주문 직전 재고 검사
     // --------------------------------------------------
-    final isEnter = physicalKey == PhysicalKeyboardKey.enter ||
+    final isEnter =
+        physicalKey == PhysicalKeyboardKey.enter ||
         physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     if (isEnter) {
@@ -850,10 +870,7 @@ class _AppRootState extends State<AppRoot> {
       if (!mounted) return;
 
       setState(() {
-        _orderStatus = {
-          'status': 'error',
-          'error': e.toString(),
-        };
+        _orderStatus = {'status': 'error', 'error': e.toString()};
       });
     }
   }
@@ -861,8 +878,6 @@ class _AppRootState extends State<AppRoot> {
   void _startAutoRestartTimer() {
     _autoRestartTimer?.cancel();
     _autoRestartTimer = Timer(_stuckTimeout, () {
-      // 콜백(/mobius/callback)이 아직 실제로 안 들어와서 상태가 'done'까지
-      // 못 간 경우 -> 무한정 '제작 중...'에 멈춰있지 않도록 홈으로 복귀
       if (mounted && _orderStatus?['status'] != 'done') {
         _restart();
       }
@@ -893,6 +908,7 @@ class _AppRootState extends State<AppRoot> {
   void _restart() {
     _autoRestartTimer?.cancel();
     setState(() {
+      _direction = -1;
       _step = AppStep.home;
       _boardShape = null;
       _axis = null;
@@ -931,8 +947,9 @@ class _AppRootState extends State<AppRoot> {
           questionIndex: _quizIndex,
           totalQuestions: _mbtiQuestions.length,
           question: q['question'] as String,
-          optionTexts:
-              (q['options'] as List).map((o) => o['text'] as String).toList(),
+          optionTexts: (q['options'] as List)
+              .map((o) => o['text'] as String)
+              .toList(),
         );
         break;
 
@@ -958,9 +975,7 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        screen = AxisSelectScreen(
-          soldOutAxes: _soldOutSwitches,
-        );
+        screen = AxisSelectScreen(soldOutAxes: _soldOutSwitches);
         break;
 
       case AppStep.keycapFill:
@@ -1012,8 +1027,33 @@ class _AppRootState extends State<AppRoot> {
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight - 48),
-                        child: Center(child: screen),
+                          minHeight: constraints.maxHeight - 48,
+                        ),
+                        // 화면 전환 애니메이션 (슬라이드 + 페이드, 방향 인식)
+                        // fillColor: Colors.transparent 로 지정해서 전환 중
+                        // Scaffold의 AppColors.background 위에 별도 흰색 판이
+                        // 덧씌워지지 않도록 함.
+                        child: Center(
+                          child: PageTransitionSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            reverse: _direction == -1,
+                            transitionBuilder:
+                                (child, primaryAnimation, secondaryAnimation) {
+                                  return SharedAxisTransition(
+                                    animation: primaryAnimation,
+                                    secondaryAnimation: secondaryAnimation,
+                                    transitionType:
+                                        SharedAxisTransitionType.horizontal,
+                                    fillColor: Colors.transparent,
+                                    child: child,
+                                  );
+                                },
+                            child: KeyedSubtree(
+                              key: ValueKey(_step),
+                              child: screen,
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -1052,11 +1092,14 @@ class _BackButton extends StatelessWidget {
           children: [
             Icon(Icons.arrow_back, size: 16, color: AppColors.ink),
             SizedBox(width: 6),
-            Text('이전 (ESC)',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.ink,
-                    fontSize: 13)),
+            Text(
+              '이전 (ESC)',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.ink,
+                fontSize: 13,
+              ),
+            ),
           ],
         ),
       ),

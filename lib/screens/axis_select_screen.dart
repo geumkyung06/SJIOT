@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-class AxisSelectScreen extends StatelessWidget {
+/// STEP 04 — 축(스위치) 선택 (보드 선택 단계 제외로 05→04)
+/// 피그마 `App.tsx > SwitchSelectScreen` 모션 1:1 이식.
+class AxisSelectScreen extends StatefulWidget {
   final Set<String> soldOutAxes;
 
   const AxisSelectScreen({
@@ -10,48 +12,134 @@ class AxisSelectScreen extends StatelessWidget {
   });
 
   @override
+  State<AxisSelectScreen> createState() => _AxisSelectScreenState();
+}
+
+class _AxisSelectScreenState extends State<AxisSelectScreen> with TickerProviderStateMixin {
+  static const int _durationMs = 750;
+
+  late final AnimationController _controller;
+
+  late final Animation<double> _labelOpacity;
+  late final Animation<double> _titleOpacity;
+  late final Animation<double> _titleY;
+  late final Animation<double> _subtitleOpacity;
+  late final List<Animation<double>> _optOpacity;
+  late final List<Animation<double>> _optY;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: _durationMs));
+
+    Animation<double> fadeIn(double s, double e) => CurvedAnimation(
+          parent: _controller,
+          curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut),
+        );
+    Animation<double> slideY(double s, double e, double from) => Tween<double>(begin: from, end: 0).animate(
+          CurvedAnimation(parent: _controller, curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut)),
+        );
+
+    _labelOpacity = fadeIn(40, 340);
+    _titleOpacity = fadeIn(70, 370);
+    _titleY = slideY(70, 370, 10);
+    _subtitleOpacity = fadeIn(120, 420);
+
+    _optOpacity = List.generate(4, (i) => fadeIn(140 + i * 70, 440 + i * 70));
+    _optY = List.generate(4, (i) => slideY(140 + i * 70, 440 + i * 70, 22));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final options = [
+      (keyLabel: '1', color: const Color(0xFF3E7CE0), title: '청축', key: 'blue'),
+      (keyLabel: '2', color: const Color(0xFF9C6B3F), title: '갈축', key: 'brown'),
+      (keyLabel: '3', color: const Color(0xFFD5473C), title: '적축', key: 'red'),
+      (keyLabel: '4', color: const Color(0xFF2B2B2B), title: '흑축', key: 'black'),
+    ];
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('STEP 05 / 07', style: AppTextStyles.label),
+        _Fade(
+          opacity: _labelOpacity,
+          child: const Text('STEP 04 / 06', style: AppTextStyles.label),
+        ),
         const SizedBox(height: 8),
-        const Text('축(스위치) 선택', style: AppTextStyles.heading),
+        _FadeSlideY(
+          opacity: _titleOpacity,
+          y: _titleY,
+          child: const Text('축(스위치) 선택', style: AppTextStyles.heading),
+        ),
         const SizedBox(height: 8),
-        const Text('키보드 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
+        _Fade(
+          opacity: _subtitleOpacity,
+          child: const Text('키보드 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
+        ),
         const SizedBox(height: 40),
         Wrap(
           spacing: 32,
           runSpacing: 24,
           alignment: WrapAlignment.center,
-          children: [
-            _AxisOption(
-              keyLabel: '1',
-              color: Color(0xFF3E7CE0),
-              title: '청축',
-              soldOut: soldOutAxes.contains('blue'),
-            ),
-            _AxisOption(
-              keyLabel: '2',
-              color: Color(0xFF9C6B3F),
-              title: '갈축',
-              soldOut: soldOutAxes.contains('brown'),
-            ),
-            _AxisOption(
-              keyLabel: '3',
-              color: Color(0xFFD5473C),
-              title: '적축',
-              soldOut: soldOutAxes.contains('red'),
-            ),
-            _AxisOption(
-              keyLabel: '4',
-              color: Color(0xFF2B2B2B),
-              title: '흑축',
-              soldOut: soldOutAxes.contains('black'),
-            ),
-          ],
+          children: List.generate(options.length, (i) {
+            final o = options[i];
+            return _FadeSlideY(
+              opacity: _optOpacity[i],
+              y: _optY[i],
+              child: _AxisOption(
+                keyLabel: o.keyLabel,
+                color: o.color,
+                title: o.title,
+                soldOut: widget.soldOutAxes.contains(o.key),
+              ),
+            );
+          }),
         ),
       ],
+    );
+  }
+}
+
+class _Fade extends StatelessWidget {
+  final Animation<double> opacity;
+  final Widget child;
+  const _Fade({required this.opacity, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: opacity,
+      builder: (context, child) => Opacity(opacity: opacity.value.clamp(0.0, 1.0), child: child),
+      child: child,
+    );
+  }
+}
+
+class _FadeSlideY extends StatelessWidget {
+  final Animation<double> opacity;
+  final Animation<double> y;
+  final Widget child;
+  const _FadeSlideY({required this.opacity, required this.y, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([opacity, y]),
+      builder: (context, child) => Opacity(
+        opacity: opacity.value.clamp(0.0, 1.0),
+        child: Transform.translate(offset: Offset(0, y.value), child: child),
+      ),
+      child: child,
     );
   }
 }
@@ -62,11 +150,12 @@ class _AxisOption extends StatelessWidget {
   final String title;
   final bool soldOut;
 
-  const _AxisOption(
-      {required this.keyLabel,
-      required this.color,
-      required this.title,
-      required this.soldOut});
+  const _AxisOption({
+    required this.keyLabel,
+    required this.color,
+    required this.title,
+    required this.soldOut,
+  });
 
   @override
   Widget build(BuildContext context) {
