@@ -5,16 +5,9 @@ void main() {
   runApp(const DeviceApp());
 }
 
-/// 조립대 번호
-///
-/// 조립대마다 앱을 설치할 때 이 값만 바꾸면 됩니다.
-/// 조립대 01 → '01'
-/// 조립대 02 → '02'
-/// 조립대 03 → '03'
-const String workstationNumber = '03';
-
 /// 디바이스 앱에서 사용할 화면 상태
 enum DeviceStep {
+  workstationSetup,
   waiting,
   authenticated,
   assembling,
@@ -52,7 +45,10 @@ class DeviceRoot extends StatefulWidget {
 class _DeviceRootState extends State<DeviceRoot> {
   final ApiService _api = ApiService();
 
-  DeviceStep _currentStep = DeviceStep.waiting;
+  DeviceStep _currentStep = DeviceStep.workstationSetup;
+
+  /// 앱을 종료하기 전까지 유지되는 조립대 번호
+  String? _workstationNumber;
 
   /// 테스트용 주문 정보
   ///
@@ -63,6 +59,13 @@ class _DeviceRootState extends State<DeviceRoot> {
 
   /// 잘못된 조립대 오류 화면에서 보여줄 배정 조립대
   String _assignedWorkstation = '01';
+
+  void _selectWorkstation(String number) {
+    setState(() {
+      _workstationNumber = number;
+      _currentStep = DeviceStep.waiting;
+    });
+  }
 
   void _moveTo(DeviceStep step) {
     setState(() {
@@ -81,8 +84,13 @@ class _DeviceRootState extends State<DeviceRoot> {
     Widget screen;
 
     switch (_currentStep) {
+      case DeviceStep.workstationSetup:
+        screen = WorkstationSetupScreen(onSelected: _selectWorkstation);
+        break;
+
       case DeviceStep.waiting:
         screen = WaitingScreen(
+          workstationNumber: _workstationNumber ?? '--',
           onQrSuccess: () => _moveTo(DeviceStep.authenticated),
           onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
           onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
@@ -124,11 +132,10 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       case DeviceStep.wrongWorkstation:
         screen = WrongWorkstationScreen(
+          currentWorkstation: _workstationNumber ?? '--',
           assignedWorkstation: _assignedWorkstation,
           onRetry: _reset,
-          onHelp: () {
-            _showStaffDialog();
-          },
+          onHelp: _showStaffDialog,
         );
         break;
     }
@@ -139,11 +146,15 @@ class _DeviceRootState extends State<DeviceRoot> {
           children: [
             Positioned.fill(child: screen),
 
-            const Positioned(
-              top: 28,
-              left: 48,
-              child: WorkstationHeader(workstationNumber: workstationNumber),
-            ),
+            if (_currentStep != DeviceStep.workstationSetup &&
+                _workstationNumber != null)
+              Positioned(
+                top: 28,
+                left: 48,
+                child: WorkstationHeader(
+                  workstationNumber: _workstationNumber!,
+                ),
+              ),
 
             /// 화면 확인용 테스트 메뉴
             Positioned(
@@ -229,14 +240,140 @@ class WorkstationHeader extends StatelessWidget {
   }
 }
 
+/// 0. 앱 실행 시 처음 표시되는 조립대 번호 설정 화면
+class WorkstationSetupScreen extends StatelessWidget {
+  final ValueChanged<String> onSelected;
+
+  const WorkstationSetupScreen({super.key, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '초기 설정',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray,
+                letterSpacing: 4,
+              ),
+            ),
+
+            const SizedBox(height: 18),
+
+            const Text(
+              '조립대 번호를\n선택해 주세요',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 64,
+                height: 1.15,
+                fontWeight: FontWeight.w900,
+                color: AppColors.black,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            const Text(
+              '선택한 번호는 앱을 종료하기 전까지 유지됩니다.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 19, color: AppColors.gray),
+            ),
+
+            const SizedBox(height: 52),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                WorkstationSelectButton(
+                  number: '01',
+                  onPressed: () => onSelected('01'),
+                ),
+                const SizedBox(width: 20),
+                WorkstationSelectButton(
+                  number: '02',
+                  onPressed: () => onSelected('02'),
+                ),
+                const SizedBox(width: 20),
+                WorkstationSelectButton(
+                  number: '03',
+                  onPressed: () => onSelected('03'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WorkstationSelectButton extends StatelessWidget {
+  final String number;
+  final VoidCallback onPressed;
+
+  const WorkstationSelectButton({
+    super.key,
+    required this.number,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 170,
+      height: 150,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.black,
+          backgroundColor: Colors.transparent,
+          side: const BorderSide(color: AppColors.black, width: 3),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              '조립대',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              number,
+              style: const TextStyle(
+                fontSize: 52,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                color: AppColors.black,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 1. 대기 중 화면
 class WaitingScreen extends StatelessWidget {
+  final String workstationNumber;
   final VoidCallback onQrSuccess;
   final VoidCallback onInvalidQr;
   final VoidCallback onWrongWorkstation;
 
   const WaitingScreen({
     super.key,
+    required this.workstationNumber,
     required this.onQrSuccess,
     required this.onInvalidQr,
     required this.onWrongWorkstation,
@@ -266,10 +403,10 @@ class WaitingScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            const Text(
-              '대기 중',
+            Text(
+              '조립대 $workstationNumber',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 72,
                 height: 1,
                 fontWeight: FontWeight.w900,
@@ -656,12 +793,14 @@ class InvalidQrScreen extends StatelessWidget {
 
 /// 오류: 잘못된 조립대
 class WrongWorkstationScreen extends StatelessWidget {
+  final String currentWorkstation;
   final String assignedWorkstation;
   final VoidCallback onRetry;
   final VoidCallback onHelp;
 
   const WrongWorkstationScreen({
     super.key,
+    required this.currentWorkstation,
     required this.assignedWorkstation,
     required this.onRetry,
     required this.onHelp,
@@ -718,7 +857,7 @@ class WrongWorkstationScreen extends StatelessWidget {
                 children: [
                   WorkstationBox(
                     label: '현재 위치',
-                    number: workstationNumber,
+                    number: currentWorkstation,
                     backgroundColor: const Color(0xFFF5D7D3),
                     numberColor: AppColors.red,
                   ),
@@ -1196,21 +1335,29 @@ class DemoMenu extends StatelessWidget {
       icon: const Icon(Icons.developer_mode, color: AppColors.gray),
       onSelected: (step) {
         switch (step) {
+          case DeviceStep.workstationSetup:
+            break;
+
           case DeviceStep.waiting:
             onWaiting();
             break;
+
           case DeviceStep.authenticated:
             onAuthenticated();
             break;
+
           case DeviceStep.assembling:
             onAssembling();
             break;
+
           case DeviceStep.completed:
             onCompleted();
             break;
+
           case DeviceStep.invalidQr:
             onInvalidQr();
             break;
+
           case DeviceStep.wrongWorkstation:
             onWrongWorkstation();
             break;
