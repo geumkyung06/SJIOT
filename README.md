@@ -1,4 +1,4 @@
-# clicky_keyring
+# device_app
 
 A new Flutter project.
 

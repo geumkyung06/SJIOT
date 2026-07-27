@@ -1,6 +1,6 @@
 {
-    "name": "clicky_keyring",
-    "short_name": "clicky_keyring",
+    "name": "device_app",
+    "short_name": "device_app",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

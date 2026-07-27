@@ -1,579 +1,570 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
-import 'theme/app_theme.dart';
 import 'services/api_service.dart';
-import 'screens/home_screen.dart';
-import 'screens/mbti_choice_screen.dart';
-import 'screens/mbti_quiz_screen.dart';
-import 'screens/mbti_manual_screen.dart';
-import 'screens/mbti_result_screen.dart';
-import 'screens/board_select_screen.dart';
-import 'screens/axis_select_screen.dart';
-import 'screens/keycap_fill_screen.dart';
-import 'screens/complete_screen.dart';
 
 void main() {
-  runApp(const ClickyKeyringApp());
+  runApp(const DeviceApp());
 }
 
-enum AppStep {
-  home,
-  mbtiChoice,
-  mbtiQuiz,
-  mbtiManual,
-  mbtiResult,
-  boardSelect,
-  axisSelect,
-  keycapFill,
-  complete,
+/// 조립대 번호
+///
+/// 조립대마다 앱을 설치할 때 이 값만 바꾸면 됩니다.
+/// 조립대 01 → '01'
+/// 조립대 02 → '02'
+/// 조립대 03 → '03'
+const String workstationNumber = '03';
+
+/// 디바이스 앱에서 사용할 화면 상태
+enum DeviceStep {
+  waiting,
+  authenticated,
+  assembling,
+  completed,
+  invalidQr,
+  wrongWorkstation,
 }
 
-class ClickyKeyringApp extends StatelessWidget {
-  const ClickyKeyringApp({super.key});
+class DeviceApp extends StatelessWidget {
+  const DeviceApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '딸깍 - Clicky Keyring Studio',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.themeData,
-      home: const AppRoot(),
+      title: '조립대 디바이스 앱',
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: 'Pretendard',
+        scaffoldBackgroundColor: AppColors.background,
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.black),
+      ),
+      home: const DeviceRoot(),
     );
   }
 }
 
-class AppRoot extends StatefulWidget {
-  const AppRoot({super.key});
+class DeviceRoot extends StatefulWidget {
+  const DeviceRoot({super.key});
 
   @override
-  State<AppRoot> createState() => _AppRootState();
+  State<DeviceRoot> createState() => _DeviceRootState();
 }
 
-class _AppRootState extends State<AppRoot> {
-  final FocusNode _focusNode = FocusNode();
+class _DeviceRootState extends State<DeviceRoot> {
   final ApiService _api = ApiService();
 
-  AppStep _step = AppStep.home;
+  DeviceStep _currentStep = DeviceStep.waiting;
 
-  // ---------------- MBTI 검사 (4지선다 모드) ----------------
-  static const List<Map<String, dynamic>> _mbtiQuestions = [
-    {
-      'question': '주말에 에너지를 얻는 방법은?',
-      'options': [
-        {'text': '친구들과 왁자지껄하게 놀기', 'letter': 'E'},
-        {'text': '새로운 사람들과 어울리기', 'letter': 'E'},
-        {'text': '혼자 조용히 쉬기', 'letter': 'I'},
-        {'text': '소수의 친한 친구와 시간 보내기', 'letter': 'I'},
-      ],
-    },
-    {
-      'question': '새로운 정보를 받아들일 때 나는?',
-      'options': [
-        {'text': '전체적인 흐름과 가능성을 먼저 본다', 'letter': 'N'},
-        {'text': '떠오르는 아이디어와 상상을 즐긴다', 'letter': 'N'},
-        {'text': '구체적인 사실과 세부사항을 본다', 'letter': 'S'},
-        {'text': '경험하고 검증된 것을 믿는다', 'letter': 'S'},
-      ],
-    },
-    {
-      'question': '결정을 내릴 때 나는?',
-      'options': [
-        {'text': '사람들의 감정과 관계를 먼저 고려한다', 'letter': 'F'},
-        {'text': '공감과 조화를 중요하게 생각한다', 'letter': 'F'},
-        {'text': '논리와 원칙을 기준으로 판단한다', 'letter': 'T'},
-        {'text': '객관적인 사실에 따라 결정한다', 'letter': 'T'},
-      ],
-    },
-    {
-      'question': '일정을 관리할 때 나는?',
-      'options': [
-        {'text': '미리 계획을 세우고 그대로 실행한다', 'letter': 'J'},
-        {'text': '정리하고 마감을 철저히 지킨다', 'letter': 'J'},
-        {'text': '즉흥적으로 상황에 맞춰 움직인다', 'letter': 'P'},
-        {'text': '유연하게 계획을 바꾸는 걸 좋아한다', 'letter': 'P'},
-      ],
-    },
-  ];
-  int _quizIndex = 0;
-  List<String?> _quizAnswers = List<String?>.filled(4, null);
+  /// 테스트용 주문 정보
+  ///
+  /// 나중에는 QR 코드 또는 서버 응답에서 가져오게 됩니다.
+  String _mbti = 'ISTJ';
 
-  // ---------------- MBTI 직접 입력(수동) 모드 ----------------
-  // I/E, N/S, F/T, P/J 순서
-  static const List<List<String>> _manualPairs = [
-    ['I', 'E'],
-    ['N', 'S'],
-    ['F', 'T'],
-    ['P', 'J'],
-  ];
-  int _manualIndex = 0;
-  List<String?> _manualAnswers = List<String?>.filled(4, null);
+  List<String> _colors = ['green', 'yellow', 'blue', 'pink'];
 
-  String? _mbtiResult; // 예: 'ISTJ'
+  /// 잘못된 조립대 오류 화면에서 보여줄 배정 조립대
+  String _assignedWorkstation = '01';
 
-  // ---------------- 본판 / 축 ----------------
-  String? _boardShape; // '1x4' | '2x2'
-  int _boardCount = 4;
-  String? _axis; // 'blue' | 'brown' | 'red' | 'black'
-
-  // ---------------- 키캡 색상 ----------------
-  late List<String> _letters;
-  late List<String?> _colorCodes; // 슬롯별 색상 코드. null = 아직 색 없음(빈 칸)
-  int _cursor = 0;
-
-  String? _orderId;
-  Map<String, dynamic>? _orderStatus;
-  bool _polling = false;
-  Timer? _autoRestartTimer;
-
-  // Mobius/창고/조립대 콜백이 아직 실제로 연결 안 된 동안의 임시 안전장치.
-  // 이 시간 안에 'done'이 안 되면 자동으로 홈 화면으로 돌아감.
-  static const Duration _stuckTimeout = Duration(seconds: 25);
-
-  // 색상 코드 <-> 실제 색상. 백엔드 COLOR_LIST(r,o,y,g,b,p,w) 중
-  // 파스텔 4색만 사용: 1 초록, 2 노랑, 3 파랑, 4 빨강
-  static const List<String> _pastelColorCycle = ['g', 'y', 'b', 'r'];
-  static const Map<String, Color> _colorMap = {
-    'r': AppColors.coral,
-    'o': AppColors.orange,
-    'y': AppColors.yellow,
-    'g': AppColors.green,
-    'b': AppColors.blue,
-    'p': AppColors.purple,
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _resetLetters();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
-  }
-
-  void _resetLetters() {
-    _letters = List.filled(_boardCount, '');
-    _colorCodes = List<String?>.filled(_boardCount, null);
-    _cursor = 0;
-  }
-
-  void _resetQuiz() {
-    _quizIndex = 0;
-    _quizAnswers = List<String?>.filled(4, null);
-  }
-
-  void _resetManual() {
-    _manualIndex = 0;
-    _manualAnswers = List<String?>.filled(4, null);
-  }
-
-  // 색이 아직 없는 슬롯은 빈 칸(회색)으로 표시
-  Color _colorAt(int index) {
-    final code = _colorCodes[index];
-    return code != null ? _colorMap[code]! : AppColors.tileEmpty;
-  }
-
-  // 제출 시점엔 모든 슬롯이 채워져 있어야 하지만, 혹시 몰라 기본값(g) 방어
-  String _colorCode(int index) => _colorCodes[index] ?? _pastelColorCycle.first;
-
-  void _goBack() {
+  void _moveTo(DeviceStep step) {
     setState(() {
-      switch (_step) {
-        case AppStep.mbtiChoice:
-          _step = AppStep.home;
-          break;
-        case AppStep.mbtiQuiz:
-          _resetQuiz();
-          _step = AppStep.mbtiChoice;
-          break;
-        case AppStep.mbtiManual:
-          _resetManual();
-          _step = AppStep.mbtiChoice;
-          break;
-        case AppStep.mbtiResult:
-          _step = AppStep.mbtiChoice;
-          break;
-        case AppStep.boardSelect:
-          _step = AppStep.mbtiResult;
-          break;
-        case AppStep.axisSelect:
-          _boardShape = null;
-          _step = AppStep.boardSelect;
-          break;
-        case AppStep.keycapFill:
-          _axis = null;
-          _resetLetters();
-          _step = AppStep.axisSelect;
-          break;
-        default:
-          break;
-      }
+      _currentStep = step;
     });
   }
 
-  // 물리적 키 위치 기준 매핑 (logicalKey/keyLabel은 한/영 입력 소스에 따라 값이
-  // 바뀌어서 한글 입력 상태일 때 글자 입력이 먹통이 될 수 있음 -> physicalKey로 고정)
-  static final Map<PhysicalKeyboardKey, String> _keyCharMap = {
-    PhysicalKeyboardKey.keyA: 'A', PhysicalKeyboardKey.keyB: 'B', PhysicalKeyboardKey.keyC: 'C',
-    PhysicalKeyboardKey.keyD: 'D', PhysicalKeyboardKey.keyE: 'E', PhysicalKeyboardKey.keyF: 'F',
-    PhysicalKeyboardKey.keyG: 'G', PhysicalKeyboardKey.keyH: 'H', PhysicalKeyboardKey.keyI: 'I',
-    PhysicalKeyboardKey.keyJ: 'J', PhysicalKeyboardKey.keyK: 'K', PhysicalKeyboardKey.keyL: 'L',
-    PhysicalKeyboardKey.keyM: 'M', PhysicalKeyboardKey.keyN: 'N', PhysicalKeyboardKey.keyO: 'O',
-    PhysicalKeyboardKey.keyP: 'P', PhysicalKeyboardKey.keyQ: 'Q', PhysicalKeyboardKey.keyR: 'R',
-    PhysicalKeyboardKey.keyS: 'S', PhysicalKeyboardKey.keyT: 'T', PhysicalKeyboardKey.keyU: 'U',
-    PhysicalKeyboardKey.keyV: 'V', PhysicalKeyboardKey.keyW: 'W', PhysicalKeyboardKey.keyX: 'X',
-    PhysicalKeyboardKey.keyY: 'Y', PhysicalKeyboardKey.keyZ: 'Z',
-    PhysicalKeyboardKey.digit0: '0', PhysicalKeyboardKey.digit1: '1', PhysicalKeyboardKey.digit2: '2',
-    PhysicalKeyboardKey.digit3: '3', PhysicalKeyboardKey.digit4: '4', PhysicalKeyboardKey.digit5: '5',
-    PhysicalKeyboardKey.digit6: '6', PhysicalKeyboardKey.digit7: '7', PhysicalKeyboardKey.digit8: '8',
-    PhysicalKeyboardKey.digit9: '9',
-  };
-
-  // 숫자 1~4 전용 매핑 (선택지/색상/축 선택용)
-  static Map<PhysicalKeyboardKey, int> _digitMap = {
-    PhysicalKeyboardKey.digit1: 1,
-    PhysicalKeyboardKey.digit2: 2,
-    PhysicalKeyboardKey.digit3: 3,
-    PhysicalKeyboardKey.digit4: 4,
-  };
-
-  void _handleKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return;
-
-    const backableSteps = {
-      AppStep.mbtiChoice,
-      AppStep.mbtiQuiz,
-      AppStep.mbtiManual,
-      AppStep.mbtiResult,
-      AppStep.boardSelect,
-      AppStep.axisSelect,
-      AppStep.keycapFill,
-    };
-
-    if (event.physicalKey == PhysicalKeyboardKey.escape && backableSteps.contains(_step)) {
-      _goBack();
-      return;
-    }
-
-    final isEnter = event.physicalKey == PhysicalKeyboardKey.enter ||
-        event.physicalKey == PhysicalKeyboardKey.numpadEnter;
-
-    switch (_step) {
-      case AppStep.home:
-        if (isEnter) {
-          setState(() => _step = AppStep.mbtiChoice);
-        }
-        break;
-
-      case AppStep.mbtiChoice:
-        if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          setState(() {
-            _resetQuiz();
-            _step = AppStep.mbtiQuiz;
-          });
-        } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          setState(() {
-            _resetManual();
-            _step = AppStep.mbtiManual;
-          });
-        }
-        break;
-
-      case AppStep.mbtiQuiz:
-        _handleQuizKey(event);
-        break;
-
-      case AppStep.mbtiManual:
-        _handleManualKey(event);
-        break;
-
-      case AppStep.mbtiResult:
-        if (isEnter) {
-          setState(() => _step = AppStep.boardSelect);
-        }
-        break;
-
-      case AppStep.boardSelect:
-        if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          setState(() {
-            _boardShape = '1x4';
-            _boardCount = 4;
-            _step = AppStep.axisSelect;
-          });
-        } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          setState(() {
-            _boardShape = '2x2';
-            _boardCount = 4;
-            _step = AppStep.axisSelect;
-          });
-        }
-        break;
-
-      case AppStep.axisSelect:
-        _handleAxisKey(event);
-        break;
-
-      case AppStep.keycapFill:
-        _handleKeycapFillKey(event);
-        break;
-
-      case AppStep.complete:
-        break; // 완료/진행 화면에서는 키 입력 무시
-    }
-  }
-
-  void _handleQuizKey(KeyEvent event) {
-    final digit = _digitMap[event.physicalKey];
-    if (digit == null) return;
-    final options = _mbtiQuestions[_quizIndex]['options'] as List;
-    final letter = options[digit - 1]['letter'] as String;
+  void _reset() {
     setState(() {
-      _quizAnswers[_quizIndex] = letter;
-      if (_quizIndex < _mbtiQuestions.length - 1) {
-        _quizIndex++;
-      } else {
-        _mbtiResult = _quizAnswers.map((e) => e!).join();
-        _step = AppStep.mbtiResult;
-      }
+      _currentStep = DeviceStep.waiting;
     });
-  }
-
-  void _handleManualKey(KeyEvent event) {
-    final letter = _keyCharMap[event.physicalKey];
-    if (letter == null) return;
-    final pair = _manualPairs[_manualIndex];
-    if (letter != pair[0] && letter != pair[1]) return; // 유효하지 않은 키는 무시
-    setState(() {
-      _manualAnswers[_manualIndex] = letter;
-      if (_manualIndex < _manualPairs.length - 1) {
-        _manualIndex++;
-      } else {
-        _mbtiResult = _manualAnswers.map((e) => e!).join();
-        _step = AppStep.mbtiResult;
-      }
-    });
-  }
-
-  void _handleAxisKey(KeyEvent event) {
-    final digit = _digitMap[event.physicalKey];
-    if (digit == null) return;
-    const axes = ['blue', 'brown', 'red', 'black'];
-    setState(() {
-      _axis = axes[digit - 1];
-      // MBTI 결과를 본판 위에 순서대로 배치 (수정 불가, 색상만 나중에 선택)
-      _letters = (_mbtiResult ?? '----').split('');
-      _colorCodes = List<String?>.filled(_boardCount, null);
-      _cursor = 0;
-      _step = AppStep.keycapFill;
-    });
-  }
-
-  void _handleKeycapFillKey(KeyEvent event) {
-    final physicalKey = event.physicalKey;
-
-    final digit = _digitMap[physicalKey];
-    if (digit != null) {
-      setState(() {
-        _colorCodes[_cursor] = _pastelColorCycle[digit - 1];
-        if (_cursor < _boardCount - 1) _cursor++;
-      });
-      return;
-    }
-
-    if (physicalKey == PhysicalKeyboardKey.arrowLeft) {
-      setState(() => _cursor = (_cursor - 1).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowRight) {
-      setState(() => _cursor = (_cursor + 1).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowUp && _boardShape == '2x2') {
-      setState(() => _cursor = (_cursor - 2).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.arrowDown && _boardShape == '2x2') {
-      setState(() => _cursor = (_cursor + 2).clamp(0, _boardCount - 1));
-    } else if (physicalKey == PhysicalKeyboardKey.backspace) {
-      setState(() => _colorCodes[_cursor] = null);
-    } else if (physicalKey == PhysicalKeyboardKey.enter ||
-        physicalKey == PhysicalKeyboardKey.numpadEnter) {
-      if (_colorCodes.every((c) => c != null)) {
-        _submitOrder();
-      }
-    }
-  }
-
-  Future<void> _submitOrder() async {
-    setState(() {
-      _step = AppStep.complete;
-      _orderStatus = null;
-    });
-    _startAutoRestartTimer();
-    try {
-      final colors = List.generate(_boardCount, _colorCode);
-      final result = await _api.createOrder(
-        board: _boardCount,
-        keycap: _letters.join(),
-        colors: colors,
-        axis: _axis, // api_service.dart에서 'switch' 키로 전송됨
-      );
-      if (!mounted) return;
-      setState(() {
-        _orderId = result['order_id'] as String?;
-        _orderStatus = result;
-      });
-      _pollStatus();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _orderStatus = {'status': 'error', 'error': e.toString()});
-    }
-  }
-
-  void _startAutoRestartTimer() {
-    _autoRestartTimer?.cancel();
-    _autoRestartTimer = Timer(_stuckTimeout, () {
-      // 콜백(/mobius/callback)이 아직 실제로 안 들어와서 상태가 'done'까지
-      // 못 간 경우 -> 무한정 '제작 중...'에 멈춰있지 않도록 홈으로 복귀
-      if (mounted && _orderStatus?['status'] != 'done') {
-        _restart();
-      }
-    });
-  }
-
-  void _pollStatus() {
-    if (_polling || _orderId == null) return;
-    _polling = true;
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted || _orderId == null) return false;
-      try {
-        final status = await _api.getOrderStatus(_orderId!);
-        if (!mounted) return false;
-        setState(() => _orderStatus = status);
-        if (status['status'] == 'done') {
-          _autoRestartTimer?.cancel();
-          return false;
-        }
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }).whenComplete(() => _polling = false);
-  }
-
-  void _restart() {
-    _autoRestartTimer?.cancel();
-    setState(() {
-      _step = AppStep.home;
-      _boardShape = null;
-      _axis = null;
-      _mbtiResult = null;
-      _resetQuiz();
-      _resetManual();
-      _orderId = null;
-      _orderStatus = null;
-      _resetLetters();
-    });
-  }
-
-  @override
-  void dispose() {
-    _autoRestartTimer?.cancel();
-    _focusNode.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     Widget screen;
-    switch (_step) {
-      case AppStep.home:
-        screen = const HomeScreen();
-        break;
 
-      case AppStep.mbtiChoice:
-        screen = const MbtiChoiceScreen();
-        break;
-
-      case AppStep.mbtiQuiz:
-        final q = _mbtiQuestions[_quizIndex];
-        screen = MbtiQuizScreen(
-          questionIndex: _quizIndex,
-          totalQuestions: _mbtiQuestions.length,
-          question: q['question'] as String,
-          optionTexts: (q['options'] as List).map((o) => o['text'] as String).toList(),
+    switch (_currentStep) {
+      case DeviceStep.waiting:
+        screen = WaitingScreen(
+          onQrSuccess: () => _moveTo(DeviceStep.authenticated),
+          onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
+          onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
         );
         break;
 
-      case AppStep.mbtiManual:
-        final pair = _manualPairs[_manualIndex];
-        screen = MbtiManualScreen(
-          questionIndex: _manualIndex,
-          totalQuestions: _manualPairs.length,
-          letterA: pair[0],
-          letterB: pair[1],
+      case DeviceStep.authenticated:
+        screen = AuthenticatedScreen(
+          mbti: _mbti,
+          colors: _colors,
+          onStart: () => _moveTo(DeviceStep.assembling),
+          onCancel: _reset,
         );
         break;
 
-      case AppStep.mbtiResult:
-        screen = MbtiResultScreen(mbti: _mbtiResult ?? '----');
-        break;
-
-      case AppStep.boardSelect:
-        screen = const BoardSelectScreen();
-        break;
-
-      case AppStep.axisSelect:
-        screen = const AxisSelectScreen();
-        break;
-
-      case AppStep.keycapFill:
-        screen = KeycapFillScreen(
-          boardShape: _boardShape ?? '1x4',
-          letters: _letters,
-          cursor: _cursor,
-          colorAt: _colorAt,
+      case DeviceStep.assembling:
+        screen = AssemblingScreen(
+          mbti: _mbti,
+          colors: _colors,
+          onComplete: () => _moveTo(DeviceStep.completed),
+          onCancel: _reset,
         );
         break;
 
-      case AppStep.complete:
-        screen = CompleteScreen(
-          boardShape: _boardShape ?? '1x4',
-          letters: _letters,
-          colorAt: _colorAt,
-          orderStatus: _orderStatus,
-          onRestart: _restart,
+      case DeviceStep.completed:
+        screen = CompletedScreen(
+          mbti: _mbti,
+          colors: _colors,
+          onRestart: _reset,
+        );
+        break;
+
+      case DeviceStep.invalidQr:
+        screen = InvalidQrScreen(
+          onRetry: _reset,
+          onCallStaff: () {
+            _showStaffDialog();
+          },
+        );
+        break;
+
+      case DeviceStep.wrongWorkstation:
+        screen = WrongWorkstationScreen(
+          assignedWorkstation: _assignedWorkstation,
+          onRetry: _reset,
+          onHelp: () {
+            _showStaffDialog();
+          },
         );
         break;
     }
 
-    final showBackButton = _step != AppStep.home && _step != AppStep.complete;
+    return Scaffold(
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(child: screen),
 
-    return KeyboardListener(
-      focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: _handleKey,
-      child: GestureDetector(
-        onTap: () => _focusNode.requestFocus(),
-        behavior: HitTestBehavior.translucent,
-        child: Scaffold(
-          backgroundColor: AppColors.background,
-          body: Stack(
+            const Positioned(
+              top: 28,
+              left: 48,
+              child: WorkstationHeader(workstationNumber: workstationNumber),
+            ),
+
+            /// 화면 확인용 테스트 메뉴
+            Positioned(
+              right: 24,
+              bottom: 24,
+              child: DemoMenu(
+                onWaiting: () => _moveTo(DeviceStep.waiting),
+                onAuthenticated: () => _moveTo(DeviceStep.authenticated),
+                onAssembling: () => _moveTo(DeviceStep.assembling),
+                onCompleted: () => _moveTo(DeviceStep.completed),
+                onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
+                onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showStaffDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('직원을 호출했습니다'),
+          content: const Text('잠시만 기다려 주세요.\n직원이 조립대를 확인하겠습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 공통 색상
+class AppColors {
+  static const Color background = Color(0xFFFFFAED);
+  static const Color black = Color(0xFF191919);
+  static const Color gray = Color(0xFF98958D);
+  static const Color lightGray = Color(0xFFD9D5CB);
+  static const Color red = Color(0xFFF05A42);
+  static const Color green = Color(0xFF99E3BD);
+  static const Color yellow = Color(0xFFFFDF82);
+  static const Color blue = Color(0xFF91D4EE);
+  static const Color pink = Color(0xFFF39CA9);
+}
+
+/// 왼쪽 위 조립대 번호
+class WorkstationHeader extends StatelessWidget {
+  final String workstationNumber;
+
+  const WorkstationHeader({super.key, required this.workstationNumber});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Text(
+          '조립대',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: AppColors.gray,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          workstationNumber,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+            color: AppColors.black,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 1. 대기 중 화면
+class WaitingScreen extends StatelessWidget {
+  final VoidCallback onQrSuccess;
+  final VoidCallback onInvalidQr;
+  final VoidCallback onWrongWorkstation;
+
+  const WaitingScreen({
+    super.key,
+    required this.onQrSuccess,
+    required this.onInvalidQr,
+    required this.onWrongWorkstation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const StatusCircle(),
+
+            const SizedBox(height: 16),
+
+            const Text(
+              '사용 가능',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray,
+                letterSpacing: 4,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            const Text(
+              '대기 중',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 72,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                color: AppColors.black,
+              ),
+            ),
+
+            const SizedBox(height: 22),
+
+            const Text(
+              '영수증의 QR 코드를 스캔해 주세요.',
+              style: TextStyle(fontSize: 20, color: AppColors.gray),
+            ),
+
+            const SizedBox(height: 42),
+
+            /// 실제 앱에서는 QR 스캐너가 이 부분을 대신합니다.
+            SizedBox(
+              width: 330,
+              child: PrimaryButton(text: 'QR 인증 테스트', onPressed: onQrSuccess),
+            ),
+
+            const SizedBox(height: 12),
+
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  onPressed: onInvalidQr,
+                  child: const Text('잘못된 QR 테스트'),
+                ),
+                TextButton(
+                  onPressed: onWrongWorkstation,
+                  child: const Text('잘못된 조립대 테스트'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 대기 중 원형 표시
+class StatusCircle extends StatelessWidget {
+  const StatusCircle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 145,
+      height: 145,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 145,
+            height: 145,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.lightGray, width: 3),
+            ),
+          ),
+          Container(
+            width: 88,
+            height: 88,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.lightGray, width: 3),
+            ),
+          ),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF444444),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 2. 인증 완료 화면
+class AuthenticatedScreen extends StatelessWidget {
+  final String mbti;
+  final List<String> colors;
+  final VoidCallback onStart;
+  final VoidCallback onCancel;
+
+  const AuthenticatedScreen({
+    super.key,
+    required this.mbti,
+    required this.colors,
+    required this.onStart,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DevicePageLayout(
+      label: '인증 완료',
+      title: 'MBTI 키캡 키링',
+      children: [
+        KeyringPreview(mbti: mbti, colors: colors),
+        const SizedBox(height: 52),
+        SizedBox(
+          width: 330,
+          height: 96,
+          child: PrimaryButton(text: '조립 시작', onPressed: onStart),
+        ),
+        const SizedBox(height: 14),
+        TextButton(onPressed: onCancel, child: const Text('인증 취소')),
+      ],
+    );
+  }
+}
+
+/// 3. 조립 중 화면
+class AssemblingScreen extends StatelessWidget {
+  final String mbti;
+  final List<String> colors;
+  final VoidCallback onComplete;
+  final VoidCallback onCancel;
+
+  const AssemblingScreen({
+    super.key,
+    required this.mbti,
+    required this.colors,
+    required this.onComplete,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DevicePageLayout(
+      label: '진행 중',
+      title: '조립 중',
+      children: [
+        KeyringPreview(mbti: mbti, colors: colors),
+        const SizedBox(height: 52),
+        SizedBox(
+          width: 330,
+          height: 96,
+          child: PrimaryButton(text: '조립 완료', onPressed: onComplete),
+        ),
+        const SizedBox(height: 14),
+        TextButton(onPressed: onCancel, child: const Text('작업 취소')),
+      ],
+    );
+  }
+}
+
+/// 4. 조립 완료 화면
+class CompletedScreen extends StatefulWidget {
+  final String mbti;
+  final List<String> colors;
+  final VoidCallback onRestart;
+
+  const CompletedScreen({
+    super.key,
+    required this.mbti,
+    required this.colors,
+    required this.onRestart,
+  });
+
+  @override
+  State<CompletedScreen> createState() => _CompletedScreenState();
+}
+
+class _CompletedScreenState extends State<CompletedScreen> {
+  int secondsLeft = 10;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  Future<void> _startCountdown() async {
+    while (secondsLeft > 0 && mounted) {
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (!mounted) return;
+
+      setState(() {
+        secondsLeft--;
+      });
+    }
+
+    if (mounted) {
+      widget.onRestart();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(40, 100, 40, 40),
+        child: SingleChildScrollView(
+          child: Column(
             children: [
-              SafeArea(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
-                        child: Center(child: screen),
-                      ),
-                    );
-                  },
+              const Text(
+                '완료',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.gray,
+                  letterSpacing: 3,
                 ),
               ),
-              if (showBackButton)
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  child: SafeArea(child: _BackButton(onTap: _goBack)),
+
+              const SizedBox(height: 16),
+
+              const Text(
+                '조립 완료!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 72,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.black,
                 ),
+              ),
+
+              const SizedBox(height: 24),
+
+              const Text(
+                'MBTI 키캡 키링이 완성되었습니다.',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.black,
+                ),
+              ),
+
+              const SizedBox(height: 44),
+
+              KeyringPreview(
+                mbti: widget.mbti,
+                colors: widget.colors,
+                large: true,
+              ),
+
+              const SizedBox(height: 48),
+
+              Container(
+                width: 590,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 24,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.black, width: 2),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 25),
+                    SizedBox(width: 14),
+                    Flexible(
+                      child: Text(
+                        '소지품을 확인하세요. 조립대에 물건을 두고 가지 마세요.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 42),
+
+              Text(
+                '●  조립대를 다음 사용자를 위해 초기화하는 중... '
+                '$secondsLeft초',
+                style: const TextStyle(fontSize: 16, color: AppColors.gray),
+              ),
+
+              const SizedBox(height: 20),
+
+              TextButton(
+                onPressed: widget.onRestart,
+                child: const Text('지금 초기화'),
+              ),
             ],
           ),
         ),
@@ -582,29 +573,612 @@ class _AppRootState extends State<AppRoot> {
   }
 }
 
-class _BackButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _BackButton({required this.onTap});
+/// 오류: 잘못된 QR
+class InvalidQrScreen extends StatelessWidget {
+  final VoidCallback onRetry;
+  final VoidCallback onCallStaff;
+
+  const InvalidQrScreen({
+    super.key,
+    required this.onRetry,
+    required this.onCallStaff,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          border: Border.all(color: AppColors.ink, width: 2),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.arrow_back, size: 16, color: AppColors.ink),
-            SizedBox(width: 6),
-            Text('이전 (ESC)', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.ink, fontSize: 13)),
-          ],
+    return ErrorPageLayout(
+      title: '인식할 수 없는 QR 코드',
+      description:
+          '스캔한 QR 코드를 인식하지 못했습니다.\n'
+          '영수증에 인쇄된 QR 코드를 사용하고 있는지 확인하세요.',
+      errorCode: 'ERR_QR_INVALID',
+      leftButtonText: '다시 시도',
+      rightButtonText: '직원 호출',
+      onLeftPressed: onRetry,
+      onRightPressed: onCallStaff,
+    );
+  }
+}
+
+/// 오류: 잘못된 조립대
+class WrongWorkstationScreen extends StatelessWidget {
+  final String assignedWorkstation;
+  final VoidCallback onRetry;
+  final VoidCallback onHelp;
+
+  const WrongWorkstationScreen({
+    super.key,
+    required this.assignedWorkstation,
+    required this.onRetry,
+    required this.onHelp,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(40, 100, 40, 40),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const Text(
+                '오류',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.red,
+                  letterSpacing: 3,
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              const Text(
+                '잘못된 조립대입니다',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 60,
+                  height: 1.1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.black,
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              Text(
+                '이 QR 코드는 다른 조립대에 배정되어 있습니다.\n'
+                '배정된 조립대로 이동한 후 다시 스캔하세요.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 20,
+                  height: 1.6,
+                  color: AppColors.gray,
+                ),
+              ),
+
+              const SizedBox(height: 58),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  WorkstationBox(
+                    label: '현재 위치',
+                    number: workstationNumber,
+                    backgroundColor: const Color(0xFFF5D7D3),
+                    numberColor: AppColors.red,
+                  ),
+
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 35),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.arrow_forward,
+                          size: 34,
+                          color: AppColors.gray,
+                        ),
+                        SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
+
+                  WorkstationBox(
+                    label: '배정된 조립대',
+                    number: assignedWorkstation,
+                    backgroundColor: const Color(0xFFD9EFD7),
+                    numberColor: Color(0xFF389544),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 52),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 360,
+                    height: 92,
+                    child: PrimaryButton(
+                      text: '조립대 $assignedWorkstation로 이동',
+                      onPressed: onRetry,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SizedBox(
+                    width: 210,
+                    height: 92,
+                    child: OutlineButton(text: '도움말', onPressed: onHelp),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 30),
+
+              const Text(
+                'ERR_WS_MISMATCH',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: AppColors.gray,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class WorkstationBox extends StatelessWidget {
+  final String label;
+  final String number;
+  final Color backgroundColor;
+  final Color numberColor;
+
+  const WorkstationBox({
+    super.key,
+    required this.label,
+    required this.number,
+    required this.backgroundColor,
+    required this.numberColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.gray,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          width: 120,
+          height: 120,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            border: Border.all(color: AppColors.black, width: 2),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Text(
+            number,
+            style: TextStyle(
+              fontSize: 48,
+              fontWeight: FontWeight.w900,
+              color: numberColor,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 인증 완료·조립 중 화면 공통 레이아웃
+class DevicePageLayout extends StatelessWidget {
+  final String label;
+  final String title;
+  final List<Widget> children;
+
+  const DevicePageLayout({
+    super.key,
+    required this.label,
+    required this.title,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(40, 90, 40, 40),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.gray,
+                  letterSpacing: 3,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 64,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.black,
+                ),
+              ),
+              const SizedBox(height: 100),
+              ...children,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 오류 화면 공통 레이아웃
+class ErrorPageLayout extends StatelessWidget {
+  final String title;
+  final String description;
+  final String errorCode;
+  final String leftButtonText;
+  final String rightButtonText;
+  final VoidCallback onLeftPressed;
+  final VoidCallback onRightPressed;
+
+  const ErrorPageLayout({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.errorCode,
+    required this.leftButtonText,
+    required this.rightButtonText,
+    required this.onLeftPressed,
+    required this.onRightPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(40, 100, 40, 40),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const Text(
+                '오류',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.red,
+                  letterSpacing: 3,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 60,
+                  height: 1.1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.black,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                description,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 20,
+                  height: 1.6,
+                  color: AppColors.gray,
+                ),
+              ),
+              const SizedBox(height: 48),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 330,
+                    height: 92,
+                    child: PrimaryButton(
+                      text: leftButtonText,
+                      onPressed: onLeftPressed,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SizedBox(
+                    width: 330,
+                    height: 92,
+                    child: OutlineButton(
+                      text: rightButtonText,
+                      onPressed: onRightPressed,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Text(
+                errorCode,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: AppColors.gray,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 키캡 키링 미리보기
+class KeyringPreview extends StatelessWidget {
+  final String mbti;
+  final List<String> colors;
+  final bool large;
+
+  const KeyringPreview({
+    super.key,
+    required this.mbti,
+    required this.colors,
+    this.large = false,
+  });
+
+  Color _getColor(String colorName) {
+    switch (colorName) {
+      case 'green':
+        return AppColors.green;
+      case 'yellow':
+        return AppColors.yellow;
+      case 'blue':
+        return AppColors.blue;
+      case 'pink':
+        return AppColors.pink;
+      default:
+        return AppColors.lightGray;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final letters = mbti.padRight(4, '-').substring(0, 4).split('');
+    final keySize = large ? 112.0 : 78.0;
+    final spacing = large ? 18.0 : 12.0;
+
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(4, (index) {
+            final colorName = index < colors.length ? colors[index] : '';
+
+            return Padding(
+              padding: EdgeInsets.only(right: index == 3 ? 0 : spacing),
+              child: Keycap(
+                letter: letters[index],
+                color: _getColor(colorName),
+                size: keySize,
+              ),
+            );
+          }),
+        ),
+        SizedBox(height: large ? 18 : 12),
+        SizedBox(
+          width: keySize * 4 + spacing * 3,
+          height: 28,
+          child: CustomPaint(painter: KeyringLinePainter()),
+        ),
+      ],
+    );
+  }
+}
+
+/// 키캡 하나
+class Keycap extends StatelessWidget {
+  final String letter;
+  final Color color;
+  final double size;
+
+  const Keycap({
+    super.key,
+    required this.letter,
+    required this.color,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomColor = Color.lerp(color, AppColors.black, 0.14)!;
+
+    return Container(
+      width: size,
+      height: size + 7,
+      decoration: BoxDecoration(
+        color: bottomColor,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.55),
+            width: 2,
+          ),
+        ),
+        child: Text(
+          letter,
+          style: TextStyle(
+            fontSize: size * 0.42,
+            fontWeight: FontWeight.w900,
+            color: AppColors.black,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 키캡 아래 키링 연결선
+class KeyringLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = AppColors.black
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    final y = 12.0;
+    final startX = size.width / 8;
+    final endX = size.width - startX;
+
+    canvas.drawLine(Offset(startX, y), Offset(endX, y), linePaint);
+
+    for (int i = 0; i < 4; i++) {
+      final x = startX + ((endX - startX) / 3) * i;
+
+      canvas.drawCircle(Offset(x, y), 8, linePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return false;
+  }
+}
+
+/// 검은색 기본 버튼
+class PrimaryButton extends StatelessWidget {
+  final String text;
+  final VoidCallback onPressed;
+
+  const PrimaryButton({super.key, required this.text, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.black,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        textStyle: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800),
+      ),
+      child: Text(text),
+    );
+  }
+}
+
+/// 테두리 버튼
+class OutlineButton extends StatelessWidget {
+  final String text;
+  final VoidCallback onPressed;
+
+  const OutlineButton({super.key, required this.text, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.black,
+        side: const BorderSide(color: AppColors.black, width: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+        textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+      ),
+      child: Text(text),
+    );
+  }
+}
+
+/// 개발 중 화면을 바로 전환하기 위한 테스트 메뉴
+///
+/// 실제 배포 전에는 이 위젯을 삭제하면 됩니다.
+class DemoMenu extends StatelessWidget {
+  final VoidCallback onWaiting;
+  final VoidCallback onAuthenticated;
+  final VoidCallback onAssembling;
+  final VoidCallback onCompleted;
+  final VoidCallback onInvalidQr;
+  final VoidCallback onWrongWorkstation;
+
+  const DemoMenu({
+    super.key,
+    required this.onWaiting,
+    required this.onAuthenticated,
+    required this.onAssembling,
+    required this.onCompleted,
+    required this.onInvalidQr,
+    required this.onWrongWorkstation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<DeviceStep>(
+      tooltip: '화면 테스트',
+      icon: const Icon(Icons.developer_mode, color: AppColors.gray),
+      onSelected: (step) {
+        switch (step) {
+          case DeviceStep.waiting:
+            onWaiting();
+            break;
+          case DeviceStep.authenticated:
+            onAuthenticated();
+            break;
+          case DeviceStep.assembling:
+            onAssembling();
+            break;
+          case DeviceStep.completed:
+            onCompleted();
+            break;
+          case DeviceStep.invalidQr:
+            onInvalidQr();
+            break;
+          case DeviceStep.wrongWorkstation:
+            onWrongWorkstation();
+            break;
+        }
+      },
+      itemBuilder: (context) {
+        return const [
+          PopupMenuItem(value: DeviceStep.waiting, child: Text('1. 대기 중')),
+          PopupMenuItem(
+            value: DeviceStep.authenticated,
+            child: Text('2. 인증 완료'),
+          ),
+          PopupMenuItem(value: DeviceStep.assembling, child: Text('3. 조립 중')),
+          PopupMenuItem(value: DeviceStep.completed, child: Text('4. 조립 완료')),
+          PopupMenuDivider(),
+          PopupMenuItem(value: DeviceStep.invalidQr, child: Text('오류: 잘못된 QR')),
+          PopupMenuItem(
+            value: DeviceStep.wrongWorkstation,
+            child: Text('오류: 잘못된 조립대'),
+          ),
+        ];
+      },
     );
   }
 }
