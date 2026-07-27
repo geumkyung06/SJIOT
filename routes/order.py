@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from services.extensions import r
 from services.mobius import (send_order_cin, 
+                             send_station_cin
                              #mark_station_in_progress, 
                              # mark_station_empty
                             )
@@ -44,16 +45,6 @@ def _ensure_initial_state():
     if not r.exists(STATION_KEY):
         r.hset(STATION_KEY, mapping={"1": "idle", "2": "idle", "3": "idle"})
     _touch(WAREHOUSE_KEY, STATION_KEY)
-
-def _check_inventory(keycap, colors):
-    """
-    재고 확인 스텁.
-    나중에 스마트창고 재고 캐시(Redis) 또는 실시간 조회로 교체.
-    지금은 항상 재고 있음으로 처리.
-    """
-    # TODO: 실제 재고 확인 로직 연결
-    return True
-
 
 def _get_free_station():
     station_status = r.hgetall(STATION_KEY)
@@ -291,9 +282,9 @@ def post_order_list():
     colors = data.get("colors")
 
     try:
-        color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,o,y,g,b,p,w
+        color_list = os.getenv('COLOR_LIST').split(',')
         board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
-        switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
+        switch_list = os.getenv('SWITCH_LIST').split(',')
 
         if board not in board_list:
             return jsonify({'error': '지원하지 않는 본판'}), 400
@@ -306,19 +297,13 @@ def post_order_list():
         if not all(c in color_list for c in colors):
             return jsonify({'error': '잘못된 색상 선택'}), 400
 
-        if not _check_inventory(keycap, colors):
-            return jsonify({'error': '재고가 부족한 키캡입니다'}), 400
-
         _ensure_initial_state()
 
-        # 대기열 캡 체크: 이미 3개 대기 중이면 더 받지 않음
         if r.llen(QUEUE_KEY) >= MAX_QUEUE_LEN:
             return jsonify({'error': '대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요'}), 409
 
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
 
-        # 일단 무조건 큐에 넣고 상태 waiting으로 생성
-        r.rpush(QUEUE_KEY, order_id)
         r.hset(f"order:{order_id}", mapping={
             "board": board,
             "switch": switch,
@@ -327,10 +312,10 @@ def post_order_list():
             "status": "waiting",
             "created_at": datetime.now().isoformat()
         })
-        r.expire(f"order:{order_id}", 3600)  # TTL 1시간
+        r.expire(f"order:{order_id}", 3600)
+        r.rpush(QUEUE_KEY, order_id)
         _touch(QUEUE_KEY)
 
-        # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
         _try_assign_next()
 
         order_data = r.hgetall(f"order:{order_id}")
@@ -351,13 +336,13 @@ def post_order_list():
             "station_id": station_id
         }
 
-        send_order_cin(order_id, board, switch, keycap, colors) # coss 저장
+        send_order_cin(order_id, board, switch, keycap, colors)            # cnt_order
+        send_station_cin(order_id, status, position_in_queue, station_id)  # cnt_station → AGV용
 
         return jsonify({'order_status': order_status}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @bp.route('/order/<order_id>/status', methods=['GET'])
 def get_order_status(order_id):
