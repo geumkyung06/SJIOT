@@ -94,7 +94,6 @@ class _DeviceRootState extends State<DeviceRoot> {
           mbti: _mbti,
           colors: _colors,
           onStart: () => _moveTo(DeviceStep.assembling),
-          onCancel: _reset,
         );
         break;
 
@@ -103,7 +102,6 @@ class _DeviceRootState extends State<DeviceRoot> {
           mbti: _mbti,
           colors: _colors,
           onComplete: () => _moveTo(DeviceStep.completed),
-          onCancel: _reset,
         );
         break;
 
@@ -427,14 +425,12 @@ class AuthenticatedScreen extends StatelessWidget {
   final String mbti;
   final List<String> colors;
   final VoidCallback onStart;
-  final VoidCallback onCancel;
 
   const AuthenticatedScreen({
     super.key,
     required this.mbti,
     required this.colors,
     required this.onStart,
-    required this.onCancel,
   });
 
   @override
@@ -450,8 +446,6 @@ class AuthenticatedScreen extends StatelessWidget {
           height: 96,
           child: PrimaryButton(text: '조립 시작', onPressed: onStart),
         ),
-        const SizedBox(height: 14),
-        TextButton(onPressed: onCancel, child: const Text('인증 취소')),
       ],
     );
   }
@@ -462,14 +456,12 @@ class AssemblingScreen extends StatelessWidget {
   final String mbti;
   final List<String> colors;
   final VoidCallback onComplete;
-  final VoidCallback onCancel;
 
   const AssemblingScreen({
     super.key,
     required this.mbti,
     required this.colors,
     required this.onComplete,
-    required this.onCancel,
   });
 
   @override
@@ -485,8 +477,6 @@ class AssemblingScreen extends StatelessWidget {
           height: 96,
           child: PrimaryButton(text: '조립 완료', onPressed: onComplete),
         ),
-        const SizedBox(height: 14),
-        TextButton(onPressed: onCancel, child: const Text('작업 취소')),
       ],
     );
   }
