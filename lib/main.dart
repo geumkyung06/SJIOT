@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
+import 'dart:math';
 
 void main() {
   runApp(const DeviceApp());
@@ -180,8 +181,8 @@ class _DeviceRootState extends State<DeviceRoot> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('직원을 호출했습니다'),
-          content: const Text('잠시만 기다려 주세요.\n직원이 조립대를 확인하겠습니다.'),
+          title: const Text('직원 호출 완료'),
+          content: const Text('잠시만 기다려 주세요.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -208,6 +209,7 @@ class AppColors {
 }
 
 /// 왼쪽 위 조립대 번호
+/// 왼쪽 위 조립대 번호
 class WorkstationHeader extends StatelessWidget {
   final String workstationNumber;
 
@@ -215,27 +217,26 @@ class WorkstationHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Text(
-          '조립대',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: AppColors.gray,
-            letterSpacing: 2,
-          ),
+    return Text.rich(
+      TextSpan(
+        style: const TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          height: 1,
+          letterSpacing: 0,
         ),
-        const SizedBox(width: 10),
-        Text(
-          workstationNumber,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: AppColors.black,
+        children: [
+          const TextSpan(
+            text: '조립대 ',
+            style: TextStyle(color: AppColors.gray),
           ),
-        ),
-      ],
+          TextSpan(
+            text: workstationNumber,
+            style: const TextStyle(color: AppColors.gray),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -258,7 +259,7 @@ class WorkstationSetupScreen extends StatelessWidget {
               '초기 설정',
               style: TextStyle(
                 fontSize: 17,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w900,
                 color: AppColors.gray,
                 letterSpacing: 4,
               ),
@@ -267,7 +268,7 @@ class WorkstationSetupScreen extends StatelessWidget {
             const SizedBox(height: 18),
 
             const Text(
-              '조립대 번호를\n선택해 주세요',
+              '조립대 번호',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 64,
@@ -343,7 +344,7 @@ class WorkstationSelectButton extends StatelessWidget {
               '조립대',
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w900,
                 color: AppColors.gray,
               ),
             ),
@@ -395,7 +396,7 @@ class WaitingScreen extends StatelessWidget {
               '사용 가능',
               style: TextStyle(
                 fontSize: 17,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w900,
                 color: AppColors.gray,
                 letterSpacing: 4,
               ),
@@ -607,7 +608,7 @@ class AssemblingScreen extends StatelessWidget {
       label: '진행 중',
       title: '조립 중',
       children: [
-        KeyringPreview(mbti: mbti, colors: colors),
+        AnimatedKeyringPreview(mbti: mbti, colors: colors),
         const SizedBox(height: 52),
         SizedBox(
           width: 330,
@@ -636,12 +637,33 @@ class CompletedScreen extends StatefulWidget {
   State<CompletedScreen> createState() => _CompletedScreenState();
 }
 
-class _CompletedScreenState extends State<CompletedScreen> {
+class _CompletedScreenState extends State<CompletedScreen>
+    with SingleTickerProviderStateMixin {
   int secondsLeft = 10;
+  late final AnimationController _previewController;
+  late final Animation<double> _previewScale;
+
+  @override
+  void dispose() {
+    _previewController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+
+    _previewController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+
+    _previewScale = Tween<double>(begin: 0.15, end: 1.0).animate(
+      CurvedAnimation(parent: _previewController, curve: Curves.easeOutBack),
+    );
+
+    _previewController.forward();
+
     _startCountdown();
   }
 
@@ -673,7 +695,7 @@ class _CompletedScreenState extends State<CompletedScreen> {
                 '완료',
                 style: TextStyle(
                   fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w900,
                   color: AppColors.gray,
                   letterSpacing: 3,
                 ),
@@ -698,17 +720,20 @@ class _CompletedScreenState extends State<CompletedScreen> {
                 'MBTI 키캡 키링이 완성되었습니다.',
                 style: TextStyle(
                   fontSize: 22,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w900,
                   color: AppColors.black,
                 ),
               ),
 
               const SizedBox(height: 44),
 
-              KeyringPreview(
-                mbti: widget.mbti,
-                colors: widget.colors,
-                large: true,
+              ScaleTransition(
+                scale: _previewScale,
+                child: KeyringPreview(
+                  mbti: widget.mbti,
+                  colors: widget.colors,
+                  large: true,
+                ),
               ),
 
               const SizedBox(height: 48),
@@ -734,7 +759,7 @@ class _CompletedScreenState extends State<CompletedScreen> {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
@@ -947,7 +972,7 @@ class WorkstationBox extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w900,
             color: AppColors.gray,
           ),
         ),
@@ -1000,7 +1025,7 @@ class DevicePageLayout extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   fontSize: 17,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w900,
                   color: AppColors.gray,
                   letterSpacing: 3,
                 ),
@@ -1176,13 +1201,118 @@ class KeyringPreview extends StatelessWidget {
             );
           }),
         ),
-        SizedBox(height: large ? 18 : 12),
-        SizedBox(
-          width: keySize * 4 + spacing * 3,
-          height: 28,
-          child: CustomPaint(painter: KeyringLinePainter()),
-        ),
       ],
+    );
+  }
+}
+
+class AnimatedKeyringPreview extends StatefulWidget {
+  final String mbti;
+  final List<String> colors;
+
+  const AnimatedKeyringPreview({
+    super.key,
+    required this.mbti,
+    required this.colors,
+  });
+
+  @override
+  State<AnimatedKeyringPreview> createState() => _AnimatedKeyringPreviewState();
+}
+
+class _AnimatedKeyringPreviewState extends State<AnimatedKeyringPreview>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  static const double keySize = 78;
+  static const double spacing = 12;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Color _getColor(String colorName) {
+    switch (colorName) {
+      case 'green':
+        return AppColors.green;
+
+      case 'yellow':
+        return AppColors.yellow;
+
+      case 'blue':
+        return AppColors.blue;
+
+      case 'pink':
+        return AppColors.pink;
+
+      default:
+        return AppColors.lightGray;
+    }
+  }
+
+  double _getKeyOffset(int index, double animationValue) {
+    // 각 키캡이 차례대로 시작
+    final start = index * 0.19;
+    final end = start + 0.34;
+
+    if (animationValue < start || animationValue > end) {
+      return 0;
+    }
+
+    final progress = (animationValue - start) / (end - start);
+
+    // 0 → 1 → 0 형태의 부드러운 움직임
+    final wave = sin(progress * pi);
+
+    return -36 * wave;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final letters = widget.mbti.padRight(4, '-').substring(0, 4).split('');
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return SizedBox(
+          height: keySize + 55,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(4, (index) {
+              final colorName = index < widget.colors.length
+                  ? widget.colors[index]
+                  : '';
+
+              final offsetY = _getKeyOffset(index, _controller.value);
+
+              return Padding(
+                padding: EdgeInsets.only(right: index == 3 ? 0 : spacing),
+                child: Transform.translate(
+                  offset: Offset(0, offsetY),
+                  child: Keycap(
+                    letter: letters[index],
+                    color: _getColor(colorName),
+                    size: keySize,
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }
