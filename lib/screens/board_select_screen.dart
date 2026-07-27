@@ -9,7 +9,7 @@ class BoardSelectScreen extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('STEP 04 / 07', style: AppTextStyles.label),
+        const Text('STEP 04 / 06', style: AppTextStyles.label),
         const SizedBox(height: 8),
         const Text('판 크기 선택', style: AppTextStyles.heading),
         const SizedBox(height: 8),
