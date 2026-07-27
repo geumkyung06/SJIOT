@@ -86,3 +86,13 @@ def mark_station_in_progress(station_id, order_id):
 
 def mark_station_empty(station_id):
     return _update_station(station_id, "empty", None)
+
+# queue
+def send_station_cin(order_id, status, position_in_queue, station_id):
+    con = {
+        "order_id": order_id,
+        "status": status,
+        "position_in_queue": position_in_queue,
+        "station_id": station_id,
+    }
+    return create_cin("cnt_station", con)
