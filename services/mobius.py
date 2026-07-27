@@ -2,16 +2,22 @@ import os
 import json
 import requests
 from services.extensions import r
+import logging
+logger = logging.getLogger(__name__)
 
 MP_URL = os.getenv("MP_URL")  
 CB = os.getenv("CB", "Mobius")
 AE_RN = os.getenv("AE_RN")   
 ORIGIN = os.getenv("MOBIUS_ORIGIN")
 API_KEY = os.getenv("MOBIUS_API_KEY")
+LECTURE_ID = os.getenv("X-AUTH-CUSTOM-LECTURE")
+CREATOR_ID = os.getenv("X-AUTH-CUSTOM-CREATOR")
 
 def _headers(ty=None):
     h = {
         "X-API-KEY": API_KEY,
+        "X-AUTH-CUSTOM-LECTURE": LECTURE_ID,
+        "X-AUTH-CUSTOM-CREATOR": CREATOR_ID,
         "Accept": "application/json",
         "X-M2M-RI": os.urandom(4).hex(),
         "X-M2M-Origin": ORIGIN,
@@ -28,14 +34,13 @@ def create_cin(cnt_rn, con_dict):
     return res.status_code in (200, 201)
 
 def get_latest_con(cnt_rn):
-    """지정한 cnt의 최신 CIN(con)을 dict로 반환. 없으면 None."""
     url = f"{MP_URL}/{CB}/{AE_RN}/{cnt_rn}/la"
     res = requests.get(url, headers=_headers())
+    logger.info(f"[get_latest_con] url={url} status={res.status_code} body={res.text[:500]}")
     if res.status_code != 200:
         return None
     con = res.json()["m2m:cin"]["con"]
     return json.loads(con) if isinstance(con, str) else con
-
 # order
 def send_order_cin(order_id, board, switch, keycap, colors):
     con = {
