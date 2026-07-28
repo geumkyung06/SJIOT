@@ -25,6 +25,11 @@ void main() {
 // true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
 const bool kBoardSelectEnabled = false;
 
+// [임시] COSS 백엔드 서버 문제로 API 연동을 끊고 프론트 동작(화면 흐름/애니메이션)만
+// 확인하기 위한 플래그. 서버 복구되면 이 값을 true로 되돌리면 원래대로
+// 실제 API(재고 조회 / 주문 생성 / 상태 폴링)를 호출합니다.
+const bool kApiEnabled = false;
+
 enum AppStep {
   home,
   mbtiChoice,
@@ -152,6 +157,9 @@ class _AppRootState extends State<AppRoot> {
   // Mobius/창고/조립대 콜백이 아직 실제로 연결 안 된 동안의 임시 안전장치.
   // 이 시간 안에 'done'이 안 되면 자동으로 홈 화면으로 돌아감.
   static const Duration _stuckTimeout = Duration(seconds: 25);
+  // 완성(done) 후 자동으로 처음 화면으로 돌아가기까지의 대기 시간
+  static const Duration _autoRestartAfterDone = Duration(seconds: 8);
+  Timer? _doneRestartTimer;
 
   // 색상 코드 <-> 실제 색상. 백엔드 COLOR_LIST(r,o,y,g,b,p,w) 중
   // 파스텔 4색만 사용: 1 초록, 2 노랑, 3 파랑, 4 빨강
@@ -193,6 +201,19 @@ class _AppRootState extends State<AppRoot> {
   //------------ 재고 조회 함수 -------------
   Future<bool> _loadSoldOutStock() async {
     if (_stockLoading) return false;
+
+    // [임시] API 연동이 꺼져있으면 실제 서버를 호출하지 않고
+    // "품절 없음"으로 간주해 즉시 성공 처리합니다. (프론트 동작 확인용)
+    if (!kApiEnabled) {
+      setState(() {
+        _soldOutBoards = {};
+        _soldOutKeycaps = {};
+        _soldOutSwitches = {};
+        _stockLoading = false;
+        _stockError = null;
+      });
+      return true;
+    }
 
     setState(() {
       _stockLoading = true;
@@ -848,6 +869,14 @@ class _AppRootState extends State<AppRoot> {
 
     _startAutoRestartTimer();
 
+    // [임시] API 연동이 꺼져있으면 실제 서버 대신 로컬에서 가짜 진행 상태를
+    // 흘려보내서, 완성 화면(로봇 이동/조립 연출 등) 애니메이션까지
+    // 백엔드 없이 확인할 수 있게 합니다.
+    if (!kApiEnabled) {
+      _mockOrderFlow();
+      return;
+    }
+
     try {
       final colors = List.generate(_boardCount, _colorCode);
 
@@ -875,6 +904,39 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
+  // [임시] 백엔드 없이 completion 화면 애니메이션을 확인하기 위한
+  // 가짜 주문 진행 시뮬레이션. 2초 간격으로 waiting → assigned →
+  // in_progress → done 상태를 순서대로 흘려보냅니다.
+  void _mockOrderFlow() {
+    _orderId = 'mock-order-id';
+
+    final mockSteps = <Map<String, dynamic>>[
+      {'status': 'waiting', 'position_in_queue': 1},
+      {'status': 'assigned', 'station_id': 1},
+      {'status': 'in_progress', 'station_id': 1},
+      {'status': 'done'},
+    ];
+
+    for (var i = 0; i < mockSteps.length; i++) {
+      Future.delayed(Duration(seconds: 2 * (i + 1)), () {
+        if (!mounted) return;
+        setState(() => _orderStatus = mockSteps[i]);
+        if (mockSteps[i]['status'] == 'done') {
+          _autoRestartTimer?.cancel();
+          _scheduleDoneRestart();
+        }
+      });
+    }
+  }
+
+  // 완성 상태가 되면 일정 시간 뒤 자동으로 처음 화면으로 복귀
+  void _scheduleDoneRestart() {
+    _doneRestartTimer?.cancel();
+    _doneRestartTimer = Timer(_autoRestartAfterDone, () {
+      if (mounted) _restart();
+    });
+  }
+
   void _startAutoRestartTimer() {
     _autoRestartTimer?.cancel();
     _autoRestartTimer = Timer(_stuckTimeout, () {
@@ -896,6 +958,7 @@ class _AppRootState extends State<AppRoot> {
         setState(() => _orderStatus = status);
         if (status['status'] == 'done') {
           _autoRestartTimer?.cancel();
+          _scheduleDoneRestart();
           return false;
         }
         return true;
@@ -907,6 +970,7 @@ class _AppRootState extends State<AppRoot> {
 
   void _restart() {
     _autoRestartTimer?.cancel();
+    _doneRestartTimer?.cancel();
     setState(() {
       _direction = -1;
       _step = AppStep.home;
@@ -925,6 +989,7 @@ class _AppRootState extends State<AppRoot> {
   @override
   void dispose() {
     _autoRestartTimer?.cancel();
+    _doneRestartTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
