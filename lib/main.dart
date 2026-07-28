@@ -161,16 +161,14 @@ class _AppRootState extends State<AppRoot> {
   static const Duration _autoRestartAfterDone = Duration(seconds: 8);
   Timer? _doneRestartTimer;
 
-  // 색상 코드 <-> 실제 색상. 백엔드 COLOR_LIST(r,o,y,g,b,p,w) 중
-  // 파스텔 4색만 사용: 1 초록, 2 노랑, 3 파랑, 4 빨강
+  // 색상 코드 <-> 실제 색상. keycap_fill_screen.dart의 범례(KeycapColors)와
+  // 동일한 팔레트를 써야 보드판/완성 화면에 칠해지는 색이 범례와 일치합니다.
   static const List<String> _pastelColorCycle = ['g', 'y', 'b', 'r'];
   static const Map<String, Color> _colorMap = {
-    'r': AppColors.coral,
-    'o': AppColors.orange,
-    'y': AppColors.yellow,
-    'g': AppColors.green,
-    'b': AppColors.blue,
-    'p': AppColors.purple,
+    'g': KeycapColors.green,
+    'y': KeycapColors.yellow,
+    'b': KeycapColors.blue,
+    'r': KeycapColors.red,
   };
 
   @override
