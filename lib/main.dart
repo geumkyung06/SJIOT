@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
 import 'dart:math';
+import 'models/order_info.dart';
 
 void main() {
   runApp(const DeviceApp());
@@ -53,19 +54,32 @@ class _DeviceRootState extends State<DeviceRoot> {
 
   /// 테스트용 주문 정보
   ///
-  /// 나중에는 QR 코드 또는 서버 응답에서 가져오게 됩니다.
-  String _mbti = 'ISTJ';
-
-  List<String> _colors = ['green', 'yellow', 'blue', 'pink'];
-
-  /// 잘못된 조립대 오류 화면에서 보여줄 배정 조립대
-  String _assignedWorkstation = '01';
+  /// 현재는 QR 스캔 기능이 없으므로 임시 데이터를 사용합니다.
+  /// 나중에는 QR 코드의 JSON 데이터를 OrderInfo.fromJson()으로 변환합니다.
+  OrderInfo _order = const OrderInfo(
+    orderId: 'ORD-20260728-0001',
+    mbti: 'ISTJ',
+    colors: ['green', 'yellow', 'blue', 'pink'],
+    assignedWorkstation: 1,
+  );
 
   void _selectWorkstation(String number) {
     setState(() {
       _workstationNumber = number;
       _currentStep = DeviceStep.waiting;
     });
+  }
+
+  void _processTestQr() {
+    final String currentWorkstation = _workstationNumber ?? '';
+
+    final String assignedWorkstation = _order.workstationLabel;
+
+    if (currentWorkstation == assignedWorkstation) {
+      _moveTo(DeviceStep.authenticated);
+    } else {
+      _moveTo(DeviceStep.wrongWorkstation);
+    }
   }
 
   void _moveTo(DeviceStep step) {
@@ -92,7 +106,7 @@ class _DeviceRootState extends State<DeviceRoot> {
       case DeviceStep.waiting:
         screen = WaitingScreen(
           workstationNumber: _workstationNumber ?? '--',
-          onQrSuccess: () => _moveTo(DeviceStep.authenticated),
+          onQrSuccess: _processTestQr,
           onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
           onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
         );
@@ -100,24 +114,24 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       case DeviceStep.authenticated:
         screen = AuthenticatedScreen(
-          mbti: _mbti,
-          colors: _colors,
+          mbti: _order.mbti,
+          colors: _order.colors,
           onStart: () => _moveTo(DeviceStep.assembling),
         );
         break;
 
       case DeviceStep.assembling:
         screen = AssemblingScreen(
-          mbti: _mbti,
-          colors: _colors,
+          mbti: _order.mbti,
+          colors: _order.colors,
           onComplete: () => _moveTo(DeviceStep.completed),
         );
         break;
 
       case DeviceStep.completed:
         screen = CompletedScreen(
-          mbti: _mbti,
-          colors: _colors,
+          mbti: _order.mbti,
+          colors: _order.colors,
           onRestart: _reset,
         );
         break;
@@ -134,9 +148,8 @@ class _DeviceRootState extends State<DeviceRoot> {
       case DeviceStep.wrongWorkstation:
         screen = WrongWorkstationScreen(
           currentWorkstation: _workstationNumber ?? '--',
-          assignedWorkstation: _assignedWorkstation,
-          onRetry: _reset,
-          onHelp: _showStaffDialog,
+          assignedWorkstation: _order.workstationLabel,
+          onAutoReturn: _reset,
         );
         break;
     }
@@ -755,7 +768,7 @@ class _CompletedScreenState extends State<CompletedScreen>
                     SizedBox(width: 14),
                     Flexible(
                       child: Text(
-                        '소지품을 확인하세요. 조립대에 물건을 두고 가지 마세요.',
+                        '소지품을 꼭 챙겨가세요.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 18,
@@ -817,19 +830,47 @@ class InvalidQrScreen extends StatelessWidget {
 }
 
 /// 오류: 잘못된 조립대
-class WrongWorkstationScreen extends StatelessWidget {
+/// 오류: 잘못된 조립대
+class WrongWorkstationScreen extends StatefulWidget {
   final String currentWorkstation;
   final String assignedWorkstation;
-  final VoidCallback onRetry;
-  final VoidCallback onHelp;
+  final VoidCallback onAutoReturn;
 
   const WrongWorkstationScreen({
     super.key,
     required this.currentWorkstation,
     required this.assignedWorkstation,
-    required this.onRetry,
-    required this.onHelp,
+    required this.onAutoReturn,
   });
+
+  @override
+  State<WrongWorkstationScreen> createState() => _WrongWorkstationScreenState();
+}
+
+class _WrongWorkstationScreenState extends State<WrongWorkstationScreen> {
+  int secondsLeft = 7;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  Future<void> _startCountdown() async {
+    while (secondsLeft > 0 && mounted) {
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (!mounted) return;
+
+      setState(() {
+        secondsLeft--;
+      });
+    }
+
+    if (mounted) {
+      widget.onAutoReturn();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -864,11 +905,11 @@ class WrongWorkstationScreen extends StatelessWidget {
 
               const SizedBox(height: 28),
 
-              Text(
+              const Text(
                 '이 QR 코드는 다른 조립대에 배정되어 있습니다.\n'
                 '배정된 조립대로 이동한 후 다시 스캔하세요.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   height: 1.6,
                   color: AppColors.gray,
@@ -882,7 +923,7 @@ class WrongWorkstationScreen extends StatelessWidget {
                 children: [
                   WorkstationBox(
                     label: '현재 위치',
-                    number: currentWorkstation,
+                    number: widget.currentWorkstation,
                     backgroundColor: const Color(0xFFF5D7D3),
                     numberColor: AppColors.red,
                   ),
@@ -903,7 +944,7 @@ class WrongWorkstationScreen extends StatelessWidget {
 
                   WorkstationBox(
                     label: '배정된 조립대',
-                    number: assignedWorkstation,
+                    number: widget.assignedWorkstation,
                     backgroundColor: const Color(0xFFD9EFD7),
                     numberColor: Color(0xFF389544),
                   ),
@@ -912,24 +953,13 @@ class WrongWorkstationScreen extends StatelessWidget {
 
               const SizedBox(height: 52),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 360,
-                    height: 92,
-                    child: PrimaryButton(
-                      text: '조립대 $assignedWorkstation로 이동',
-                      onPressed: onRetry,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 210,
-                    height: 92,
-                    child: OutlineButton(text: '도움말', onPressed: onHelp),
-                  ),
-                ],
+              Text(
+                '$secondsLeft초 후 대기 화면으로 돌아갑니다.',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.gray,
+                ),
               ),
 
               const SizedBox(height: 30),
