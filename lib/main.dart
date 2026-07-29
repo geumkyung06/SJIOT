@@ -1,6 +1,10 @@
-import 'package:flutter/material.dart';
-import 'services/api_service.dart';
+import 'dart:async';
 import 'dart:math';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'services/api_service.dart';
 import 'models/order_info.dart';
 
 void main() {
@@ -603,7 +607,7 @@ class AuthenticatedScreen extends StatelessWidget {
 }
 
 /// 3. 조립 중 화면
-class AssemblingScreen extends StatelessWidget {
+class AssemblingScreen extends StatefulWidget {
   final String mbti;
   final List<String> colors;
   final VoidCallback onComplete;
@@ -616,19 +620,226 @@ class AssemblingScreen extends StatelessWidget {
   });
 
   @override
+  State<AssemblingScreen> createState() => _AssemblingScreenState();
+}
+
+class _AssemblingScreenState extends State<AssemblingScreen> {
+  /// 조립 중 화면을 유지하는 최대 시간
+  /// static const Duration _assemblyTimeout = Duration(minutes: 5);
+  static const Duration _assemblyTimeout = Duration(seconds: 10);
+
+  Timer? _assemblyTimer;
+
+  /// 확인 팝업이 중복으로 표시되는 것을 방지합니다.
+  bool _isCheckDialogOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    /// 조립 중 화면에 들어오면 5분 타이머를 시작합니다.
+    _startAssemblyTimer();
+  }
+
+  void _startAssemblyTimer() {
+    /// 기존 타이머가 남아 있다면 먼저 취소합니다.
+    _assemblyTimer?.cancel();
+
+    _assemblyTimer = Timer(_assemblyTimeout, _showAssemblyCheckDialog);
+  }
+
+  Future<void> _showAssemblyCheckDialog() async {
+    if (!mounted || _isCheckDialogOpen) {
+      return;
+    }
+
+    _isCheckDialogOpen = true;
+
+    /// 시스템 알림음을 재생합니다.
+    await SystemSound.play(SystemSoundType.alert);
+
+    if (!mounted) {
+      return;
+    }
+
+    /// true:
+    /// 사용자가 “아직 조립 중이에요” 버튼을 누름
+    ///
+    /// false:
+    /// 사용자가 응답하지 않아 자동 완료됨
+    final bool? stillAssembling = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return const AssemblyCheckDialog(autoCompleteSeconds: 10);
+      },
+    );
+
+    _isCheckDialogOpen = false;
+
+    if (!mounted) {
+      return;
+    }
+
+    if (stillAssembling == true) {
+      /// 아직 조립 중이라면 다시 5분을 측정합니다.
+      _startAssemblyTimer();
+    } else {
+      /// 정해진 시간 동안 응답이 없으면 자동 완료 처리합니다.
+      widget.onComplete();
+    }
+  }
+
+  void _completeAssembly() {
+    /// 직접 조립 완료 버튼을 눌렀을 때 타이머를 취소합니다.
+    _assemblyTimer?.cancel();
+    widget.onComplete();
+  }
+
+  @override
+  void dispose() {
+    _assemblyTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return DevicePageLayout(
       label: '진행 중',
       title: '조립 중',
       children: [
-        AnimatedKeyringPreview(mbti: mbti, colors: colors),
+        AnimatedKeyringPreview(mbti: widget.mbti, colors: widget.colors),
+
         const SizedBox(height: 52),
+
         SizedBox(
           width: 330,
           height: 96,
-          child: PrimaryButton(text: '조립 완료', onPressed: onComplete),
+          child: PrimaryButton(text: '조립 완료', onPressed: _completeAssembly),
         ),
       ],
+    );
+  }
+}
+
+/// 조립 시간이 오래 걸릴 때 표시되는 확인 팝업
+class AssemblyCheckDialog extends StatefulWidget {
+  final int autoCompleteSeconds;
+
+  const AssemblyCheckDialog({super.key, required this.autoCompleteSeconds});
+
+  @override
+  State<AssemblyCheckDialog> createState() => _AssemblyCheckDialogState();
+}
+
+class _AssemblyCheckDialogState extends State<AssemblyCheckDialog> {
+  Timer? _countdownTimer;
+  late int _secondsLeft;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _secondsLeft = widget.autoCompleteSeconds;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _playAlertSound();
+      _startCountdown();
+    });
+  }
+
+  Future<void> _playAlertSound() async {
+    /// 사용자가 팝업을 인식할 수 있도록 알림음을 한 번 더 재생합니다.
+    await SystemSound.play(SystemSoundType.alert);
+  }
+
+  void _startCountdown() {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_secondsLeft <= 1) {
+        timer.cancel();
+
+        /// false는 자동 완료를 의미합니다.
+        Navigator.of(context).pop(false);
+        return;
+      }
+
+      setState(() {
+        _secondsLeft--;
+      });
+    });
+  }
+
+  void _continueAssembly() {
+    _countdownTimer?.cancel();
+
+    /// true는 아직 조립 중임을 의미합니다.
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        backgroundColor: AppColors.background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: AppColors.black, width: 2),
+        ),
+        titlePadding: const EdgeInsets.fromLTRB(36, 36, 36, 0),
+        contentPadding: const EdgeInsets.fromLTRB(36, 22, 36, 28),
+        actionsPadding: const EdgeInsets.fromLTRB(36, 0, 36, 36),
+        title: const Column(
+          children: [
+            Icon(
+              Icons.notifications_active_outlined,
+              size: 54,
+              color: AppColors.red,
+            ),
+            SizedBox(height: 20),
+            Text(
+              '아직 조립 중인가요?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: AppColors.black,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '$_secondsLeft초 동안 응답이 없으면\n'
+          '자동으로 조립 완료 처리됩니다.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 18,
+            height: 1.5,
+            color: AppColors.gray,
+          ),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 76,
+            child: PrimaryButton(
+              text: '아직 조립 중이에요',
+              onPressed: _continueAssembly,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
