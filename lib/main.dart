@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import 'services/api_service.dart';
 import 'models/order_info.dart';
@@ -630,8 +630,17 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
 
   Timer? _assemblyTimer;
 
+  final AudioPlayer _alertPlayer = AudioPlayer();
+
   /// 확인 팝업이 중복으로 표시되는 것을 방지합니다.
   bool _isCheckDialogOpen = false;
+
+  @override
+  void dispose() {
+    _assemblyTimer?.cancel();
+    _alertPlayer.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -655,18 +664,17 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
 
     _isCheckDialogOpen = true;
 
-    /// 시스템 알림음을 재생합니다.
-    await SystemSound.play(SystemSoundType.alert);
+    await _alertPlayer.setReleaseMode(ReleaseMode.loop);
+
+    await _alertPlayer.play(
+      AssetSource('sounds/assembly_warning.mp3'),
+      volume: 0.7,
+    );
 
     if (!mounted) {
       return;
     }
 
-    /// true:
-    /// 사용자가 “아직 조립 중이에요” 버튼을 누름
-    ///
-    /// false:
-    /// 사용자가 응답하지 않아 자동 완료됨
     final bool? stillAssembling = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -675,6 +683,9 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
       },
     );
 
+    /// 팝업이 닫히면 경고음 정지
+    await _alertPlayer.stop();
+
     _isCheckDialogOpen = false;
 
     if (!mounted) {
@@ -682,10 +693,10 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
     }
 
     if (stillAssembling == true) {
-      /// 아직 조립 중이라면 다시 5분을 측정합니다.
+      /// 아직 조립 중이면 다시 타이머 시작
       _startAssemblyTimer();
     } else {
-      /// 정해진 시간 동안 응답이 없으면 자동 완료 처리합니다.
+      /// 아무 응답이 없으면 자동 완료
       widget.onComplete();
     }
   }
@@ -694,12 +705,6 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
     /// 직접 조립 완료 버튼을 눌렀을 때 타이머를 취소합니다.
     _assemblyTimer?.cancel();
     widget.onComplete();
-  }
-
-  @override
-  void dispose() {
-    _assemblyTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -743,14 +748,8 @@ class _AssemblyCheckDialogState extends State<AssemblyCheckDialog> {
     _secondsLeft = widget.autoCompleteSeconds;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _playAlertSound();
       _startCountdown();
     });
-  }
-
-  Future<void> _playAlertSound() async {
-    /// 사용자가 팝업을 인식할 수 있도록 알림음을 한 번 더 재생합니다.
-    await SystemSound.play(SystemSoundType.alert);
   }
 
   void _startCountdown() {
