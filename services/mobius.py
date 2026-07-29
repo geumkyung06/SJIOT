@@ -2,16 +2,22 @@ import os
 import json
 import requests
 from services.extensions import r
+import logging
+logger = logging.getLogger(__name__)
 
 MP_URL = os.getenv("MP_URL")  
 CB = os.getenv("CB", "Mobius")
 AE_RN = os.getenv("AE_RN")   
 ORIGIN = os.getenv("MOBIUS_ORIGIN")
 API_KEY = os.getenv("MOBIUS_API_KEY")
+LECTURE_ID = os.getenv("X-AUTH-CUSTOM-LECTURE")
+CREATOR_ID = os.getenv("X-AUTH-CUSTOM-CREATOR")
 
 def _headers(ty=None):
     h = {
         "X-API-KEY": API_KEY,
+        "X-AUTH-CUSTOM-LECTURE": LECTURE_ID,
+        "X-AUTH-CUSTOM-CREATOR": CREATOR_ID,
         "Accept": "application/json",
         "X-M2M-RI": os.urandom(4).hex(),
         "X-M2M-Origin": ORIGIN,
@@ -28,9 +34,9 @@ def create_cin(cnt_rn, con_dict):
     return res.status_code in (200, 201)
 
 def get_latest_con(cnt_rn):
-    """지정한 cnt의 최신 CIN(con)을 dict로 반환. 없으면 None."""
     url = f"{MP_URL}/{CB}/{AE_RN}/{cnt_rn}/la"
     res = requests.get(url, headers=_headers())
+    logger.info(f"[get_latest_con] url={url} status={res.status_code} body={res.text[:500]}")
     if res.status_code != 200:
         return None
     con = res.json()["m2m:cin"]["con"]
@@ -88,11 +94,10 @@ def mark_station_empty(station_id):
     return _update_station(station_id, "empty", None)
 
 # queue
-def send_station_cin(order_id, status, position_in_queue, station_id):
-    con = {
-        "order_id": order_id,
-        "status": status,
-        "position_in_queue": position_in_queue,
-        "station_id": station_id,
-    }
-    return create_cin("cnt_station", con)
+def send_table_cin(tables):
+    """
+    tables: {"1": {"status": "empty"|"in_progress"|"done", "order_id": str|None}, ...}
+    조립대 3개 전체 상태를 cnt_table 통짜로 업데이트 (AGV가 구독).
+    """
+    con = {"tables": tables}
+    return create_cin("cnt_table", con)
