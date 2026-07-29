@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from services.extensions import r
 from services.mobius import (send_order_cin, 
-                             send_station_cin
+                             send_table_cin
                              #mark_station_in_progress, 
                              # mark_station_empty
                             )
@@ -370,13 +370,13 @@ def post_order_list():
 
         order_saved = send_order_cin(order_id, board, switch, keycap, colors)  # cnt_order 저장
 
-        # cnt_order 저장 성공한 경우에만 cnt_station 갱신 (교차검증: 방금 만든 주문이
-        # 실제로 coss에 반영됐다는 게 확인된 뒤에만 station 스냅샷에 그 order_id를 실어 보냄)
+        # cnt_order 저장 성공한 경우에만 cnt_table 갱신 (교차검증: 방금 만든 주문이
+        # 실제로 coss에 반영됐다는 게 확인된 뒤에만 table 스냅샷에 그 order_id를 실어 보냄)
         if order_saved:
             tables = _build_station_snapshot()
             send_station_cin(tables)
         else:
-            logger.warning(f"[order] cnt_order 저장 실패 - cnt_station 갱신 스킵 (order_id={order_id})")
+            logger.warning(f"[order] cnt_order 저장 실패 - cnt_table 갱신 스킵 (order_id={order_id})")
 
         return jsonify({'order_status': order_status}), 200
 
