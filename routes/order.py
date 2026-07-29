@@ -13,6 +13,9 @@ from services.mobius import (send_order_cin,
                              # mark_station_empty
                             )
 
+import logging
+logger = logging.getLogger(__name__)
+
 bp = Blueprint('order', __name__)
 
 QUEUE_KEY = os.getenv("QUEUE_KEY", "order:queue")
@@ -113,6 +116,32 @@ def _complete_station(station_id):
     _try_assign_next()
 
     return order_id
+
+def _build_station_snapshot():
+    """
+    redis 기준 조립대 1~3 상태를 cnt_station 포맷으로 조합.
+    order_id가 가리키는 주문이 redis에 이미 없으면(TTL 만료 등) 방어적으로 empty 처리.
+    """
+    station_status = r.hgetall(STATION_KEY)  # {"1": "idle"/"busy", ...}
+    tables = {}
+
+    for sid in ("1", "2", "3"):
+        redis_status = station_status.get(sid, "idle")
+        order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
+
+        if order_id and not r.exists(f"order:{order_id}"):
+            order_id = None
+            redis_status = "idle"
+
+        if redis_status == "idle" or not order_id:
+            tables[sid] = {"status": "empty", "order_id": None}
+            continue
+
+        order_internal_status = r.hget(f"order:{order_id}", "status")  # assigned/in_progress/done
+        table_status = "done" if order_internal_status == "done" else "in_progress"
+        tables[sid] = {"status": table_status, "order_id": order_id}
+
+    return tables
 
 @bp.route('/station/<int:station_id>/start', methods=['POST'])
 def station_start(station_id):
@@ -282,9 +311,9 @@ def post_order_list():
     colors = data.get("colors")
 
     try:
-        color_list = os.getenv('COLOR_LIST').split(',')
+        color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,o,y,g,b,p,w
         board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
-        switch_list = os.getenv('SWITCH_LIST').split(',')
+        switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
 
         if board not in board_list:
             return jsonify({'error': '지원하지 않는 본판'}), 400
@@ -299,11 +328,14 @@ def post_order_list():
 
         _ensure_initial_state()
 
+        # 대기열 캡 체크: 이미 3개 대기 중이면 더 받지 않음
         if r.llen(QUEUE_KEY) >= MAX_QUEUE_LEN:
             return jsonify({'error': '대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요'}), 409
 
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
 
+        # 일단 무조건 큐에 넣고 상태 waiting으로 생성
+        r.rpush(QUEUE_KEY, order_id)
         r.hset(f"order:{order_id}", mapping={
             "board": board,
             "switch": switch,
@@ -312,10 +344,10 @@ def post_order_list():
             "status": "waiting",
             "created_at": datetime.now().isoformat()
         })
-        r.expire(f"order:{order_id}", 3600)
-        r.rpush(QUEUE_KEY, order_id)
+        r.expire(f"order:{order_id}", 3600)  # TTL 1시간
         _touch(QUEUE_KEY)
 
+        # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
         _try_assign_next()
 
         order_data = r.hgetall(f"order:{order_id}")
@@ -336,8 +368,15 @@ def post_order_list():
             "station_id": station_id
         }
 
-        send_order_cin(order_id, board, switch, keycap, colors)            # cnt_order
-        send_station_cin(order_id, status, position_in_queue, station_id)  # cnt_station → AGV용
+        order_saved = send_order_cin(order_id, board, switch, keycap, colors)  # cnt_order 저장
+
+        # cnt_order 저장 성공한 경우에만 cnt_station 갱신 (교차검증: 방금 만든 주문이
+        # 실제로 coss에 반영됐다는 게 확인된 뒤에만 station 스냅샷에 그 order_id를 실어 보냄)
+        if order_saved:
+            tables = _build_station_snapshot()
+            send_station_cin(tables)
+        else:
+            logger.warning(f"[order] cnt_order 저장 실패 - cnt_station 갱신 스킵 (order_id={order_id})")
 
         return jsonify({'order_status': order_status}), 200
 
