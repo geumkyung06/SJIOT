@@ -374,7 +374,7 @@ def post_order_list():
         # 실제로 coss에 반영됐다는 게 확인된 뒤에만 table 스냅샷에 그 order_id를 실어 보냄)
         if order_saved:
             tables = _build_station_snapshot()
-            send_station_cin(tables)
+            send_table_cin(tables)
         else:
             logger.warning(f"[order] cnt_order 저장 실패 - cnt_table 갱신 스킵 (order_id={order_id})")
 
