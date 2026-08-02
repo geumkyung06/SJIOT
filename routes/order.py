@@ -118,11 +118,7 @@ def _complete_station(station_id):
     return order_id
 
 def _build_station_snapshot():
-    """
-    redis 기준 조립대 1~3 상태를 cnt_station 포맷으로 조합.
-    order_id가 가리키는 주문이 redis에 이미 없으면(TTL 만료 등) 방어적으로 empty 처리.
-    """
-    station_status = r.hgetall(STATION_KEY)  # {"1": "idle"/"busy", ...}
+    station_status = r.hgetall(STATION_KEY)
     tables = {}
 
     for sid in ("1", "2", "3"):
@@ -131,22 +127,28 @@ def _build_station_snapshot():
 
         if order_id and not r.exists(f"order:{order_id}"):
             order_id = None
-            redis_status = "idle"
 
-        if redis_status == "idle" or not order_id:
+        if not order_id or redis_status == "idle":
             tables[sid] = {"status": "empty", "order_id": None}
             continue
 
-        order_internal_status = r.hget(f"order:{order_id}", "status")  # assigned/in_progress/done
-        table_status = "done" if order_internal_status == "done" else "in_progress"
+        internal = r.hget(f"order:{order_id}", "status")  # assigned / in_progress
+        table_status = "in_progress" if internal == "in_progress" else "waiting"
         tables[sid] = {"status": table_status, "order_id": order_id}
 
     return tables
 
+def _push_table_snapshot():
+    """redis 기준 스냅샷을 cnt_table로 전송. 실패해도 로직은 계속."""
+    ok = send_table_cin(_build_station_snapshot())
+    if not ok:
+        logger.warning("[table] cnt_table 스냅샷 전송 실패")
+    return ok
+
 @bp.route('/station/<int:station_id>/start', methods=['POST'])
 def station_start(station_id):
     """
-    조립대 시작
+    조립대 시작 (QR 인증)
     ---
     tags:
       - Station
@@ -155,33 +157,71 @@ def station_start(station_id):
         name: station_id
         type: integer
         required: true
-        example: 1
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            order_id:
+              type: string
+              example: "ord_a1b2c3d4"
     responses:
       200:
         description: 시작 처리 성공
         schema:
           type: object
           properties:
-            ok:
-              type: boolean
-              example: true
+            ok: {type: boolean}
+            order_id: {type: string}
+            board: {type: integer}
+            switch: {type: string}
+            keycap: {type: string}
+            colors: {type: array, items: {type: string}}
       400:
-        description: 이 조립대에 배정된 주문이 없음
+        description: 배정된 주문 없음
+      403:
+        description: order_id 불일치 (다른 사람 조립대)
+      409:
+        description: 이미 진행 중
+      410:
+        description: 주문 정보 만료(TTL)
     """
     station_id = str(station_id)
-    order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
-    if not order_id:
+    data = request.get_json(silent=True) or {}
+    req_order_id = data.get("order_id")
+
+    assigned_order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
+    if not assigned_order_id:
         return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
+    if req_order_id != assigned_order_id:
+        return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다'}), 403
+
+    order_data = r.hgetall(f"order:{assigned_order_id}")
+    if not order_data:
+        # station:current_order:{id}엔 TTL이 없어서, order: 해시만 만료되면
+        # 여기 남은 참조가 유령 배정이 될 수 있음 - 방어 처리
+        return jsonify({'error': '주문 정보가 만료되었습니다'}), 410
+
+    if order_data.get("status") == "in_progress":
+        return jsonify({'error': '이미 조립이 진행 중입니다'}), 409
 
     r.hset(STATION_KEY, station_id, "busy")
-    r.hset(f"order:{order_id}", "status", "in_progress")
+    r.hset(f"order:{assigned_order_id}", "status", "in_progress")
     r.set(f"{STATION_STARTED_PREFIX}{station_id}", datetime.now().isoformat())
-    _touch(STATION_KEY, f"order:{order_id}", f"{STATION_STARTED_PREFIX}{station_id}")
+    _touch(STATION_KEY, f"order:{assigned_order_id}",
+           f"{STATION_STARTED_PREFIX}{station_id}")
 
-    #mark_station_in_progress(station_id, order_id)  # coss 저장
+    _push_table_snapshot()
 
-    return jsonify({'ok': True}), 200
-
+    return jsonify({
+        'ok': True,
+        'order_id': assigned_order_id,
+        'board': int(order_data.get("board")),
+        'switch': order_data.get("switch"),
+        'keycap': order_data.get("keycap"),
+        'colors': order_data.get("colors", "").split(",")
+    }), 200
 
 @bp.route('/station/<int:station_id>/complete', methods=['POST'])
 def station_complete(station_id):
@@ -208,10 +248,23 @@ def station_complete(station_id):
       400:
         description: 이 조립대에 진행 중인 주문이 없음
     """
-    order_id = _complete_station(station_id)
-    if not order_id:
-        return jsonify({'error': '이 조립대에 진행 중인 주문이 없습니다'}), 400
-    return jsonify({'ok': True}), 200
+    station_id = str(station_id)
+    order_key = f"{STATION_ORDER_PREFIX}{station_id}"
+    order_id = r.get(order_key)
+
+    r.hset(STATION_KEY, station_id, "idle")
+    r.delete(order_key)
+    r.delete(f"{STATION_STARTED_PREFIX}{station_id}")
+    _touch(STATION_KEY)
+
+    if order_id:
+        r.hset(f"order:{order_id}", "status", "done")
+        _touch(f"order:{order_id}")
+
+    _try_assign_next()       # 대기열 있으면 이 조립대가 바로 다음 주문의 waiting이 됨
+    _push_table_snapshot()   # empty 또는 새 waiting이 반영된 스냅샷 전송
+
+    return order_id
 
 
 @bp.route('/station/free', methods=['GET'])
@@ -440,16 +493,10 @@ def mobius_callback():
 
     try:
         if source == "warehouse":
-            # 창고가 부품을 다 꺼냄 -> 조립 단계로 넘어감, 창고는 다음 주문 처리 가능
-            current_order_id = r.get(WAREHOUSE_ORDER_KEY)
             r.set(WAREHOUSE_KEY, "idle")
             r.delete(WAREHOUSE_ORDER_KEY)
-
-            if current_order_id:
-                r.hset(f"order:{current_order_id}", "status", "in_progress")
-                _touch(f"order:{current_order_id}")
-
-            _try_assign_next()  # 창고가 풀렸으니 다음 대기 주문 pick 시도
+            # 주문 상태는 assigned 유지 - in_progress는 QR start에서만 전이
+            _try_assign_next()
 
         elif source == "station":
             station_id = str(data.get("station_id"))
@@ -476,3 +523,14 @@ def mobius_callback():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@bp.route('/station/<int:station_id>/order', methods=['GET'])
+def get_station_order(station_id):
+    """
+    (임시) 조립대에 배정된 order_id 조회 - QR 생성 API 대체용
+    """
+    station_id = str(station_id)
+    order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
+    if not order_id:
+        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 404
+    return jsonify({'station_id': int(station_id), 'order_id': order_id}), 200
