@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:camera/camera.dart';
 
 import 'services/api_service.dart';
 import 'models/order_info.dart';
@@ -98,6 +99,12 @@ class _DeviceRootState extends State<DeviceRoot> {
     });
   }
 
+  Future<void> _openCameraTest() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const CameraTestScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget screen;
@@ -113,6 +120,7 @@ class _DeviceRootState extends State<DeviceRoot> {
           onQrSuccess: _processTestQr,
           onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
           onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
+          onCameraTest: _openCameraTest,
         );
         break;
 
@@ -388,6 +396,7 @@ class WaitingScreen extends StatelessWidget {
   final VoidCallback onQrSuccess;
   final VoidCallback onInvalidQr;
   final VoidCallback onWrongWorkstation;
+  final VoidCallback onCameraTest;
 
   const WaitingScreen({
     super.key,
@@ -395,6 +404,7 @@ class WaitingScreen extends StatelessWidget {
     required this.onQrSuccess,
     required this.onInvalidQr,
     required this.onWrongWorkstation,
+    required this.onCameraTest,
   });
 
   @override
@@ -441,10 +451,16 @@ class WaitingScreen extends StatelessWidget {
 
             const SizedBox(height: 42),
 
-            /// 실제 앱에서는 QR 스캐너가 이 부분을 대신합니다.
             SizedBox(
               width: 330,
-              child: PrimaryButton(text: 'QR 인증 테스트', onPressed: onQrSuccess),
+              child: PrimaryButton(text: '카메라 테스트', onPressed: onCameraTest),
+            ),
+
+            const SizedBox(height: 12),
+
+            SizedBox(
+              width: 330,
+              child: OutlineButton(text: 'QR 인증 테스트', onPressed: onQrSuccess),
             ),
 
             const SizedBox(height: 12),
@@ -1781,5 +1797,151 @@ class DemoMenu extends StatelessWidget {
         ];
       },
     );
+  }
+}
+
+class CameraTestScreen extends StatefulWidget {
+  const CameraTestScreen({super.key});
+
+  @override
+  State<CameraTestScreen> createState() => _CameraTestScreenState();
+}
+
+class _CameraTestScreenState extends State<CameraTestScreen> {
+  CameraController? _controller;
+
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final cameras = await availableCameras();
+
+      if (cameras.isEmpty) {
+        setState(() {
+          _errorMessage = '사용 가능한 카메라가 없습니다.';
+          _isLoading = false;
+        });
+
+        return;
+      }
+
+      // 기본적으로 후면 카메라 사용
+      final CameraDescription camera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      final controller = CameraController(
+        camera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await controller.initialize();
+
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _controller = controller;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = '카메라를 열 수 없습니다.\n$e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(child: _buildCamera()),
+
+            Positioned(
+              top: 20,
+              left: 20,
+              child: SafeArea(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('돌아가기'),
+                ),
+              ),
+            ),
+
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 40,
+              child: Text(
+                '카메라 테스트 화면',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCamera() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Text(
+            _errorMessage!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 18),
+          ),
+        ),
+      );
+    }
+
+    final controller = _controller;
+
+    if (controller == null || !controller.value.isInitialized) {
+      return const Center(
+        child: Text('카메라 초기화 실패', style: TextStyle(color: Colors.white)),
+      );
+    }
+
+    return Center(child: CameraPreview(controller));
   }
 }
