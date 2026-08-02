@@ -91,3 +91,12 @@ def mark_station_in_progress(station_id, order_id):
 
 def mark_station_empty(station_id):
     return _update_station(station_id, "empty", None)
+
+# queue
+def send_table_cin(tables):
+    """
+    tables: {"1": {"status": "empty"|"in_progress"|"done", "order_id": str|None}, ...}
+    조립대 3개 전체 상태를 cnt_table 통짜로 업데이트 (AGV가 구독).
+    """
+    con = {"tables": tables}
+    return create_cin("cnt_table", con)
