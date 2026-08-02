@@ -47,7 +47,7 @@ def create_app():
             "version": "1.0.0"
         },
         "basePath": "/",
-        "schemes": ["https"],
+        "schemes": ["http"],
     }
 
     swagger = Swagger(app, config=swagger_config, template=template)
