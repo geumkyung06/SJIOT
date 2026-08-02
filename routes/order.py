@@ -98,23 +98,22 @@ def check_station_timeouts():
             _complete_station(station_id)
 
 def _complete_station(station_id):
-    """조립대 완료 처리 공통 로직. 버튼/타임아웃 둘 다 여기로 모임."""
     station_id = str(station_id)
     order_key = f"{STATION_ORDER_PREFIX}{station_id}"
     order_id = r.get(order_key)
+
+    if not order_id:
+        return None  # 여기서 조기 반환, 아무 것도 건드리지 않음
 
     r.hset(STATION_KEY, station_id, "idle")
     r.delete(order_key)
     r.delete(f"{STATION_STARTED_PREFIX}{station_id}")
     _touch(STATION_KEY)
 
-    if order_id:
-        r.hset(f"order:{order_id}", "status", "done")
-        _touch(f"order:{order_id}")
+    r.hset(f"order:{order_id}", "status", "done")
+    _touch(f"order:{order_id}")
 
-    #mark_station_empty(station_id)  # coss 저장
     _try_assign_next()
-
     return order_id
 
 def _build_station_snapshot():
@@ -251,6 +250,9 @@ def station_complete(station_id):
     station_id = str(station_id)
     order_key = f"{STATION_ORDER_PREFIX}{station_id}"
     order_id = r.get(order_key)
+
+    if not order_id:
+        return jsonify({'error': '이 조립대에 진행 중인 주문이 없습니다'}), 400
 
     r.hset(STATION_KEY, station_id, "idle")
     r.delete(order_key)
