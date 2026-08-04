@@ -51,7 +51,7 @@ def _ensure_initial_state():
 
 def _get_free_station():
     station_status = r.hgetall(STATION_KEY)
-    return next((sid for sid, s in station_status.items() if s == "idle"), None)
+    return next((sid for sid in ("1", "2", "3") if station_status.get(sid, "idle") == "idle"), None)
 
 
 def _try_assign_next():
