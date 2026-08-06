@@ -101,73 +101,70 @@ class _DeviceRootState extends State<DeviceRoot> {
   }
 
   Future<void> _openQrScanner() async {
-  final String? qrValue = await Navigator.of(context).push<String>(
-    MaterialPageRoute(
-      builder: (context) => const QrScannerScreen(),
-    ),
-  );
-
-  if (qrValue == null) {
-    return;
-  }
-
-  try {
-
-    // QR에서 주문번호 가져오기
-    final String scannedOrderId = qrValue.trim();
-    debugPrint('스캔된 order_id: $scannedOrderId');
-
-    if (scannedOrderId.isEmpty) {
-      _moveTo(DeviceStep.invalidQr);
-      return;
-    }
-
-    // 현재 조립대 번호
-    // "01" → 1
-    // "02" → 2
-    // "03" → 3
-    final int stationId = int.parse(_workstationNumber!);
-
-    // 서버에 조립 시작 요청
-    final result = await _api.startStation(
-      stationId: stationId,
-      orderId: scannedOrderId,
+    final String? qrValue = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (context) => const QrScannerScreen()),
     );
 
-    // 서버가 반환한 주문번호 확인
-    final String returnedOrderId = result['order_id']?.toString() ?? '';
-
-    if (returnedOrderId != scannedOrderId) {
-      _moveTo(DeviceStep.invalidQr);
+    if (qrValue == null) {
       return;
     }
 
-    // 주문 정보 저장
-    final String mbti = result['keycap']?.toString() ?? '';
+    try {
+      // QR에서 주문번호 가져오기
+      final String scannedOrderId = qrValue.trim();
+      debugPrint('스캔된 order_id: $scannedOrderId');
 
-    final List<String> colors =
-        (result['colors'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList() ??
-        [];
+      if (scannedOrderId.isEmpty) {
+        _moveTo(DeviceStep.invalidQr);
+        return;
+      }
 
-    setState(() {
-      _order = OrderInfo(
-        orderId: returnedOrderId,
-        mbti: mbti,
-        colors: colors,
-        assignedWorkstation: stationId,
+      // 현재 조립대 번호
+      // "01" → 1
+      // "02" → 2
+      // "03" → 3
+      final int stationId = int.parse(_workstationNumber!);
+
+      // 서버에 조립 시작 요청
+      final result = await _api.startStation(
+        stationId: stationId,
+        orderId: scannedOrderId,
       );
 
-      // 인증 완료 화면을 거치지 않고 바로 조립 시작
-      _currentStep = DeviceStep.assembling;
-    });
-  } catch (e) {
-    debugPrint('QR 인증 실패: $e');
+      // 서버가 반환한 주문번호 확인
+      final String returnedOrderId = result['order_id']?.toString() ?? '';
 
-    _moveTo(DeviceStep.invalidQr);
+      if (returnedOrderId != scannedOrderId) {
+        _moveTo(DeviceStep.invalidQr);
+        return;
+      }
+
+      // 주문 정보 저장
+      final String mbti = result['keycap']?.toString() ?? '';
+
+      final List<String> colors =
+          (result['colors'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+
+      setState(() {
+        _order = OrderInfo(
+          orderId: returnedOrderId,
+          mbti: mbti,
+          colors: colors,
+          assignedWorkstation: stationId,
+        );
+
+        // 인증 완료 화면을 거치지 않고 바로 조립 시작
+        _currentStep = DeviceStep.assembling;
+      });
+    } catch (e) {
+      debugPrint('QR 인증 실패: $e');
+
+      _moveTo(DeviceStep.invalidQr);
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -200,7 +197,7 @@ class _DeviceRootState extends State<DeviceRoot> {
         screen = AssemblingScreen(
           mbti: _order.mbti,
           colors: _order.colors,
-          onComplete: () => _moveTo(DeviceStep.completed),
+          onComplete: _finishAssembly,
         );
         break;
 
@@ -263,6 +260,43 @@ class _DeviceRootState extends State<DeviceRoot> {
         ),
       ),
     );
+  }
+
+  Future<void> _finishAssembly() async {
+    try {
+      if (_workstationNumber == null) {
+        throw Exception('WORKSTATION_NOT_SELECTED');
+      }
+
+      // "01" → 1
+      // "02" → 2
+      // "03" → 3
+      final int stationId = int.parse(_workstationNumber!);
+
+      debugPrint('조립 완료 처리 시작');
+      debugPrint('station_id: $stationId');
+      debugPrint('order_id: ${_order.orderId}');
+
+      final result = await _api.completeStation(stationId: stationId);
+
+      debugPrint('조립 완료 API 결과: $result');
+
+      if (result['ok'] == true) {
+        if (!mounted) return;
+
+        debugPrint('조립 완료 처리 성공');
+
+        _moveTo(DeviceStep.completed);
+      }
+    } catch (e) {
+      debugPrint('조립 완료 API 실패: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('조립 완료 처리에 실패했습니다.\n$e')));
+    }
   }
 
   void _showStaffDialog() {
