@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:animations/animations.dart';
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
@@ -18,6 +19,11 @@ import 'screens/complete_screen.dart';
 void main() {
   runApp(const ClickyKeyringApp());
 }
+
+// 팀장 확정 전 임시 조치: 4구 고정으로 보드 선택 화면을 건너뜁니다.
+// board_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
+// true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
+const bool kBoardSelectEnabled = false;
 
 enum AppStep {
   home,
@@ -57,6 +63,10 @@ class _AppRootState extends State<AppRoot> {
   final ApiService _api = ApiService();
 
   AppStep _step = AppStep.home;
+
+  // 화면 전환 방향. 1 = 앞으로(오른쪽에서 슬라이드 인),
+  // -1 = 뒤로가기(왼쪽에서 슬라이드 인). 피그마의 `d`(direction) 값과 대응됩니다.
+  int _direction = 1;
 
   // ---------------- MBTI 검사 (4지선다 모드) ----------------
   static const List<Map<String, dynamic>> _mbtiQuestions = [
@@ -118,17 +128,6 @@ class _AppRootState extends State<AppRoot> {
   int _boardCount = 4;
   String? _axis; // 'blue' | 'brown' | 'red' | 'black'
 
-  // ---------------- 품절 재고 ----------------
-  Set<String> _soldOutBoards = {};
-  Set<String> _soldOutKeycaps = {};
-  Set<String> _soldOutSwitches = {};
-
-  bool _stockLoading = false;
-  String? _stockError;
-
-  // 키캡 색상 선택 화면 안내 문구
-  String? _keycapMessage;
-
   // ---------------- 키캡 색상 ----------------
   late List<String> _letters;
   late List<String?> _colorCodes; // 슬롯별 색상 코드. null = 아직 색 없음(빈 칸)
@@ -159,8 +158,7 @@ class _AppRootState extends State<AppRoot> {
   void initState() {
     super.initState();
     _resetLetters();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _focusNode.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
   }
 
   void _resetLetters() {
@@ -179,179 +177,6 @@ class _AppRootState extends State<AppRoot> {
     _manualAnswers = List<String?>.filled(4, null);
   }
 
-  //------------ 재고 조회 함수 -------------
-  Future<bool> _loadSoldOutStock() async {
-    if (_stockLoading) return false;
-
-    setState(() {
-      _stockLoading = true;
-      _stockError = null;
-    });
-
-    try {
-      print('>>> 재고 조회 시작'); // 테스트 시 터미널 확인용
-      final stock = await _api.getSoldOutStock();
-      print('>>> 재고 조회 성공: $stock'); // 테스트 시 터미널 확인용
-
-      if (!mounted) return false;
-
-      setState(() {
-        _soldOutBoards = Set<String>.from(stock['board'] ?? const <String>[]);
-
-        _soldOutKeycaps = Set<String>.from(stock['keycap'] ?? const <String>[]);
-
-        _soldOutSwitches =
-            Set<String>.from(stock['switch'] ?? const <String>[]);
-
-        _stockLoading = false;
-      });
-
-      return true;
-    } catch (e) {
-      print('>>> 재고 조회 실패: $e'); // 테스트 시 터미널 확인용
-
-      if (!mounted) return false;
-
-      setState(() {
-        _stockLoading = false;
-        _stockError = e.toString();
-      });
-
-      return false;
-    }
-  }
-
-  // 재고를 확인 후 화면 변경
-  Future<bool> _moveToStep(
-    AppStep nextStep, {
-    VoidCallback? beforeMove,
-  }) async {
-    final success = await _loadSoldOutStock();
-
-    if (!mounted || !success) {
-      // 재고 조회 실패 시 현재 화면 유지
-      return false;
-    }
-
-    setState(() {
-      beforeMove?.call();
-      _step = nextStep;
-    });
-
-    // 화면 이동 후 키보드 포커스 다시 요청
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode.requestFocus();
-      }
-    });
-
-    return true;
-  }
-
-  // 주문 시작 전 품절 재고 불러오고,
-  // 조회 성공 시에만 MBTI 선택 화면으로 넘어가게 하는 함수
-  Future<void> _startOrder() async {
-    final success = await _loadSoldOutStock();
-
-    if (!mounted) return;
-
-    if (!success) {
-      return;
-    }
-
-    setState(() {
-      _step = AppStep.mbtiChoice;
-    });
-  }
-
-  // ------------- MBTI 키캡 글자 별 전체 품절 판단 함수 -----------
-  bool _isLetterSoldOut(String letter) {
-    const colors = ['r', 'g', 'b', 'y'];
-
-    return colors.every(
-      (color) => _soldOutKeycaps.contains('${letter}_$color'),
-    );
-  }
-
-  // 특정 글자와 색상의 품절 여부
-  bool _isKeycapColorSoldOut(String letter, String colorCode) {
-    return _soldOutKeycaps.contains('${letter}_$colorCode');
-  }
-
-  // 현재 커서에 있는 글자의 품절 색상 집합
-  Set<String> _soldOutColorsAtCursor() {
-    if (_letters.isEmpty || _cursor < 0 || _cursor >= _letters.length) {
-      return {};
-    }
-
-    final letter = _letters[_cursor];
-
-    return _pastelColorCycle
-        .where((color) => _isKeycapColorSoldOut(letter, color))
-        .toSet();
-  }
-
-  // 현재 글자의 모든 색상이 품절인지 확인하는 함수
-  bool _areAllColorsSoldOutAtCursor() {
-    return _soldOutColorsAtCursor().length == _pastelColorCycle.length;
-  }
-
-  // 현재 선택된 키캡 색상 중 새로 품절된 항목을 해제
-// 반환값: 처음 발견된 품절 키캡의 인덱스
-  int? _removeInvalidColorSelections() {
-    int? firstInvalidIndex;
-
-    for (int i = 0; i < _colorCodes.length; i++) {
-      final selectedColor = _colorCodes[i];
-
-      // 아직 색상을 선택하지 않은 칸은 검사하지 않음
-      if (selectedColor == null) continue;
-
-      final letter = _letters[i];
-      final stockCode = '${letter}_$selectedColor';
-
-      if (_soldOutKeycaps.contains(stockCode)) {
-        _colorCodes[i] = null;
-        firstInvalidIndex ??= i;
-      }
-    }
-
-    return firstInvalidIndex;
-  }
-
-  Future<bool> _refreshKeycapStockForCursor() async {
-    final success = await _loadSoldOutStock();
-
-    if (!mounted || !success) {
-      return false;
-    }
-
-    setState(() {
-      // 선택한 색상이 재고 조회 중 품절됐다면 해제
-      final invalidIndex = _removeInvalidColorSelections();
-
-      if (invalidIndex != null) {
-        _cursor = invalidIndex;
-        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-        return;
-      }
-
-      // 현재 글자의 모든 색상이 품절된 경우
-      if (_areAllColorsSoldOutAtCursor()) {
-        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-      } else {
-        _keycapMessage = null;
-      }
-    });
-
-    return true;
-  }
-
-  // ------------- 축 품절 판단 함수 -----------
-  bool _isAxisSoldOut(String axis) {
-    return _soldOutSwitches.contains(axis);
-  }
-
   // 색이 아직 없는 슬롯은 빈 칸(회색)으로 표시
   Color _colorAt(int index) {
     final code = _colorCodes[index];
@@ -363,6 +188,7 @@ class _AppRootState extends State<AppRoot> {
 
   void _goBack() {
     setState(() {
+      _direction = -1; // 뒤로가기는 항상 -1
       switch (_step) {
         case AppStep.mbtiChoice:
           _step = AppStep.home;
@@ -382,8 +208,13 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.mbtiResult;
           break;
         case AppStep.axisSelect:
-          _boardShape = null;
-          _step = AppStep.boardSelect;
+          // 보드 선택 비활성화 시, axisSelect의 이전 화면은 mbtiResult
+          if (kBoardSelectEnabled) {
+            _boardShape = null;
+            _step = AppStep.boardSelect;
+          } else {
+            _step = AppStep.mbtiResult;
+          }
           break;
         case AppStep.keycapFill:
           _axis = null;
@@ -399,41 +230,18 @@ class _AppRootState extends State<AppRoot> {
   // 물리적 키 위치 기준 매핑 (logicalKey/keyLabel은 한/영 입력 소스에 따라 값이
   // 바뀌어서 한글 입력 상태일 때 글자 입력이 먹통이 될 수 있음 -> physicalKey로 고정)
   static final Map<PhysicalKeyboardKey, String> _keyCharMap = {
-    PhysicalKeyboardKey.keyA: 'A',
-    PhysicalKeyboardKey.keyB: 'B',
-    PhysicalKeyboardKey.keyC: 'C',
-    PhysicalKeyboardKey.keyD: 'D',
-    PhysicalKeyboardKey.keyE: 'E',
-    PhysicalKeyboardKey.keyF: 'F',
-    PhysicalKeyboardKey.keyG: 'G',
-    PhysicalKeyboardKey.keyH: 'H',
-    PhysicalKeyboardKey.keyI: 'I',
-    PhysicalKeyboardKey.keyJ: 'J',
-    PhysicalKeyboardKey.keyK: 'K',
-    PhysicalKeyboardKey.keyL: 'L',
-    PhysicalKeyboardKey.keyM: 'M',
-    PhysicalKeyboardKey.keyN: 'N',
-    PhysicalKeyboardKey.keyO: 'O',
-    PhysicalKeyboardKey.keyP: 'P',
-    PhysicalKeyboardKey.keyQ: 'Q',
-    PhysicalKeyboardKey.keyR: 'R',
-    PhysicalKeyboardKey.keyS: 'S',
-    PhysicalKeyboardKey.keyT: 'T',
-    PhysicalKeyboardKey.keyU: 'U',
-    PhysicalKeyboardKey.keyV: 'V',
-    PhysicalKeyboardKey.keyW: 'W',
-    PhysicalKeyboardKey.keyX: 'X',
-    PhysicalKeyboardKey.keyY: 'Y',
-    PhysicalKeyboardKey.keyZ: 'Z',
-    PhysicalKeyboardKey.digit0: '0',
-    PhysicalKeyboardKey.digit1: '1',
-    PhysicalKeyboardKey.digit2: '2',
-    PhysicalKeyboardKey.digit3: '3',
-    PhysicalKeyboardKey.digit4: '4',
-    PhysicalKeyboardKey.digit5: '5',
-    PhysicalKeyboardKey.digit6: '6',
-    PhysicalKeyboardKey.digit7: '7',
-    PhysicalKeyboardKey.digit8: '8',
+    PhysicalKeyboardKey.keyA: 'A', PhysicalKeyboardKey.keyB: 'B', PhysicalKeyboardKey.keyC: 'C',
+    PhysicalKeyboardKey.keyD: 'D', PhysicalKeyboardKey.keyE: 'E', PhysicalKeyboardKey.keyF: 'F',
+    PhysicalKeyboardKey.keyG: 'G', PhysicalKeyboardKey.keyH: 'H', PhysicalKeyboardKey.keyI: 'I',
+    PhysicalKeyboardKey.keyJ: 'J', PhysicalKeyboardKey.keyK: 'K', PhysicalKeyboardKey.keyL: 'L',
+    PhysicalKeyboardKey.keyM: 'M', PhysicalKeyboardKey.keyN: 'N', PhysicalKeyboardKey.keyO: 'O',
+    PhysicalKeyboardKey.keyP: 'P', PhysicalKeyboardKey.keyQ: 'Q', PhysicalKeyboardKey.keyR: 'R',
+    PhysicalKeyboardKey.keyS: 'S', PhysicalKeyboardKey.keyT: 'T', PhysicalKeyboardKey.keyU: 'U',
+    PhysicalKeyboardKey.keyV: 'V', PhysicalKeyboardKey.keyW: 'W', PhysicalKeyboardKey.keyX: 'X',
+    PhysicalKeyboardKey.keyY: 'Y', PhysicalKeyboardKey.keyZ: 'Z',
+    PhysicalKeyboardKey.digit0: '0', PhysicalKeyboardKey.digit1: '1', PhysicalKeyboardKey.digit2: '2',
+    PhysicalKeyboardKey.digit3: '3', PhysicalKeyboardKey.digit4: '4', PhysicalKeyboardKey.digit5: '5',
+    PhysicalKeyboardKey.digit6: '6', PhysicalKeyboardKey.digit7: '7', PhysicalKeyboardKey.digit8: '8',
     PhysicalKeyboardKey.digit9: '9',
   };
 
@@ -445,7 +253,7 @@ class _AppRootState extends State<AppRoot> {
     PhysicalKeyboardKey.digit4: 4,
   };
 
-  void _handleKey(KeyEvent event) async {
+  void _handleKey(KeyEvent event) {
     if (event is! KeyDownEvent) return;
 
     const backableSteps = {
@@ -458,51 +266,56 @@ class _AppRootState extends State<AppRoot> {
       AppStep.keycapFill,
     };
 
-    if (event.physicalKey == PhysicalKeyboardKey.escape &&
-        backableSteps.contains(_step)) {
+    if (event.physicalKey == PhysicalKeyboardKey.escape && backableSteps.contains(_step)) {
       _goBack();
       return;
     }
+
+    _direction = 1; // 여기서부터 아래는 전부 "앞으로" 이동이므로 미리 표시
 
     final isEnter = event.physicalKey == PhysicalKeyboardKey.enter ||
         event.physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     switch (_step) {
-      // case AppStep.home:
-      //   if (isEnter) {
-      //     setState(() => _step = AppStep.mbtiChoice);
-      //   }
-      //   break;
       case AppStep.home:
-        if (isEnter && !_stockLoading) {
-          _startOrder();
+        if (isEnter) {
+          setState(() => _step = AppStep.mbtiChoice);
         }
         break;
+
       case AppStep.mbtiChoice:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          await _moveToStep(
-            AppStep.mbtiQuiz,
-            beforeMove: _resetQuiz,
-          );
+          setState(() {
+            _resetQuiz();
+            _step = AppStep.mbtiQuiz;
+          });
         } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          await _moveToStep(
-            AppStep.mbtiManual,
-            beforeMove: _resetManual,
-          );
+          setState(() {
+            _resetManual();
+            _step = AppStep.mbtiManual;
+          });
         }
         break;
 
       case AppStep.mbtiQuiz:
-        await _handleQuizKey(event);
+        _handleQuizKey(event);
         break;
 
       case AppStep.mbtiManual:
-        await _handleManualKey(event);
+        _handleManualKey(event);
         break;
 
       case AppStep.mbtiResult:
         if (isEnter) {
-          setState(() => _step = AppStep.boardSelect);
+          setState(() {
+            if (kBoardSelectEnabled) {
+              _step = AppStep.boardSelect;
+            } else {
+              _boardShape = '1x4';
+              _boardCount = 4;
+              _step = AppStep.axisSelect;
+            }
+          });
         }
         break;
 
@@ -523,11 +336,11 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        await _handleAxisKey(event);
+        _handleAxisKey(event);
         break;
 
       case AppStep.keycapFill:
-        await _handleKeycapFillKey(event);
+        _handleKeycapFillKey(event);
         break;
 
       case AppStep.complete:
@@ -535,65 +348,29 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
-  Future<void> _handleQuizKey(KeyEvent event) async {
+  void _handleQuizKey(KeyEvent event) {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
-
     final options = _mbtiQuestions[_quizIndex]['options'] as List;
     final letter = options[digit - 1]['letter'] as String;
-
-    // 선택한 E/I/N/S/F/T/J/P의 모든 색상이 품절이면 입력 무시
-    if (_isLetterSoldOut(letter)) return;
-
-    if (_quizIndex < _mbtiQuestions.length - 1) {
-      // 다음 질문으로 넘어가기 전 재고 재조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      // 조회 중 재고가 바뀌었을 수 있으므로 다시 검사
-      if (_isLetterSoldOut(letter)) return;
-
-      setState(() {
-        _quizAnswers[_quizIndex] = letter;
+    setState(() {
+      _quizAnswers[_quizIndex] = letter;
+      if (_quizIndex < _mbtiQuestions.length - 1) {
         _quizIndex++;
-      });
-    } else {
-      // 결과 화면으로 넘어가기 전 재고 재조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      if (_isLetterSoldOut(letter)) return;
-
-      setState(() {
-        _quizAnswers[_quizIndex] = letter;
+      } else {
         _mbtiResult = _quizAnswers.map((e) => e!).join();
         _step = AppStep.mbtiResult;
-      });
-    }
+      }
+    });
   }
 
-  Future<void> _handleManualKey(KeyEvent event) async {
+  void _handleManualKey(KeyEvent event) {
     final letter = _keyCharMap[event.physicalKey];
     if (letter == null) return;
-
     final pair = _manualPairs[_manualIndex];
-
-    // 현재 단계의 글자가 아니면 무시
-    if (letter != pair[0] && letter != pair[1]) return;
-
-    // 화면 전환 직전에 최신 재고 확인
-    final success = await _loadSoldOutStock();
-
-    if (!mounted || !success) return;
-
-    // 최신 재고 기준으로 다시 품절 확인
-    if (_isLetterSoldOut(letter)) return;
-
+    if (letter != pair[0] && letter != pair[1]) return; // 유효하지 않은 키는 무시
     setState(() {
       _manualAnswers[_manualIndex] = letter;
-
       if (_manualIndex < _manualPairs.length - 1) {
         _manualIndex++;
       } else {
@@ -603,266 +380,78 @@ class _AppRootState extends State<AppRoot> {
     });
   }
 
-  Future<void> _handleAxisKey(KeyEvent event) async {
+  void _handleAxisKey(KeyEvent event) {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
-
     const axes = ['blue', 'brown', 'red', 'black'];
-    final selectedAxis = axes[digit - 1];
-
-    // 화면 이동 직전에 최신 재고 조회
-    final success = await _loadSoldOutStock();
-
-    if (!mounted || !success) return;
-
-    // 최신 재고에서 품절된 축이면 입력 무시
-    if (_isAxisSoldOut(selectedAxis)) return;
-
     setState(() {
-      _axis = selectedAxis;
-
+      _axis = axes[digit - 1];
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;
-      _keycapMessage = null;
-
       _step = AppStep.keycapFill;
     });
-    await _refreshKeycapStockForCursor();
   }
 
-  Future<void> _handleKeycapFillKey(KeyEvent event) async {
-    // 재고 조회 중에는 중복 입력 방지
-    if (_stockLoading) return;
-
+  void _handleKeycapFillKey(KeyEvent event) {
     final physicalKey = event.physicalKey;
+
     final digit = _digitMap[physicalKey];
-
-    // --------------------------------------------------
-    // 1~4 숫자키: 키캡 색상 선택 또는 변경
-    // --------------------------------------------------
     if (digit != null) {
-      final selectedColor = _pastelColorCycle[digit - 1];
-
-      // 선택 직전 최신 재고 조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      final selectedLetter = _letters[_cursor];
-      final stockCode = '${selectedLetter}_$selectedColor';
-
       setState(() {
-        // 기존 선택 중 새로 품절된 색상이 있으면 해제
-        final invalidIndex = _removeInvalidColorSelections();
-
-        if (invalidIndex != null) {
-          _cursor = invalidIndex;
-          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-          return;
-        }
-
-        // 현재 글자의 모든 색상이 품절
-        if (_isLetterSoldOut(selectedLetter)) {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-          return;
-        }
-
-        // 사용자가 누른 색상이 품절이면 기존 선택 유지
-        // 커서도 다음 칸으로 이동하지 않음
-        if (_soldOutKeycaps.contains(stockCode)) {
-          _keycapMessage = '$selectedLetter 키캡의 해당 색상은 재고가 없습니다.';
-          return;
-        }
-
-        // 선택 가능한 색상이므로 저장
-        _colorCodes[_cursor] = selectedColor;
-        _keycapMessage = null;
-
-        // 마지막 칸이 아닐 때만 다음 칸으로 자동 이동
-        if (_cursor < _boardCount - 1) {
-          _cursor++;
-        }
-
-        // 자동 이동한 글자의 모든 색상이 품절인지 검사
-        if (_isLetterSoldOut(_letters[_cursor])) {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-        }
+        _colorCodes[_cursor] = _pastelColorCycle[digit - 1];
+        if (_cursor < _boardCount - 1) _cursor++;
       });
-
       return;
     }
-
-    // --------------------------------------------------
-    // 화살표: 커서 이동 후 해당 글자의 재고를 다시 조회
-    // --------------------------------------------------
-    int? nextCursor;
 
     if (physicalKey == PhysicalKeyboardKey.arrowLeft) {
-      nextCursor = (_cursor - 1).clamp(0, _boardCount - 1);
+      setState(() => _cursor = (_cursor - 1).clamp(0, _boardCount - 1));
     } else if (physicalKey == PhysicalKeyboardKey.arrowRight) {
-      nextCursor = (_cursor + 1).clamp(0, _boardCount - 1);
-    } else if (physicalKey == PhysicalKeyboardKey.arrowUp &&
-        _boardShape == '2x2') {
-      nextCursor = (_cursor - 2).clamp(0, _boardCount - 1);
-    } else if (physicalKey == PhysicalKeyboardKey.arrowDown &&
-        _boardShape == '2x2') {
-      nextCursor = (_cursor + 2).clamp(0, _boardCount - 1);
-    }
-
-    if (nextCursor != null) {
-      // 우선 커서를 이동
-      setState(() {
-        _cursor = nextCursor!;
-        _keycapMessage = null;
-      });
-
-      // 이동한 키캡 글자의 최신 재고 확인
-      await _refreshKeycapStockForCursor();
-      return;
-    }
-
-    // --------------------------------------------------
-    // Backspace: 현재 칸의 색상 삭제
-    // --------------------------------------------------
-    if (physicalKey == PhysicalKeyboardKey.backspace) {
-      setState(() {
-        _colorCodes[_cursor] = null;
-        _keycapMessage = '현재 키캡의 색상 선택을 삭제했습니다.';
-      });
-      return;
-    }
-
-    // --------------------------------------------------
-    // ENTER: 전체 선택 여부 및 주문 직전 재고 검사
-    // --------------------------------------------------
-    final isEnter = physicalKey == PhysicalKeyboardKey.enter ||
-        physicalKey == PhysicalKeyboardKey.numpadEnter;
-
-    if (isEnter) {
-      // 색상을 선택하지 않은 첫 번째 칸 찾기
-      final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
-
-      if (firstEmptyIndex != -1) {
-        setState(() {
-          _cursor = firstEmptyIndex;
-          _keycapMessage = '색을 모두 선택하세요.';
-        });
-
-        await _refreshKeycapStockForCursor();
-        return;
+      setState(() => _cursor = (_cursor + 1).clamp(0, _boardCount - 1));
+    } else if (physicalKey == PhysicalKeyboardKey.arrowUp && _boardShape == '2x2') {
+      setState(() => _cursor = (_cursor - 2).clamp(0, _boardCount - 1));
+    } else if (physicalKey == PhysicalKeyboardKey.arrowDown && _boardShape == '2x2') {
+      setState(() => _cursor = (_cursor + 2).clamp(0, _boardCount - 1));
+    } else if (physicalKey == PhysicalKeyboardKey.backspace) {
+      setState(() => _colorCodes[_cursor] = null);
+    } else if (physicalKey == PhysicalKeyboardKey.enter ||
+        physicalKey == PhysicalKeyboardKey.numpadEnter) {
+      if (_colorCodes.every((c) => c != null)) {
+        _submitOrder();
       }
-
-      // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      int? firstInvalidIndex;
-
-      setState(() {
-        firstInvalidIndex = _removeInvalidColorSelections();
-
-        if (firstInvalidIndex != null) {
-          _cursor = firstInvalidIndex!;
-          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-        }
-      });
-
-      // 품절된 선택이 하나라도 있었다면 주문하지 않음
-      if (firstInvalidIndex != null) {
-        return;
-      }
-
-      // 현재 커서의 글자가 모든 색상 품절인지 마지막으로 검사
-      if (_isLetterSoldOut(_letters[_cursor])) {
-        setState(() {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-        });
-        return;
-      }
-
-      await _submitOrder();
     }
   }
 
   Future<void> _submitOrder() async {
-    // 주문 생성 직전 마지막 재고 확인
-    final success = await _loadSoldOutStock();
-
-    if (!mounted || !success) return;
-
-    int? invalidIndex;
-
-    setState(() {
-      invalidIndex = _removeInvalidColorSelections();
-
-      if (invalidIndex != null) {
-        _cursor = invalidIndex!;
-        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-      }
-    });
-
-    // 재고가 변경된 키캡이 있으면 주문 생성 금지
-    if (invalidIndex != null) {
-      return;
-    }
-
-    // 선택하지 않은 색상이 남아 있으면 주문 생성 금지
-    final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
-
-    if (firstEmptyIndex != -1) {
-      setState(() {
-        _cursor = firstEmptyIndex;
-        _keycapMessage = '색을 모두 선택하세요.';
-      });
-      return;
-    }
-
-    // 모든 검사를 통과한 뒤에만 완료 화면으로 이동
     setState(() {
       _step = AppStep.complete;
       _orderStatus = null;
-      _keycapMessage = null;
     });
-
     _startAutoRestartTimer();
-
     try {
       final colors = List.generate(_boardCount, _colorCode);
-
       final result = await _api.createOrder(
         board: _boardCount,
         keycap: _letters.join(),
         colors: colors,
         axis: _axis,
       );
-
       if (!mounted) return;
-
       setState(() {
         _orderId = result['order_id'] as String?;
         _orderStatus = result;
       });
-
       _pollStatus();
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _orderStatus = {
-          'status': 'error',
-          'error': e.toString(),
-        };
-      });
+      setState(() => _orderStatus = {'status': 'error', 'error': e.toString()});
     }
   }
 
   void _startAutoRestartTimer() {
     _autoRestartTimer?.cancel();
     _autoRestartTimer = Timer(_stuckTimeout, () {
-      // 콜백(/mobius/callback)이 아직 실제로 안 들어와서 상태가 'done'까지
-      // 못 간 경우 -> 무한정 '제작 중...'에 멈춰있지 않도록 홈으로 복귀
       if (mounted && _orderStatus?['status'] != 'done') {
         _restart();
       }
@@ -893,11 +482,11 @@ class _AppRootState extends State<AppRoot> {
   void _restart() {
     _autoRestartTimer?.cancel();
     setState(() {
+      _direction = -1;
       _step = AppStep.home;
       _boardShape = null;
       _axis = null;
       _mbtiResult = null;
-      _keycapMessage = null;
       _resetQuiz();
       _resetManual();
       _orderId = null;
@@ -931,21 +520,17 @@ class _AppRootState extends State<AppRoot> {
           questionIndex: _quizIndex,
           totalQuestions: _mbtiQuestions.length,
           question: q['question'] as String,
-          optionTexts:
-              (q['options'] as List).map((o) => o['text'] as String).toList(),
+          optionTexts: (q['options'] as List).map((o) => o['text'] as String).toList(),
         );
         break;
 
       case AppStep.mbtiManual:
         final pair = _manualPairs[_manualIndex];
-
         screen = MbtiManualScreen(
           questionIndex: _manualIndex,
           totalQuestions: _manualPairs.length,
           letterA: pair[0],
           letterB: pair[1],
-          letterASoldOut: _isLetterSoldOut(pair[0]),
-          letterBSoldOut: _isLetterSoldOut(pair[1]),
         );
         break;
 
@@ -958,9 +543,7 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        screen = AxisSelectScreen(
-          soldOutAxes: _soldOutSwitches,
-        );
+        screen = const AxisSelectScreen();
         break;
 
       case AppStep.keycapFill:
@@ -969,15 +552,6 @@ class _AppRootState extends State<AppRoot> {
           letters: _letters,
           cursor: _cursor,
           colorAt: _colorAt,
-
-          // 현재 선택된 키캡 글자의 품절 색상
-          soldOutColors: _soldOutColorsAtCursor(),
-
-          // 화면 하단 안내 문구
-          message: _keycapMessage,
-
-          // 재고 조회 중 표시용
-          stockLoading: _stockLoading,
         );
         break;
 
@@ -1011,9 +585,30 @@ class _AppRootState extends State<AppRoot> {
                     return SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight - 48),
-                        child: Center(child: screen),
+                        constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                        // 화면 전환 애니메이션 (슬라이드 + 페이드, 방향 인식)
+                        // fillColor: Colors.transparent 로 지정해서 전환 중
+                        // Scaffold의 AppColors.background 위에 별도 흰색 판이
+                        // 덧씌워지지 않도록 함.
+                        child: Center(
+                          child: PageTransitionSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            reverse: _direction == -1,
+                            transitionBuilder: (child, primaryAnimation, secondaryAnimation) {
+                              return SharedAxisTransition(
+                                animation: primaryAnimation,
+                                secondaryAnimation: secondaryAnimation,
+                                transitionType: SharedAxisTransitionType.horizontal,
+                                fillColor: Colors.transparent,
+                                child: child,
+                              );
+                            },
+                            child: KeyedSubtree(
+                              key: ValueKey(_step),
+                              child: screen,
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -1052,11 +647,7 @@ class _BackButton extends StatelessWidget {
           children: [
             Icon(Icons.arrow_back, size: 16, color: AppColors.ink),
             SizedBox(width: 6),
-            Text('이전 (ESC)',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.ink,
-                    fontSize: 13)),
+            Text('이전 (ESC)', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.ink, fontSize: 13)),
           ],
         ),
       ),
