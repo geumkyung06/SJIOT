@@ -1,11 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Flask 백엔드(POST /order, GET /order/<id>/status) 연동.
 /// baseUrl은 실제 EC2 도메인으로 교체해서 쓰세요.
 class ApiService {
-  static const String baseUrl =
-      'https://sjiot-backend-294910862364.asia-northeast1.run.app';
+  final String baseUrl =
+    'https://sjiot-backend-294910862364.asia-northeast1.run.app';
 
   Future<Map<String, dynamic>> getOrder(String orderId) async {
     final res = await http.get(
@@ -76,4 +77,65 @@ class ApiService {
     }
     return body;
   }
+
+  Future<Map<String, dynamic>> startStation({
+  required int stationId,
+  required String orderId,
+}) async {
+  final url = Uri.parse('$baseUrl/station/$stationId/start');
+
+  final body = {
+    'order_id': orderId,
+  };
+
+  debugPrint('===== API 요청 =====');
+  debugPrint('요청 URL: $url');
+  debugPrint('station_id: $stationId');
+  debugPrint('order_id: $orderId');
+  debugPrint('보내는 body: ${jsonEncode(body)}');
+  debugPrint('====================');
+
+  final response = await http.post(
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode(body),
+  );
+
+  debugPrint('===== API 응답 =====');
+  debugPrint('응답 코드: ${response.statusCode}');
+  debugPrint('응답 내용: ${utf8.decode(response.bodyBytes)}');
+  debugPrint('====================');
+
+  if (response.statusCode == 200) {
+    return jsonDecode(utf8.decode(response.bodyBytes));
+  }
+
+  throw Exception(
+    'START_FAILED_${response.statusCode}: '
+    '${utf8.decode(response.bodyBytes)}',
+  );
+}
+
+//   Future<Map<String, dynamic>> startStation({
+//   required int stationId,
+//   required String orderId,
+// }) async {
+//   final response = await http.post(
+//     Uri.parse('$baseUrl/station/$stationId/start'),
+//     headers: {
+//       'Content-Type': 'application/json',
+//     },
+//     body: jsonEncode({
+//       'order_id': orderId,
+//     }),
+//   );
+
+//   if (response.statusCode == 200) {
+//     return jsonDecode(utf8.decode(response.bodyBytes));
+//   }
+
+//   throw Exception('START_FAILED_${response.statusCode}');
+// }
 }

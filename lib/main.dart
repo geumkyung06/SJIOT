@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'services/api_service.dart';
 import 'models/order_info.dart';
@@ -99,11 +100,74 @@ class _DeviceRootState extends State<DeviceRoot> {
     });
   }
 
-  Future<void> _openCameraTest() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (context) => const CameraTestScreen()));
+  Future<void> _openQrScanner() async {
+  final String? qrValue = await Navigator.of(context).push<String>(
+    MaterialPageRoute(
+      builder: (context) => const QrScannerScreen(),
+    ),
+  );
+
+  if (qrValue == null) {
+    return;
   }
+
+  try {
+
+    // QR에서 주문번호 가져오기
+    final String scannedOrderId = qrValue.trim();
+    debugPrint('스캔된 order_id: $scannedOrderId');
+
+    if (scannedOrderId.isEmpty) {
+      _moveTo(DeviceStep.invalidQr);
+      return;
+    }
+
+    // 현재 조립대 번호
+    // "01" → 1
+    // "02" → 2
+    // "03" → 3
+    final int stationId = int.parse(_workstationNumber!);
+
+    // 서버에 조립 시작 요청
+    final result = await _api.startStation(
+      stationId: stationId,
+      orderId: scannedOrderId,
+    );
+
+    // 서버가 반환한 주문번호 확인
+    final String returnedOrderId = result['order_id']?.toString() ?? '';
+
+    if (returnedOrderId != scannedOrderId) {
+      _moveTo(DeviceStep.invalidQr);
+      return;
+    }
+
+    // 주문 정보 저장
+    final String mbti = result['keycap']?.toString() ?? '';
+
+    final List<String> colors =
+        (result['colors'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+
+    setState(() {
+      _order = OrderInfo(
+        orderId: returnedOrderId,
+        mbti: mbti,
+        colors: colors,
+        assignedWorkstation: stationId,
+      );
+
+      // 인증 완료 화면을 거치지 않고 바로 조립 시작
+      _currentStep = DeviceStep.assembling;
+    });
+  } catch (e) {
+    debugPrint('QR 인증 실패: $e');
+
+    _moveTo(DeviceStep.invalidQr);
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +184,7 @@ class _DeviceRootState extends State<DeviceRoot> {
           onQrSuccess: _processTestQr,
           onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
           onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
-          onCameraTest: _openCameraTest,
+          onQrScan: _openQrScanner,
         );
         break;
 
@@ -396,7 +460,7 @@ class WaitingScreen extends StatelessWidget {
   final VoidCallback onQrSuccess;
   final VoidCallback onInvalidQr;
   final VoidCallback onWrongWorkstation;
-  final VoidCallback onCameraTest;
+  final VoidCallback onQrScan;
 
   const WaitingScreen({
     super.key,
@@ -404,7 +468,7 @@ class WaitingScreen extends StatelessWidget {
     required this.onQrSuccess,
     required this.onInvalidQr,
     required this.onWrongWorkstation,
-    required this.onCameraTest,
+    required this.onQrScan,
   });
 
   @override
@@ -453,7 +517,7 @@ class WaitingScreen extends StatelessWidget {
 
             SizedBox(
               width: 330,
-              child: PrimaryButton(text: '카메라 테스트', onPressed: onCameraTest),
+              child: PrimaryButton(text: 'QR 코드 스캔', onPressed: onQrScan),
             ),
 
             const SizedBox(height: 12),
@@ -1085,7 +1149,6 @@ class InvalidQrScreen extends StatelessWidget {
   }
 }
 
-/// 오류: 잘못된 조립대
 /// 오류: 잘못된 조립대
 class WrongWorkstationScreen extends StatefulWidget {
   final String currentWorkstation;
@@ -1800,75 +1863,30 @@ class DemoMenu extends StatelessWidget {
   }
 }
 
-class CameraTestScreen extends StatefulWidget {
-  const CameraTestScreen({super.key});
+class QrScannerScreen extends StatefulWidget {
+  const QrScannerScreen({super.key});
 
   @override
-  State<CameraTestScreen> createState() => _CameraTestScreenState();
+  State<QrScannerScreen> createState() => _QrScannerScreenState();
 }
 
-class _CameraTestScreenState extends State<CameraTestScreen> {
-  CameraController? _controller;
+class _QrScannerScreenState extends State<QrScannerScreen> {
+  bool _isProcessing = false;
 
-  bool _isLoading = true;
-  String? _errorMessage;
+  void _handleBarcode(BarcodeCapture capture) {
+    if (_isProcessing) return;
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeCamera();
-  }
+    final List<Barcode> barcodes = capture.barcodes;
 
-  Future<void> _initializeCamera() async {
-    try {
-      final cameras = await availableCameras();
+    if (barcodes.isEmpty) return;
 
-      if (cameras.isEmpty) {
-        setState(() {
-          _errorMessage = '사용 가능한 카메라가 없습니다.';
-          _isLoading = false;
-        });
+    final String? value = barcodes.first.rawValue;
 
-        return;
-      }
+    if (value == null || value.isEmpty) return;
 
-      // 기본적으로 후면 카메라 사용
-      final CameraDescription camera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
-      );
+    _isProcessing = true;
 
-      final controller = CameraController(
-        camera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-
-      await controller.initialize();
-
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-
-      setState(() {
-        _controller = controller;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _errorMessage = '카메라를 열 수 없습니다.\n$e';
-        _isLoading = false;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
+    Navigator.of(context).pop(value);
   }
 
   @override
@@ -1878,18 +1896,27 @@ class _CameraTestScreenState extends State<CameraTestScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            Positioned.fill(child: _buildCamera()),
+            Positioned.fill(child: MobileScanner(onDetect: _handleBarcode)),
 
             Positioned(
               top: 20,
               left: 20,
-              child: SafeArea(
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('돌아가기'),
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('돌아가기'),
+              ),
+            ),
+
+            Center(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 3),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
             ),
@@ -1899,7 +1926,7 @@ class _CameraTestScreenState extends State<CameraTestScreen> {
               right: 0,
               bottom: 40,
               child: Text(
-                '카메라 테스트 화면',
+                'QR 코드를 사각형 안에 맞춰 주세요.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -1912,36 +1939,5 @@ class _CameraTestScreenState extends State<CameraTestScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildCamera() {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30),
-          child: Text(
-            _errorMessage!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 18),
-          ),
-        ),
-      );
-    }
-
-    final controller = _controller;
-
-    if (controller == null || !controller.value.isInitialized) {
-      return const Center(
-        child: Text('카메라 초기화 실패', style: TextStyle(color: Colors.white)),
-      );
-    }
-
-    return Center(child: CameraPreview(controller));
   }
 }
