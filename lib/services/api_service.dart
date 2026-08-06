@@ -8,6 +8,8 @@ class ApiService {
   final String baseUrl =
       'https://sjiot-backend-294910862364.asia-northeast1.run.app';
 
+  final Map<int, Future<Map<String, dynamic>>> _completeRequests = {};
+
   Future<Map<String, dynamic>> getOrder(String orderId) async {
     final res = await http.get(
       Uri.parse('$baseUrl/order/$orderId'),
@@ -114,7 +116,28 @@ class ApiService {
     );
   }
 
-  Future<Map<String, dynamic>> completeStation({required int stationId}) async {
+  Future<Map<String, dynamic>> completeStation({required int stationId}) {
+    // 같은 조립대에 완료 요청이 이미 진행 중이면
+    // 새로운 POST를 보내지 않고 기존 요청 결과를 같이 사용
+    final existingRequest = _completeRequests[stationId];
+
+    if (existingRequest != null) {
+      debugPrint('완료 API 중복 요청 차단: station_id=$stationId');
+      return existingRequest;
+    }
+
+    final request = _completeStationRequest(stationId);
+
+    _completeRequests[stationId] = request;
+
+    request.whenComplete(() {
+      _completeRequests.remove(stationId);
+    });
+
+    return request;
+  }
+
+  Future<Map<String, dynamic>> _completeStationRequest(int stationId) async {
     final uri = Uri.parse('$baseUrl/station/$stationId/complete');
 
     debugPrint('완료 API 요청: POST $uri');
@@ -122,25 +145,19 @@ class ApiService {
 
     final response = await http.post(uri);
 
+    final responseBody = utf8.decode(response.bodyBytes).trim();
+
     debugPrint('완료 API 응답 코드: ${response.statusCode}');
-    debugPrint('완료 API 응답 내용: ${response.body}');
+    debugPrint('완료 API 응답 내용: $responseBody');
 
     if (response.statusCode != 200) {
-      throw Exception(
-        'COMPLETE_FAILED_${response.statusCode}: ${response.body}',
-      );
+      throw Exception('COMPLETE_FAILED_${response.statusCode}: $responseBody');
     }
 
-    final Map<String, dynamic> data =
-        jsonDecode(response.body) as Map<String, dynamic>;
-
-    if (data['ok'] != true) {
-      throw Exception('COMPLETE_OK_FALSE');
-    }
-
-    return data;
+    // 서버의 성공 응답은 JSON이 아니라
+    // "ord_a90e8302" 같은 주문번호 문자열임.
+    return {'ok': true, 'order_id': responseBody};
   }
-
   //   Future<Map<String, dynamic>> startStation({
   //   required int stationId,
   //   required String orderId,

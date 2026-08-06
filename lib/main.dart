@@ -1548,14 +1548,22 @@ class KeyringPreview extends StatelessWidget {
 
   Color _getColor(String colorName) {
     switch (colorName) {
+      case 'g':
       case 'green':
         return AppColors.green;
+
+      case 'y':
       case 'yellow':
         return AppColors.yellow;
+
+      case 'b':
       case 'blue':
         return AppColors.blue;
+
+      case 'r':
       case 'pink':
         return AppColors.pink;
+
       default:
         return AppColors.lightGray;
     }
@@ -1628,15 +1636,19 @@ class _AnimatedKeyringPreviewState extends State<AnimatedKeyringPreview>
 
   Color _getColor(String colorName) {
     switch (colorName) {
+      case 'g':
       case 'green':
         return AppColors.green;
 
+      case 'y':
       case 'yellow':
         return AppColors.yellow;
 
+      case 'b':
       case 'blue':
         return AppColors.blue;
 
+      case 'r':
       case 'pink':
         return AppColors.pink;
 
