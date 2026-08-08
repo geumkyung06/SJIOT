@@ -156,8 +156,9 @@ def _is_valid_mbti(keycap: str) -> bool:
         letter.upper() in axis
         for letter, axis in zip(keycap, MBTI_AXES)
     )
-@bp.route('/station/<int:station_id>/start', methods=['POST'])
-def station_start(station_id):
+
+@bp.route('/station/<order_id>/start', methods=['POST'])
+def station_start(order_id):
     """
     조립대 시작 (QR 인증)
     ---
@@ -165,69 +166,58 @@ def station_start(station_id):
       - Station
     parameters:
       - in: path
-        name: station_id
-        type: integer
+        name: order_id
+        type: string
         required: true
+        example: "ord_a1b2c3d4"
       - in: body
         name: body
         required: true
         schema:
           type: object
           properties:
-            order_id:
-              type: string
-              example: "ord_a1b2c3d4"
+            station_id:
+              type: integer
+              description: QR을 스캔한 현재 조립대 번호 (기기 자체 고정값)
+              example: 1
     responses:
       200:
         description: 시작 처리 성공
-        schema:
-          type: object
-          properties:
-            ok: {type: boolean}
-            order_id: {type: string}
-            board: {type: integer}
-            switch: {type: string}
-            keycap: {type: string}
-            colors: {type: array, items: {type: string}}
       400:
-        description: 배정된 주문 없음
+        description: 아직 조립대에 배정되지 않은 주문
       403:
-        description: order_id 불일치 (다른 사람 조립대)
+        description: station_id 불일치 (다른 조립대에서 스캔함)
+      404:
+        description: 존재하지 않거나 만료된 주문
       409:
         description: 이미 진행 중
-      410:
-        description: 주문 정보 만료(TTL)
     """
-    station_id = str(station_id)
     data = request.get_json(silent=True) or {}
-    req_order_id = data.get("order_id")
+    req_station_id = str(data.get("station_id", ""))
 
-    assigned_order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
-    if not assigned_order_id:
-        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
-    if req_order_id != assigned_order_id:
-        return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다'}), 403
-
-    order_data = r.hgetall(f"order:{assigned_order_id}")
+    order_data = r.hgetall(f"order:{order_id}")
     if not order_data:
-        # station:current_order:{id}엔 TTL이 없어서, order: 해시만 만료되면
-        # 여기 남은 참조가 유령 배정이 될 수 있음 - 방어 처리
-        return jsonify({'error': '주문 정보가 만료되었습니다'}), 410
+        return jsonify({'error': '존재하지 않거나 만료된 주문입니다'}), 404
 
+    assigned_station_id = order_data.get("station_id")
+    if not assigned_station_id:
+        return jsonify({'error': '아직 조립대에 배정되지 않은 주문입니다'}), 400
+    if req_station_id != assigned_station_id:
+        return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': int(assigned_station_id)}), 403
     if order_data.get("status") == "in_progress":
         return jsonify({'error': '이미 조립이 진행 중입니다'}), 409
 
-    r.hset(STATION_KEY, station_id, "busy")
-    r.hset(f"order:{assigned_order_id}", "status", "in_progress")
-    r.set(f"{STATION_STARTED_PREFIX}{station_id}", datetime.now().isoformat())
-    _touch(STATION_KEY, f"order:{assigned_order_id}",
-           f"{STATION_STARTED_PREFIX}{station_id}")
+    r.hset(STATION_KEY, assigned_station_id, "busy")
+    r.hset(f"order:{order_id}", "status", "in_progress")
+    r.set(f"{STATION_STARTED_PREFIX}{assigned_station_id}", datetime.now().isoformat())
+    _touch(STATION_KEY, f"order:{order_id}", f"{STATION_STARTED_PREFIX}{assigned_station_id}")
 
     _push_table_snapshot()
 
     return jsonify({
         'ok': True,
-        'order_id': assigned_order_id,
+        'order_id': order_id,
+        'station_id': int(assigned_station_id),
         'board': int(order_data.get("board")),
         'switch': order_data.get("switch"),
         'keycap': order_data.get("keycap"),
@@ -260,25 +250,33 @@ def station_complete(station_id):
         description: 이 조립대에 진행 중인 주문이 없음
     """
     station_id = str(station_id)
+    data = request.get_json(silent=True) or {}
+    req_order_id = data.get("order_id")
+
     order_key = f"{STATION_ORDER_PREFIX}{station_id}"
     order_id = r.get(order_key)
 
     if not order_id:
         return jsonify({'error': '이 조립대에 진행 중인 주문이 없습니다'}), 400
 
+    if req_order_id and req_order_id != order_id:
+        return jsonify({
+            'error': '화면에 표시된 주문 정보가 서버 기록과 다릅니다. 새로고침 후 다시 시도해주세요',
+            'current_order_id': order_id
+        }), 409
+
     r.hset(STATION_KEY, station_id, "idle")
     r.delete(order_key)
     r.delete(f"{STATION_STARTED_PREFIX}{station_id}")
     _touch(STATION_KEY)
 
-    if order_id:
-        r.hset(f"order:{order_id}", "status", "done")
-        _touch(f"order:{order_id}")
+    r.hset(f"order:{order_id}", "status", "done")
+    _touch(f"order:{order_id}")
 
-    _try_assign_next()       # 대기열 있으면 이 조립대가 바로 다음 주문의 waiting이 됨
-    _push_table_snapshot()   # empty 또는 새 waiting이 반영된 스냅샷 전송
+    _try_assign_next()
+    _push_table_snapshot()
 
-    return order_id
+    return jsonify({'ok': True, 'order_id': order_id}), 200
 
 
 @bp.route('/station/free', methods=['GET'])
@@ -510,6 +508,10 @@ def get_order_status(order_id):
         "order_id": order_id,
         "status": status,
         "station_id": int(station_id) if station_id else None,
+        'board': int(order_data.get("board")),
+        'switch': order_data.get("switch"),
+        'keycap': order_data.get("keycap"),
+        'colors': order_data.get("colors", "").split(","),
         "position_in_queue": position_in_queue
     }), 200
 
@@ -598,7 +600,7 @@ def get_order_qr(order_id):
     if not r.exists(f"order:{order_id}"):
         return jsonify({'error': '존재하지 않는 주문입니다'}), 404
 
-    url = f"{ORDER_PAGE_BASE}/order/{order_id}/status"
+    url = f"{ORDER_PAGE_BASE}/station/{order_id}/start"
 
     img = qrcode.make(url)
     buf = io.BytesIO()
