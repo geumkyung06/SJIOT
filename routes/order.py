@@ -3,8 +3,9 @@ import pymysql
 import redis
 import uuid
 from datetime import datetime
-
-from flask import Blueprint, jsonify, request
+import io
+import qrcode
+from flask import Blueprint, jsonify, request, send_file
 
 from services.extensions import r
 from services.mobius import (send_order_cin, 
@@ -536,3 +537,35 @@ def get_station_order(station_id):
     if not order_id:
         return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 404
     return jsonify({'station_id': int(station_id), 'order_id': order_id}), 200
+
+# QR가 가리킬 프론트 상태 페이지 베이스 URL (env로 관리)
+ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
+
+@bp.route('/order/<order_id>/qr', methods=['GET'])
+def get_order_qr(order_id):
+    """
+    주문 상태 페이지 QR 코드 생성
+    ---
+    tags:
+      - Order
+    parameters:
+      - in: path
+        name: order_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: QR 코드 PNG 이미지
+      404:
+        description: 존재하지 않는 주문
+    """
+    if not r.exists(f"order:{order_id}"):
+        return jsonify({'error': '존재하지 않는 주문입니다'}), 404
+
+    url = f"{ORDER_PAGE_BASE}/order/{order_id}/status"
+
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
