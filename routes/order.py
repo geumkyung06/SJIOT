@@ -31,6 +31,10 @@ MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 �
 STATION_STARTED_PREFIX = os.getenv("STATION_STARTED_PREFIX", "station:started_at:")
 STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
 
+ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
+
+MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
+
 # 테스트 기간 전용: 설정돼 있으면 건드리는 키마다 이 초만큼 TTL을 계속 갱신함.
 # 운영 전환 시 이 env var만 빼면(또는 0으로) 원래대로 영구 보존됨.
 TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
@@ -53,7 +57,6 @@ def _ensure_initial_state():
 def _get_free_station():
     station_status = r.hgetall(STATION_KEY)
     return next((sid for sid in ("1", "2", "3") if station_status.get(sid, "idle") == "idle"), None)
-
 
 def _try_assign_next():
     """
@@ -145,6 +148,14 @@ def _push_table_snapshot():
         logger.warning("[table] cnt_table 스냅샷 전송 실패")
     return ok
 
+def _is_valid_mbti(keycap: str) -> bool:
+    """4글자가 각각 해당 자리 축(E/I, S/N, T/F, J/P)에 속하는지 확인."""
+    if len(keycap) != 4:
+        return False
+    return all(
+        letter.upper() in axis
+        for letter, axis in zip(keycap, MBTI_AXES)
+    )
 @bp.route('/station/<int:station_id>/start', methods=['POST'])
 def station_start(station_id):
     """
@@ -367,7 +378,7 @@ def post_order_list():
     colors = data.get("colors")
 
     try:
-        color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,o,y,g,b,p,w
+        color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,y,g,b
         board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
         switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
 
@@ -379,6 +390,8 @@ def post_order_list():
             return jsonify({'error': '본판과 키캡 수 불일치'}), 400
         if not len(colors) == board:
             return jsonify({'error': '색상 선택 부족'}), 400
+        if not _is_valid_mbti(keycap):
+            return jsonify({'error': '잘못된 알파벳 압력(MBTI 아님)'}), 400
         if not all(c in color_list for c in colors):
             return jsonify({'error': '잘못된 색상 선택'}), 400
 
@@ -441,7 +454,45 @@ def post_order_list():
 
 @bp.route('/order/<order_id>/status', methods=['GET'])
 def get_order_status(order_id):
-
+    """
+    주문 상태 조회
+    ---
+    tags:
+      - Order
+    parameters:
+      - in: path
+        name: order_id
+        type: string
+        required: true
+        example: ord_a1b2c3d4
+    responses:
+      200:
+        description: 조회 성공
+        schema:
+          type: object
+          properties:
+            order_id:
+              type: string
+              example: ord_a1b2c3d4
+            status:
+              type: string
+              enum: [waiting, assigned, in_progress, done]
+              example: assigned
+            station_id:
+              type: integer
+              example: 1
+            position_in_queue:
+              type: integer
+              example: 2
+      404:
+        description: 존재하지 않는 주문
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 존재하지 않는 주문입니다
+    """
     order_data = r.hgetall(f"order:{order_id}")
     if not order_data:
         return jsonify({'error': '존재하지 않는 주문입니다'}), 404
@@ -461,7 +512,6 @@ def get_order_status(order_id):
         "station_id": int(station_id) if station_id else None,
         "position_in_queue": position_in_queue
     }), 200
-
 
 @bp.route('/mobius/callback', methods=['POST'])
 def mobius_callback():
@@ -526,20 +576,6 @@ def mobius_callback():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-@bp.route('/station/<int:station_id>/order', methods=['GET'])
-def get_station_order(station_id):
-    """
-    (임시) 조립대에 배정된 order_id 조회 - QR 생성 API 대체용
-    """
-    station_id = str(station_id)
-    order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
-    if not order_id:
-        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 404
-    return jsonify({'station_id': int(station_id), 'order_id': order_id}), 200
-
-# QR가 가리킬 프론트 상태 페이지 베이스 URL (env로 관리)
-ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
 
 @bp.route('/order/<order_id>/qr', methods=['GET'])
 def get_order_qr(order_id):
