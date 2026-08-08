@@ -356,7 +356,7 @@ def post_order_list():
               example: "black"
             keycap:
               type: string
-              example: "L0VE"
+              example: "ESFJ"
             colors:
               type: array
               items:
