@@ -227,51 +227,51 @@ def station_start(order_id):
 @bp.route('/station/<int:station_id>/complete', methods=['POST'])
 def station_complete(station_id):
     """
-    조립대 완료
-    ---
-    tags:
-    - Station
-    parameters:
-    - in: path
-        name: station_id
-        type: integer
-        required: true
-        example: 1
-    - in: body
-        name: body
-        required: false
-        schema:
-        type: object
-        properties:
-            order_id:
-            type: string
-            description: 디스플레이가 들고 있던 주문 ID (서버 기록과 교차검증용)
-            example: "ord_a1b2c3d4"
-    responses:
-    200:
-        description: 완료 처리 성공
-        schema:
-        type: object
-        properties:
-            ok:
-            type: boolean
-            example: true
-            order_id:
-            type: string
-            example: "ord_a1b2c3d4"
-    400:
-        description: 이 조립대에 진행 중인 주문이 없음
-    409:
-        description: 화면에 표시된 order_id가 서버 기록과 불일치 (stale 상태)
-        schema:
-        type: object
-        properties:
-            error:
-            type: string
-            current_order_id:
-            type: string
-            example: "ord_a1b2c3d4"
-    """
+        조립대 완료
+        ---
+        tags:
+        - Station
+        parameters:
+        - in: path
+            name: station_id
+            type: integer
+            required: true
+            example: 1
+        - in: body
+            name: body
+            required: false
+            schema:
+            type: object
+            properties:
+                order_id:
+                type: string
+                description: 디스플레이가 들고 있던 주문 ID (서버 기록과 교차검증용)
+                example: "ord_a1b2c3d4"
+        responses:
+        200:
+            description: 완료 처리 성공
+            schema:
+            type: object
+            properties:
+                ok:
+                type: boolean
+                example: true
+                order_id:
+                type: string
+                example: "ord_a1b2c3d4"
+        400:
+            description: 이 조립대에 진행 중인 주문이 없음
+        409:
+            description: 화면에 표시된 order_id가 서버 기록과 불일치 (stale 상태)
+            schema:
+            type: object
+            properties:
+                error:
+                type: string
+                current_order_id:
+                type: string
+                example: "ord_a1b2c3d4"
+        """
     station_id = str(station_id)
     data = request.get_json(silent=True) or {}
     req_order_id = data.get("order_id")
