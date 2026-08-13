@@ -27,18 +27,20 @@ class ApiService {
   final String baseUrl =
       'https://sjiot-backend-294910862364.asia-northeast1.run.app';
 
-  final Map<int, Future<Map<String, dynamic>>> _completeRequests = {};
-
   Future<Map<String, dynamic>> getOrder(String orderId) async {
     final res = await http.get(
-      Uri.parse('$baseUrl/order/$orderId'),
+      Uri.parse('$baseUrl/order/$orderId/status'),
       headers: {'Accept': 'application/json'},
     );
 
     Map<String, dynamic>? body;
 
     try {
-      body = jsonDecode(res.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(res.body);
+
+      if (decoded is Map<String, dynamic>) {
+        body = decoded;
+      }
     } catch (_) {
       body = null;
     }
@@ -103,9 +105,7 @@ class ApiService {
     required String orderId,
     required int stationId,
   }) async {
-    final uri = Uri.parse(
-      '$baseUrl/station/${Uri.encodeComponent(orderId)}/start',
-    );
+    final uri = Uri.parse('$baseUrl/station/$orderId/start');
 
     final requestBody = {'station_id': stationId};
 
@@ -202,46 +202,4 @@ class ApiService {
       data: data,
     );
   }
-
-  Future<Map<String, dynamic>> _completeStationRequest(int stationId) async {
-    final uri = Uri.parse('$baseUrl/station/$stationId/complete');
-
-    debugPrint('완료 API 요청: POST $uri');
-    debugPrint('완료 API station_id: $stationId');
-
-    final response = await http.post(uri);
-
-    final responseBody = utf8.decode(response.bodyBytes).trim();
-
-    debugPrint('완료 API 응답 코드: ${response.statusCode}');
-    debugPrint('완료 API 응답 내용: $responseBody');
-
-    if (response.statusCode != 200) {
-      throw Exception('COMPLETE_FAILED_${response.statusCode}: $responseBody');
-    }
-
-    // 서버의 성공 응답은 JSON이 아니라
-    // "ord_a90e8302" 같은 주문번호 문자열임.
-    return {'ok': true, 'order_id': responseBody};
-  }
-  //   Future<Map<String, dynamic>> startStation({
-  //   required int stationId,
-  //   required String orderId,
-  // }) async {
-  //   final response = await http.post(
-  //     Uri.parse('$baseUrl/station/$stationId/start'),
-  //     headers: {
-  //       'Content-Type': 'application/json',
-  //     },
-  //     body: jsonEncode({
-  //       'order_id': orderId,
-  //     }),
-  //   );
-
-  //   if (response.statusCode == 200) {
-  //     return jsonDecode(utf8.decode(response.bodyBytes));
-  //   }
-
-  //   throw Exception('START_FAILED_${response.statusCode}');
-  // }
 }

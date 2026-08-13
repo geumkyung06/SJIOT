@@ -57,6 +57,42 @@ class _DeviceRootState extends State<DeviceRoot> {
 
   /// 앱을 종료하기 전까지 유지되는 조립대 번호
   String? _workstationNumber;
+  String? _assignedWorkstationNumber;
+
+  String? _extractOrderIdFromQr(String qrValue) {
+    final value = qrValue.trim();
+
+    if (value.isEmpty) {
+      return null;
+    }
+
+    // 혹시 QR에 order_id 자체만 들어있는 경우도 허용
+    if (value.startsWith('ord_')) {
+      return value;
+    }
+
+    // 백엔드 QR 형식:
+    // https://.../station/ord_xxxxxxxx/start
+    final uri = Uri.tryParse(value);
+
+    if (uri == null) {
+      return null;
+    }
+
+    final segments = uri.pathSegments;
+
+    if (segments.length >= 3 &&
+        segments[segments.length - 3] == 'station' &&
+        segments.last == 'start') {
+      final orderId = segments[segments.length - 2];
+
+      if (orderId.startsWith('ord_')) {
+        return orderId;
+      }
+    }
+
+    return null;
+  }
 
   /// 테스트용 주문 정보
   ///
@@ -96,6 +132,7 @@ class _DeviceRootState extends State<DeviceRoot> {
 
   void _reset() {
     setState(() {
+      _assignedWorkstationNumber = null;
       _currentStep = DeviceStep.waiting;
     });
   }
@@ -117,14 +154,18 @@ class _DeviceRootState extends State<DeviceRoot> {
       return;
     }
 
-    final String scannedOrderId = qrValue.trim();
+    final String rawQrValue = qrValue.trim();
 
     debugPrint('======================================');
     debugPrint('QR 스캔 완료');
-    debugPrint('scannedOrderId: $scannedOrderId');
+    debugPrint('QR 원본: $rawQrValue');
+
+    final String? scannedOrderId = _extractOrderIdFromQr(rawQrValue);
+
+    debugPrint('추출된 order_id: $scannedOrderId');
     debugPrint('======================================');
 
-    if (scannedOrderId.isEmpty) {
+    if (scannedOrderId == null) {
       _moveTo(DeviceStep.invalidQr);
       return;
     }
@@ -137,12 +178,12 @@ class _DeviceRootState extends State<DeviceRoot> {
     final int stationId = int.parse(_workstationNumber!);
 
     try {
-      // 1. 서버에 조립 시작 요청
+      // 새 백엔드 형식
       //
-      // POST /station/{order_id}/start
+      // POST /station/{station_id}/start
       // body:
       // {
-      //   "station_id": 1
+      //   "order_id": "ord_xxxxxxxx"
       // }
       final startResult = await _api.startStation(
         orderId: scannedOrderId,
@@ -152,31 +193,36 @@ class _DeviceRootState extends State<DeviceRoot> {
       debugPrint('조립 시작 성공');
       debugPrint('startResult: $startResult');
 
-      // 2. 시작 성공 후 주문 정보 별도 조회
-      final orderData = await _api.getOrder(scannedOrderId);
+      // START 성공 응답에 주문 정보가 같이 들어오므로
+      // getOrder()를 다시 호출하지 않음
+      final String responseOrderId =
+          startResult['order_id']?.toString() ?? scannedOrderId;
 
-      debugPrint('주문 정보 조회 성공');
-      debugPrint('orderData: $orderData');
-
-      final String mbti = orderData['keycap']?.toString() ?? '';
+      final String mbti = startResult['keycap']?.toString() ?? '';
 
       final List<String> colors =
-          (orderData['colors'] as List<dynamic>?)
+          (startResult['colors'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [];
+
+      debugPrint('응답 order_id: $responseOrderId');
+      debugPrint('응답 keycap: $mbti');
+      debugPrint('응답 colors: $colors');
+      debugPrint('응답 board: ${startResult['board']}');
+      debugPrint('응답 switch: ${startResult['switch']}');
 
       if (!mounted) return;
 
       setState(() {
         _order = OrderInfo(
-          orderId: scannedOrderId,
+          orderId: responseOrderId,
           mbti: mbti,
           colors: colors,
           assignedWorkstation: stationId,
         );
 
-        _currentStep = DeviceStep.assembling;
+        _currentStep = DeviceStep.authenticated;
       });
     } on ApiException catch (e) {
       debugPrint('');
@@ -191,33 +237,39 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       switch (e.statusCode) {
         case 400:
-          // 아직 조립대에 배정되지 않은 주문
           debugPrint('400: 아직 조립대에 배정되지 않은 주문');
 
           _showMessage('아직 조립대에 배정되지 않은 주문입니다.');
           break;
 
         case 403:
-          // ★ 현재는 응답 형식을 확인하는 단계
-          debugPrint('403 발생 - 응답 형식 확인 필요');
-          debugPrint('403 BODY = ${e.body}');
-          debugPrint('403 JSON = ${e.data}');
+          debugPrint('403: 다른 조립대에 배정된 주문');
 
-          // 일단 잘못된 조립대 화면으로 이동
-          // 배정 조립대 번호는 403 응답 확인 후 연결
-          _moveTo(DeviceStep.wrongWorkstation);
+          final assignedStationId = e.data?['assigned_station_id'];
+
+          setState(() {
+            if (assignedStationId != null) {
+              _assignedWorkstationNumber = assignedStationId.toString().padLeft(
+                2,
+                '0',
+              );
+            } else {
+              _assignedWorkstationNumber = '--';
+            }
+
+            _currentStep = DeviceStep.wrongWorkstation;
+          });
+
           break;
 
         case 404:
-          // 존재하지 않거나 이미 완료된 주문
-          debugPrint('404: 존재하지 않거나 완료된 주문');
+          debugPrint('404: 존재하지 않거나 만료된 주문');
 
           _moveTo(DeviceStep.invalidQr);
           break;
 
         case 409:
-          // 이미 조립 진행 중
-          debugPrint('409: 이미 진행 중인 주문');
+          debugPrint('409: 이미 조립 진행 중');
 
           _showMessage('이미 조립이 진행 중인 주문입니다.');
           break;
@@ -291,7 +343,7 @@ class _DeviceRootState extends State<DeviceRoot> {
       case DeviceStep.wrongWorkstation:
         screen = WrongWorkstationScreen(
           currentWorkstation: _workstationNumber ?? '--',
-          assignedWorkstation: _order.workstationLabel,
+          assignedWorkstation: _assignedWorkstationNumber ?? '--',
           onAutoReturn: _reset,
         );
         break;
@@ -339,16 +391,14 @@ class _DeviceRootState extends State<DeviceRoot> {
     }
 
     final int stationId = int.parse(_workstationNumber!);
-    final String orderId = _order.orderId;
 
     debugPrint('조립 완료 처리 시작');
     debugPrint('station_id: $stationId');
-    debugPrint('order_id: $orderId');
 
     try {
       final result = await _api.completeStation(
         stationId: stationId,
-        orderId: orderId,
+        orderId: _order.orderId,
       );
 
       debugPrint('조립 완료 API 결과: $result');
@@ -379,9 +429,9 @@ class _DeviceRootState extends State<DeviceRoot> {
           break;
 
         case 409:
-          final currentOrderId = e.data?['current_order_id']?.toString();
+          final currentOrderId = e.data?['current_order_id'];
 
-          debugPrint('서버 current_order_id: $currentOrderId');
+          debugPrint('서버의 현재 order_id: $currentOrderId');
 
           _showMessage('현재 화면의 주문과 서버의 주문 정보가 일치하지 않습니다.');
           break;
