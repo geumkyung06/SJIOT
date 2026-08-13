@@ -2,6 +2,25 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+class ApiException implements Exception {
+  final String action;
+  final int statusCode;
+  final String body;
+  final Map<String, dynamic>? data;
+
+  ApiException({
+    required this.action,
+    required this.statusCode,
+    required this.body,
+    this.data,
+  });
+
+  @override
+  String toString() {
+    return '$action 실패 ($statusCode): $body';
+  }
+}
+
 /// Flask 백엔드(POST /order, GET /order/<id>/status) 연동.
 /// baseUrl은 실제 EC2 도메인으로 교체해서 쓰세요.
 class ApiService {
@@ -81,60 +100,107 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> startStation({
-    required int stationId,
     required String orderId,
+    required int stationId,
   }) async {
-    final url = Uri.parse('$baseUrl/station/$stationId/start');
-
-    final body = {'order_id': orderId};
-
-    debugPrint('===== API 요청 =====');
-    debugPrint('요청 URL: $url');
-    debugPrint('station_id: $stationId');
-    debugPrint('order_id: $orderId');
-    debugPrint('보내는 body: ${jsonEncode(body)}');
-    debugPrint('====================');
-
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
+    final uri = Uri.parse(
+      '$baseUrl/station/${Uri.encodeComponent(orderId)}/start',
     );
 
-    debugPrint('===== API 응답 =====');
-    debugPrint('응답 코드: ${response.statusCode}');
-    debugPrint('응답 내용: ${utf8.decode(response.bodyBytes)}');
-    debugPrint('====================');
+    final requestBody = {'station_id': stationId};
 
-    if (response.statusCode == 200) {
-      return jsonDecode(utf8.decode(response.bodyBytes));
+    debugPrint('========== 조립 시작 API ==========');
+    debugPrint('POST $uri');
+    debugPrint('보내는 order_id: $orderId');
+    debugPrint('보내는 station_id: $stationId');
+    debugPrint('body: ${jsonEncode(requestBody)}');
+
+    final res = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    debugPrint('statusCode: ${res.statusCode}');
+    debugPrint('response body: ${res.body}');
+    debugPrint('==================================');
+
+    Map<String, dynamic>? data;
+
+    try {
+      final decoded = jsonDecode(res.body);
+
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      }
+    } catch (_) {
+      data = null;
     }
 
-    throw Exception(
-      'START_FAILED_${response.statusCode}: '
-      '${utf8.decode(response.bodyBytes)}',
+    if (res.statusCode == 200) {
+      return data ?? <String, dynamic>{};
+    }
+
+    throw ApiException(
+      action: 'START',
+      statusCode: res.statusCode,
+      body: res.body,
+      data: data,
     );
   }
 
-  Future<Map<String, dynamic>> completeStation({required int stationId}) {
-    // 같은 조립대에 완료 요청이 이미 진행 중이면
-    // 새로운 POST를 보내지 않고 기존 요청 결과를 같이 사용
-    final existingRequest = _completeRequests[stationId];
+  Future<Map<String, dynamic>> completeStation({
+    required int stationId,
+    required String orderId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/station/$stationId/complete');
 
-    if (existingRequest != null) {
-      debugPrint('완료 API 중복 요청 차단: station_id=$stationId');
-      return existingRequest;
+    final requestBody = {'order_id': orderId};
+
+    debugPrint('========== 조립 완료 API ==========');
+    debugPrint('POST $uri');
+    debugPrint('보내는 station_id: $stationId');
+    debugPrint('보내는 order_id: $orderId');
+    debugPrint('body: ${jsonEncode(requestBody)}');
+
+    final res = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    debugPrint('statusCode: ${res.statusCode}');
+    debugPrint('response body: ${res.body}');
+    debugPrint('==================================');
+
+    Map<String, dynamic>? data;
+
+    try {
+      final decoded = jsonDecode(res.body);
+
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      }
+    } catch (_) {
+      data = null;
     }
 
-    final request = _completeStationRequest(stationId);
+    if (res.statusCode == 200) {
+      return data ?? <String, dynamic>{};
+    }
 
-    _completeRequests[stationId] = request;
-
-    request.whenComplete(() {
-      _completeRequests.remove(stationId);
-    });
-
-    return request;
+    throw ApiException(
+      action: 'COMPLETE',
+      statusCode: res.statusCode,
+      body: res.body,
+      data: data,
+    );
   }
 
   Future<Map<String, dynamic>> _completeStationRequest(int stationId) async {

@@ -100,6 +100,14 @@ class _DeviceRootState extends State<DeviceRoot> {
     });
   }
 
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _openQrScanner() async {
     final String? qrValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (context) => const QrScannerScreen()),
@@ -109,60 +117,122 @@ class _DeviceRootState extends State<DeviceRoot> {
       return;
     }
 
+    final String scannedOrderId = qrValue.trim();
+
+    debugPrint('======================================');
+    debugPrint('QR 스캔 완료');
+    debugPrint('scannedOrderId: $scannedOrderId');
+    debugPrint('======================================');
+
+    if (scannedOrderId.isEmpty) {
+      _moveTo(DeviceStep.invalidQr);
+      return;
+    }
+
+    if (_workstationNumber == null) {
+      debugPrint('조립대 번호가 설정되지 않음');
+      return;
+    }
+
+    final int stationId = int.parse(_workstationNumber!);
+
     try {
-      // QR에서 주문번호 가져오기
-      final String scannedOrderId = qrValue.trim();
-      debugPrint('스캔된 order_id: $scannedOrderId');
-
-      if (scannedOrderId.isEmpty) {
-        _moveTo(DeviceStep.invalidQr);
-        return;
-      }
-
-      // 현재 조립대 번호
-      // "01" → 1
-      // "02" → 2
-      // "03" → 3
-      final int stationId = int.parse(_workstationNumber!);
-
-      // 서버에 조립 시작 요청
-      final result = await _api.startStation(
-        stationId: stationId,
+      // 1. 서버에 조립 시작 요청
+      //
+      // POST /station/{order_id}/start
+      // body:
+      // {
+      //   "station_id": 1
+      // }
+      final startResult = await _api.startStation(
         orderId: scannedOrderId,
+        stationId: stationId,
       );
 
-      // 서버가 반환한 주문번호 확인
-      final String returnedOrderId = result['order_id']?.toString() ?? '';
+      debugPrint('조립 시작 성공');
+      debugPrint('startResult: $startResult');
 
-      if (returnedOrderId != scannedOrderId) {
-        _moveTo(DeviceStep.invalidQr);
-        return;
-      }
+      // 2. 시작 성공 후 주문 정보 별도 조회
+      final orderData = await _api.getOrder(scannedOrderId);
 
-      // 주문 정보 저장
-      final String mbti = result['keycap']?.toString() ?? '';
+      debugPrint('주문 정보 조회 성공');
+      debugPrint('orderData: $orderData');
+
+      final String mbti = orderData['keycap']?.toString() ?? '';
 
       final List<String> colors =
-          (result['colors'] as List<dynamic>?)
+          (orderData['colors'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [];
 
+      if (!mounted) return;
+
       setState(() {
         _order = OrderInfo(
-          orderId: returnedOrderId,
+          orderId: scannedOrderId,
           mbti: mbti,
           colors: colors,
           assignedWorkstation: stationId,
         );
 
-        // 인증 완료 화면을 거치지 않고 바로 조립 시작
         _currentStep = DeviceStep.assembling;
       });
-    } catch (e) {
-      debugPrint('QR 인증 실패: $e');
+    } on ApiException catch (e) {
+      debugPrint('');
+      debugPrint('========== START API 오류 ==========');
+      debugPrint('HTTP status: ${e.statusCode}');
+      debugPrint('raw body: ${e.body}');
+      debugPrint('decoded body: ${e.data}');
+      debugPrint('===================================');
+      debugPrint('');
 
-      _moveTo(DeviceStep.invalidQr);
+      if (!mounted) return;
+
+      switch (e.statusCode) {
+        case 400:
+          // 아직 조립대에 배정되지 않은 주문
+          debugPrint('400: 아직 조립대에 배정되지 않은 주문');
+
+          _showMessage('아직 조립대에 배정되지 않은 주문입니다.');
+          break;
+
+        case 403:
+          // ★ 현재는 응답 형식을 확인하는 단계
+          debugPrint('403 발생 - 응답 형식 확인 필요');
+          debugPrint('403 BODY = ${e.body}');
+          debugPrint('403 JSON = ${e.data}');
+
+          // 일단 잘못된 조립대 화면으로 이동
+          // 배정 조립대 번호는 403 응답 확인 후 연결
+          _moveTo(DeviceStep.wrongWorkstation);
+          break;
+
+        case 404:
+          // 존재하지 않거나 이미 완료된 주문
+          debugPrint('404: 존재하지 않거나 완료된 주문');
+
+          _moveTo(DeviceStep.invalidQr);
+          break;
+
+        case 409:
+          // 이미 조립 진행 중
+          debugPrint('409: 이미 진행 중인 주문');
+
+          _showMessage('이미 조립이 진행 중인 주문입니다.');
+          break;
+
+        default:
+          debugPrint('처리되지 않은 START 오류: ${e.statusCode}');
+
+          _showMessage('QR 인증 중 오류가 발생했습니다. (${e.statusCode})');
+      }
+    } catch (e) {
+      debugPrint('START API 외 오류: $e');
+
+      if (!mounted) return;
+
+      _showMessage('서버 통신 중 오류가 발생했습니다.');
     }
   }
 
@@ -263,39 +333,68 @@ class _DeviceRootState extends State<DeviceRoot> {
   }
 
   Future<void> _finishAssembly() async {
+    if (_workstationNumber == null) {
+      _showMessage('조립대 번호가 설정되지 않았습니다.');
+      return;
+    }
+
+    final int stationId = int.parse(_workstationNumber!);
+    final String orderId = _order.orderId;
+
+    debugPrint('조립 완료 처리 시작');
+    debugPrint('station_id: $stationId');
+    debugPrint('order_id: $orderId');
+
     try {
-      if (_workstationNumber == null) {
-        throw Exception('WORKSTATION_NOT_SELECTED');
-      }
-
-      // "01" → 1
-      // "02" → 2
-      // "03" → 3
-      final int stationId = int.parse(_workstationNumber!);
-
-      debugPrint('조립 완료 처리 시작');
-      debugPrint('station_id: $stationId');
-      debugPrint('order_id: ${_order.orderId}');
-
-      final result = await _api.completeStation(stationId: stationId);
+      final result = await _api.completeStation(
+        stationId: stationId,
+        orderId: orderId,
+      );
 
       debugPrint('조립 완료 API 결과: $result');
 
-      if (result['ok'] == true) {
-        if (!mounted) return;
+      if (!mounted) return;
 
+      if (result['ok'] == true) {
         debugPrint('조립 완료 처리 성공');
 
         _moveTo(DeviceStep.completed);
+      } else {
+        debugPrint('200 응답이지만 ok != true: $result');
+
+        _showMessage('조립 완료 응답을 확인할 수 없습니다.');
+      }
+    } on ApiException catch (e) {
+      debugPrint('========== COMPLETE API 오류 ==========');
+      debugPrint('HTTP status: ${e.statusCode}');
+      debugPrint('raw body: ${e.body}');
+      debugPrint('decoded body: ${e.data}');
+      debugPrint('======================================');
+
+      if (!mounted) return;
+
+      switch (e.statusCode) {
+        case 400:
+          _showMessage('이 조립대에 진행 중인 주문이 없습니다.');
+          break;
+
+        case 409:
+          final currentOrderId = e.data?['current_order_id']?.toString();
+
+          debugPrint('서버 current_order_id: $currentOrderId');
+
+          _showMessage('현재 화면의 주문과 서버의 주문 정보가 일치하지 않습니다.');
+          break;
+
+        default:
+          _showMessage('조립 완료 처리에 실패했습니다. (${e.statusCode})');
       }
     } catch (e) {
       debugPrint('조립 완료 API 실패: $e');
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('조립 완료 처리에 실패했습니다.\n$e')));
+      _showMessage('서버 통신 중 오류가 발생했습니다.');
     }
   }
 
