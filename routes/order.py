@@ -661,3 +661,51 @@ def get_order_qr(order_id):
     img.save(buf, format="PNG")
     buf.seek(0)
     return send_file(buf, mimetype="image/png")
+
+@bp.route('/station/<station_id>/status', methods=['GET'])
+def get_station_status(station_id):
+    """
+    조립대 배정 주문 조회 (AGV 도착 알림 후 디스플레이가 주문번호 띄울 때 사용)
+    ---
+    tags:
+      - Station
+    parameters:
+      - in: path
+        name: station_id
+        type: string
+        required: true
+        example: "1"
+    responses:
+      200:
+        description: 조회 성공
+        schema:
+          type: object
+          properties:
+            order_id:
+              type: string
+              example: ord_a1b2c3d4
+            order_seq:
+              type: integer
+              example: 12
+      400:
+        description: 이 조립대에 배정된 주문이 없음
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 이 조립대에 배정된 주문이 없습니다
+    """
+    order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
+    if not order_id:
+        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
+
+    order_data = r.hgetall(f"order:{order_id}")
+    if not order_data:
+        # station_order 키는 남아있는데 order 해시가 TTL로 만료된 엣지 케이스
+        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
+
+    return jsonify({
+        "order_id": order_id,
+        "order_seq": order_data.get("order_seq"),
+    }), 200
