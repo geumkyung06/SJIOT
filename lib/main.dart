@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 import 'services/api_service.dart';
 import 'models/order_info.dart';
@@ -54,6 +55,12 @@ class DeviceRoot extends StatefulWidget {
 class _DeviceRootState extends State<DeviceRoot> {
   final ApiService _api = ApiService();
 
+  // 주문번호 음성 호출용
+  final FlutterTts _tts = FlutterTts();
+
+  // 같은 주문을 여러 번 읽는 것을 방지
+  String? _lastSpokenOrderId;
+
   DeviceStep _currentStep = DeviceStep.workstationSetup;
 
   /// 앱을 종료하기 전까지 유지되는 조립대 번호
@@ -98,13 +105,49 @@ class _DeviceRootState extends State<DeviceRoot> {
       }
     }
 
-    @override
-    void dispose() {
-      _stationStatusTimer?.cancel();
-      super.dispose();
-    }
-
     return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initTts();
+  }
+
+  Future<void> _initTts() async {
+    await _tts.setLanguage('ko-KR');
+    await _tts.setSpeechRate(0.45);
+    await _tts.setPitch(1.0);
+    await _tts.setVolume(1.0);
+  }
+
+  Future<void> _speakOrderCall({
+    required int orderNumber,
+    required int stationId,
+  }) async {
+    final String message =
+        '주문번호 $orderNumber번 고객님, '
+        '$stationId번 조립대로 와 주세요.';
+
+    debugPrint('========== 음성 호출 ==========');
+    debugPrint(message);
+    debugPrint('==============================');
+
+    // 이전 음성이 남아 있으면 정지
+    await _tts.stop();
+
+    // 주문번호 음성 호출
+    await _tts.speak(message);
+  }
+
+  @override
+  void dispose() {
+    _stationStatusTimer?.cancel();
+
+    // TTS 음성이 재생 중이면 종료
+    _tts.stop();
+
+    super.dispose();
   }
 
   /// 테스트용 주문 정보
@@ -192,6 +235,9 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       if (!mounted) return;
 
+      // 이미 음성으로 호출했던 주문인지 확인
+      final bool shouldSpeak = _lastSpokenOrderId != orderId;
+
       setState(() {
         _calledOrderId = orderId;
         _orderCallNumber = orderSeq;
@@ -199,6 +245,13 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       debugPrint('호출 주문 ID: $_calledOrderId');
       debugPrint('화면 표시 주문번호: $_orderCallNumber');
+
+      // 새로 배정된 주문일 때만 음성 호출
+      if (shouldSpeak) {
+        _lastSpokenOrderId = orderId;
+
+        await _speakOrderCall(orderNumber: orderSeq, stationId: stationId);
+      }
 
       // 주문을 찾았으므로 더 이상 폴링하지 않음
       _stopStationStatusPolling();
