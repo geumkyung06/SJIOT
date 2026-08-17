@@ -28,6 +28,12 @@ void main() {
 // true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
 const bool kBoardSelectEnabled = false;
 
+// [임시] 팀 회의 결과로 축(스위치) 선택 단계를 건너뛰고 흑축으로 고정합니다.
+// axis_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
+// true로 되돌리면 원래 흐름(축 선택 화면 노출)이 복원됩니다.
+const bool kAxisSelectEnabled = false;
+const String kFixedAxis = 'black';
+
 // [임시] COSS 백엔드 서버 문제로 API 연동을 끊고 프론트 동작(화면 흐름/애니메이션)만
 // 확인하기 위한 플래그. 서버 복구되어 true로 되돌림 -> 실제 API
 // (재고 조회 / 주문 생성 / 상태 폴링)를 호출합니다.
@@ -453,7 +459,15 @@ class _AppRootState extends State<AppRoot> {
         case AppStep.keycapFill:
           _axis = null;
           _resetLetters();
-          _step = AppStep.axisSelect;
+          if (kAxisSelectEnabled) {
+            _step = AppStep.axisSelect;
+          } else if (kBoardSelectEnabled) {
+            _boardShape = null;
+            _step = AppStep.boardSelect;
+          } else {
+            // [임시] 축 선택 화면이 꺼져있으므로 바로 mbtiResult로 되돌아감
+            _step = AppStep.mbtiResult;
+          }
           break;
         default:
           break;
@@ -564,31 +578,38 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.mbtiResult:
         if (isEnter) {
-          setState(() {
-            if (kBoardSelectEnabled) {
-              _step = AppStep.boardSelect;
+          if (kBoardSelectEnabled) {
+            setState(() => _step = AppStep.boardSelect);
+          } else {
+            _boardShape = '1x4';
+            _boardCount = 4;
+            if (kAxisSelectEnabled) {
+              setState(() => _step = AppStep.axisSelect);
             } else {
-              _boardShape = '1x4';
-              _boardCount = 4;
-              _step = AppStep.axisSelect;
+              // [임시] 축 선택 화면을 건너뛰고 고정 축(흑축)으로 바로 진행
+              await _goToKeycapFillWithAxis(kFixedAxis);
             }
-          });
+          }
         }
         break;
 
       case AppStep.boardSelect:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          setState(() {
-            _boardShape = '1x4';
-            _boardCount = 4;
-            _step = AppStep.axisSelect;
-          });
+          _boardShape = '1x4';
+          _boardCount = 4;
+          if (kAxisSelectEnabled) {
+            setState(() => _step = AppStep.axisSelect);
+          } else {
+            await _goToKeycapFillWithAxis(kFixedAxis);
+          }
         } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          setState(() {
-            _boardShape = '2x2';
-            _boardCount = 4;
-            _step = AppStep.axisSelect;
-          });
+          _boardShape = '2x2';
+          _boardCount = 4;
+          if (kAxisSelectEnabled) {
+            setState(() => _step = AppStep.axisSelect);
+          } else {
+            await _goToKeycapFillWithAxis(kFixedAxis);
+          }
         }
         break;
 
@@ -699,8 +720,14 @@ class _AppRootState extends State<AppRoot> {
     // 최신 재고에서 품절된 축이면 입력 무시
     if (_isAxisSoldOut(selectedAxis)) return;
 
+    await _goToKeycapFillWithAxis(selectedAxis);
+  }
+
+  // 축을 정하고(사용자가 고르거나, kAxisSelectEnabled=false일 때 고정값으로)
+  // 키캡 채우기 화면으로 넘어가는 공통 로직.
+  Future<void> _goToKeycapFillWithAxis(String axis) async {
     setState(() {
-      _axis = axes[digit - 1];
+      _axis = axis;
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;

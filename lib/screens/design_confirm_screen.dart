@@ -108,7 +108,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
       children: [
         _Fade(
           opacity: _labelOpacity,
-          child: const Text('STEP 06 / 06', style: AppTextStyles.label),
+          child: const Text('STEP 05 / 06', style: AppTextStyles.label),
         ),
         const SizedBox(height: 8),
         _FadeSlideY(

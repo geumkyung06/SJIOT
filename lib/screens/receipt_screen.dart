@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
-/// [신규] 영수증 페이지 — STEP 번호 없음
+/// [신규] 영수증 페이지 — STEP 06 / 06
+///
+/// 축(스위치) 선택 화면을 건너뛰게 되면서 비게 된 번호 자리를 이 화면이
+/// 대신 채웁니다. 전체 단계 수(06)는 그대로 유지됩니다.
 ///
 /// 순수하게 보여주기만 하는 화면입니다. 키보드 입력을 받지 않습니다.
 /// 화면 안의 "N초 후 처음 화면으로 돌아갑니다" 문구는 표시용 카운트다운일
@@ -112,6 +116,14 @@ class _ReceiptScreenState extends State<ReceiptScreen> with TickerProviderStateM
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          AnimatedBuilder(
+            animation: _cardOpacity,
+            builder: (context, child) => Opacity(opacity: _cardOpacity.value.clamp(0.0, 1.0), child: child),
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text('STEP 06 / 06', style: AppTextStyles.label),
+            ),
+          ),
           AnimatedBuilder(
             animation: Listenable.merge([_cardOpacity, _cardY]),
             builder: (context, child) => Opacity(
