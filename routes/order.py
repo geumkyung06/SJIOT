@@ -1,11 +1,12 @@
 import os
-import pymysql
-import redis
 import uuid
+import json
 from datetime import datetime
 import io
 import qrcode
 from flask import Blueprint, jsonify, request, send_file
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from services.extensions import r
 from services.mobius import (send_order_cin, 
@@ -31,6 +32,8 @@ MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 �
 STATION_STARTED_PREFIX = os.getenv("STATION_STARTED_PREFIX", "station:started_at:")
 STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
 
+ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
+
 ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
 
 MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
@@ -38,6 +41,12 @@ MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
 # 테스트 기간 전용: 설정돼 있으면 건드리는 키마다 이 초만큼 TTL을 계속 갱신함.
 # 운영 전환 시 이 env var만 빼면(또는 0으로) 원래대로 영구 보존됨.
 TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
+
+KST = ZoneInfo("Asia/Seoul")
+
+def _order_counter_key():
+    today = datetime.now(KST).strftime("%Y%m%d")
+    return f"{ORDER_COUNTER_KEY}:{today}"
 
 def _touch(*keys):
     """테스트 모드일 때 해당 키들의 TTL을 TEST_KEY_TTL로 (재)설정"""
@@ -391,6 +400,17 @@ def post_order_list():
       409:
         description: 대기열 초과 (재시도 필요)
     """
+    idem_key = request.headers.get("Idempotency-Key")
+
+    if idem_key:
+        claimed = r.set(f"idempotency:{idem_key}", "processing", nx=True, ex=300)
+        if not claimed:
+            # 이미 처리 중이거나 처리 완료 → 잠깐 대기 후 재조회, 또는 409 반환
+            cached = r.get(f"idempotency:{idem_key}")
+            if cached:
+                cached_response = json.loads(cached)
+                return jsonify(cached_response["body"]), cached_response["status"]
+            
     data = request.get_json()
 
     board = data.get("board")
@@ -423,6 +443,7 @@ def post_order_list():
             return jsonify({'error': '대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요'}), 409
 
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
+        order_seq = r.incr(_order_counter_key())
 
         # 일단 무조건 큐에 넣고 상태 waiting으로 생성
         r.rpush(QUEUE_KEY, order_id)
@@ -432,10 +453,11 @@ def post_order_list():
             "keycap": keycap,
             "colors": ",".join(colors),
             "status": "waiting",
+            "order_seq": order_seq,
             "created_at": datetime.now().isoformat()
         })
         r.expire(f"order:{order_id}", 3600)  # TTL 1시간
-        _touch(QUEUE_KEY)
+        _touch(QUEUE_KEY, ORDER_COUNTER_KEY)
 
         # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
         _try_assign_next()
@@ -455,11 +477,21 @@ def post_order_list():
             "order_id": order_id,
             "status": status,
             "position_in_queue": position_in_queue,
+            "order_seq": order_seq,
             "station_id": station_id
         }
 
         order_saved = send_order_cin(order_id, board, switch, keycap, colors)  # cnt_order 저장
 
+        response_body = {'order_status': order_status}
+        status_code = 200
+
+        if idem_key:
+            r.set(
+                f"idempotency:{idem_key}",
+                json.dumps({"status": status_code, "body": response_body}),
+                ex=300  # 5분 TTL — 재전송이 도착할 만한 시간이면 충분
+            )
         # cnt_order 저장 성공한 경우에만 cnt_table 갱신 (교차검증: 방금 만든 주문이
         # 실제로 coss에 반영됐다는 게 확인된 뒤에만 table 스냅샷에 그 order_id를 실어 보냄)
         if order_saved:
@@ -535,6 +567,7 @@ def get_order_status(order_id):
         'switch': order_data.get("switch"),
         'keycap': order_data.get("keycap"),
         'colors': order_data.get("colors", "").split(","),
+        'order_seq' : order_data.get("order_seq"),
         "position_in_queue": position_in_queue
     }), 200
 
@@ -564,8 +597,6 @@ def mobius_callback():
       400:
         description: 잘못된 payload
     """
-    data = request.get_json()
-    ...
     data = request.get_json()
     source = data.get("source")
 
