@@ -16,6 +16,7 @@ void main() {
 /// 디바이스 앱에서 사용할 화면 상태
 enum DeviceStep {
   workstationSetup,
+  orderCall,
   waiting,
   authenticated,
   assembling,
@@ -59,6 +60,12 @@ class _DeviceRootState extends State<DeviceRoot> {
   String? _workstationNumber;
   String? _assignedWorkstationNumber;
 
+  int? _orderCallNumber;
+  String? _calledOrderId;
+
+  Timer? _stationStatusTimer;
+  bool _isFetchingStationStatus = false;
+
   String? _extractOrderIdFromQr(String qrValue) {
     final value = qrValue.trim();
 
@@ -91,6 +98,12 @@ class _DeviceRootState extends State<DeviceRoot> {
       }
     }
 
+    @override
+    void dispose() {
+      _stationStatusTimer?.cancel();
+      super.dispose();
+    }
+
     return null;
   }
 
@@ -106,10 +119,112 @@ class _DeviceRootState extends State<DeviceRoot> {
   );
 
   void _selectWorkstation(String number) {
+    _stopStationStatusPolling();
+
     setState(() {
       _workstationNumber = number;
-      _currentStep = DeviceStep.waiting;
+
+      // 아직 서버에서 주문을 받기 전
+      _orderCallNumber = null;
+      _calledOrderId = null;
+
+      _currentStep = DeviceStep.orderCall;
     });
+
+    // 주문 배정 여부 조회 시작
+    _startStationStatusPolling();
+  }
+
+  void _startStationStatusPolling() {
+    _stationStatusTimer?.cancel();
+
+    // 화면 진입하자마자 한 번 즉시 조회
+    _fetchStationStatus();
+
+    // 이후 2초마다 조회
+    _stationStatusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+
+      if (_currentStep != DeviceStep.orderCall) {
+        return;
+      }
+
+      _fetchStationStatus();
+    });
+  }
+
+  void _stopStationStatusPolling() {
+    _stationStatusTimer?.cancel();
+    _stationStatusTimer = null;
+  }
+
+  Future<void> _fetchStationStatus() async {
+    if (_isFetchingStationStatus) {
+      return;
+    }
+
+    if (_workstationNumber == null) {
+      return;
+    }
+
+    _isFetchingStationStatus = true;
+
+    final int stationId = int.parse(_workstationNumber!);
+
+    try {
+      final result = await _api.getStationStatus(stationId: stationId);
+
+      debugPrint('조립대 주문 조회 성공');
+      debugPrint('result: $result');
+
+      final String? orderId = result['order_id']?.toString();
+
+      final dynamic rawOrderSeq = result['order_seq'];
+
+      final int? orderSeq = rawOrderSeq is int
+          ? rawOrderSeq
+          : int.tryParse(rawOrderSeq?.toString() ?? '');
+
+      if (orderId == null || orderSeq == null) {
+        debugPrint('order_id 또는 order_seq가 없습니다.');
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _calledOrderId = orderId;
+        _orderCallNumber = orderSeq;
+      });
+
+      debugPrint('호출 주문 ID: $_calledOrderId');
+      debugPrint('화면 표시 주문번호: $_orderCallNumber');
+
+      // 주문을 찾았으므로 더 이상 폴링하지 않음
+      _stopStationStatusPolling();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+
+      if (e.statusCode == 400) {
+        // 아직 이 조립대에 주문이 없는 정상적인 대기 상태
+        debugPrint('조립대 $stationId: 아직 배정된 주문 없음');
+
+        setState(() {
+          _calledOrderId = null;
+          _orderCallNumber = null;
+        });
+
+        return;
+      }
+
+      debugPrint('조립대 주문 조회 오류');
+      debugPrint('statusCode: ${e.statusCode}');
+      debugPrint('body: ${e.body}');
+    } catch (e) {
+      debugPrint('조립대 주문 조회 중 통신 오류: $e');
+    } finally {
+      _isFetchingStationStatus = false;
+    }
   }
 
   void _processTestQr() {
@@ -131,10 +246,18 @@ class _DeviceRootState extends State<DeviceRoot> {
   }
 
   void _reset() {
+    _stopStationStatusPolling();
+
     setState(() {
       _assignedWorkstationNumber = null;
-      _currentStep = DeviceStep.waiting;
+
+      _orderCallNumber = null;
+      _calledOrderId = null;
+
+      _currentStep = DeviceStep.orderCall;
     });
+
+    _startStationStatusPolling();
   }
 
   void _showMessage(String message) {
@@ -146,6 +269,11 @@ class _DeviceRootState extends State<DeviceRoot> {
   }
 
   Future<void> _openQrScanner() async {
+    if (_orderCallNumber == null || _calledOrderId == null) {
+      _showMessage('아직 이 조립대에 배정된 주문이 없습니다.');
+      return;
+    }
+
     final String? qrValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (context) => const QrScannerScreen()),
     );
@@ -167,6 +295,15 @@ class _DeviceRootState extends State<DeviceRoot> {
 
     if (scannedOrderId == null) {
       _moveTo(DeviceStep.invalidQr);
+      return;
+    }
+
+    if (_calledOrderId != null && scannedOrderId != _calledOrderId) {
+      debugPrint('호출된 주문과 QR 주문 불일치');
+      debugPrint('호출 주문: $_calledOrderId');
+      debugPrint('스캔 주문: $scannedOrderId');
+
+      _showMessage('현재 호출된 주문번호와 일치하지 않는 QR 코드입니다.');
       return;
     }
 
@@ -222,7 +359,7 @@ class _DeviceRootState extends State<DeviceRoot> {
           assignedWorkstation: stationId,
         );
 
-        _currentStep = DeviceStep.authenticated;
+        _currentStep = DeviceStep.waiting;
       });
     } on ApiException catch (e) {
       debugPrint('');
@@ -297,13 +434,21 @@ class _DeviceRootState extends State<DeviceRoot> {
         screen = WorkstationSetupScreen(onSelected: _selectWorkstation);
         break;
 
+      case DeviceStep.orderCall:
+        screen = OrderCallScreen(
+          orderNumber: _orderCallNumber == null
+              ? '--'
+              : _orderCallNumber.toString().padLeft(2, '0'),
+          onQrScan: _openQrScanner,
+        );
+        break;
+
       case DeviceStep.waiting:
         screen = WaitingScreen(
           workstationNumber: _workstationNumber ?? '--',
-          onQrSuccess: _processTestQr,
-          onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
-          onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
-          onQrScan: _openQrScanner,
+          onCountdownFinished: () {
+            _moveTo(DeviceStep.assembling);
+          },
         );
         break;
 
@@ -311,7 +456,9 @@ class _DeviceRootState extends State<DeviceRoot> {
         screen = AuthenticatedScreen(
           mbti: _order.mbti,
           colors: _order.colors,
-          onStart: () => _moveTo(DeviceStep.assembling),
+          onStart: () {
+            _moveTo(DeviceStep.assembling);
+          },
         );
         break;
 
@@ -334,9 +481,7 @@ class _DeviceRootState extends State<DeviceRoot> {
       case DeviceStep.invalidQr:
         screen = InvalidQrScreen(
           onRetry: _reset,
-          onCallStaff: () {
-            _showStaffDialog();
-          },
+          onCallStaff: _showStaffDialog,
         );
         break;
 
@@ -637,20 +782,13 @@ class WorkstationSelectButton extends StatelessWidget {
   }
 }
 
-/// 1. 대기 중 화면
-class WaitingScreen extends StatelessWidget {
-  final String workstationNumber;
-  final VoidCallback onQrSuccess;
-  final VoidCallback onInvalidQr;
-  final VoidCallback onWrongWorkstation;
+class OrderCallScreen extends StatelessWidget {
+  final String orderNumber;
   final VoidCallback onQrScan;
 
-  const WaitingScreen({
+  const OrderCallScreen({
     super.key,
-    required this.workstationNumber,
-    required this.onQrSuccess,
-    required this.onInvalidQr,
-    required this.onWrongWorkstation,
+    required this.orderNumber,
     required this.onQrScan,
   });
 
@@ -662,12 +800,8 @@ class WaitingScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const StatusCircle(),
-
-            const SizedBox(height: 16),
-
             const Text(
-              '사용 가능',
+              '주문번호',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w900,
@@ -676,10 +810,96 @@ class WaitingScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
 
             Text(
-              '조립대 $workstationNumber',
+              orderNumber,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 120,
+                height: 1,
+                fontWeight: FontWeight.w900,
+                color: AppColors.black,
+              ),
+            ),
+
+            const SizedBox(height: 52),
+
+            SizedBox(
+              width: 330,
+              height: 96,
+              child: PrimaryButton(text: 'QR 코드 스캔', onPressed: onQrScan),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 1. 대기 중 화면
+class WaitingScreen extends StatefulWidget {
+  final String workstationNumber;
+  final VoidCallback onCountdownFinished;
+
+  const WaitingScreen({
+    super.key,
+    required this.workstationNumber,
+    required this.onCountdownFinished,
+  });
+
+  @override
+  State<WaitingScreen> createState() => _WaitingScreenState();
+}
+
+class _WaitingScreenState extends State<WaitingScreen> {
+  static const int _waitingSeconds = 7;
+
+  Timer? _countdownTimer;
+  int _secondsLeft = _waitingSeconds;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_secondsLeft <= 1) {
+        timer.cancel();
+        widget.onCountdownFinished();
+        return;
+      }
+
+      setState(() {
+        _secondsLeft--;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const StatusCircle(),
+
+            const SizedBox(height: 28),
+
+            Text(
+              '조립대 ${widget.workstationNumber}',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 72,
@@ -689,41 +909,28 @@ class WaitingScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 22),
+            const SizedBox(height: 28),
 
             const Text(
-              '영수증의 QR 코드를 스캔해 주세요.',
-              style: TextStyle(fontSize: 20, color: AppColors.gray),
+              '인증이 완료되었습니다.\n'
+              '로봇이 부품을 내려놓기 전까지 기다려 주세요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                height: 1.5,
+                color: AppColors.gray,
+              ),
             ),
 
-            const SizedBox(height: 42),
+            const SizedBox(height: 32),
 
-            SizedBox(
-              width: 330,
-              child: PrimaryButton(text: 'QR 코드 스캔', onPressed: onQrScan),
-            ),
-
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: 330,
-              child: OutlineButton(text: 'QR 인증 테스트', onPressed: onQrSuccess),
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton(
-                  onPressed: onInvalidQr,
-                  child: const Text('잘못된 QR 테스트'),
-                ),
-                TextButton(
-                  onPressed: onWrongWorkstation,
-                  child: const Text('잘못된 조립대 테스트'),
-                ),
-              ],
+            Text(
+              '$_secondsLeft초 후 조립 화면으로 이동합니다.',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.gray,
+              ),
             ),
           ],
         ),
@@ -2122,6 +2329,9 @@ class DemoMenu extends StatelessWidget {
       onSelected: (step) {
         switch (step) {
           case DeviceStep.workstationSetup:
+            break;
+
+          case DeviceStep.orderCall:
             break;
 
           case DeviceStep.waiting:

@@ -27,6 +27,45 @@ class ApiService {
   final String baseUrl =
       'https://sjiot-backend-294910862364.asia-northeast1.run.app';
 
+  Future<Map<String, dynamic>> getStationStatus({
+    required int stationId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/station/$stationId/status');
+
+    debugPrint('========== 조립대 주문 조회 API ==========');
+    debugPrint('GET $uri');
+    debugPrint('station_id: $stationId');
+
+    final res = await http.get(uri, headers: {'Accept': 'application/json'});
+
+    debugPrint('statusCode: ${res.statusCode}');
+    debugPrint('response body: ${res.body}');
+    debugPrint('=========================================');
+
+    Map<String, dynamic>? data;
+
+    try {
+      final decoded = jsonDecode(res.body);
+
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      }
+    } catch (_) {
+      data = null;
+    }
+
+    if (res.statusCode == 200) {
+      return data ?? <String, dynamic>{};
+    }
+
+    throw ApiException(
+      action: 'STATION_STATUS',
+      statusCode: res.statusCode,
+      body: res.body,
+      data: data,
+    );
+  }
+
   Future<Map<String, dynamic>> getOrder(String orderId) async {
     final res = await http.get(
       Uri.parse('$baseUrl/order/$orderId/status'),
