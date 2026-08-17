@@ -111,7 +111,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
-            '숫자 1~4 → 색상 선택(자동으로 다음 칸 이동)  ·  화살표 → 이동  ·  ENTER로 제작',
+            '숫자 1~4 → 색상 선택(자동으로 다음 칸 이동)  ·  화살표 → 이동  ·  ENTER로 디자인 확인',
             style: AppTextStyles.body,
             textAlign: TextAlign.center,
           ),
@@ -224,7 +224,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  complete ? '엔터! 제작!' : '색을 모두 선택하세요',
+                  complete ? '엔터로 디자인 확인' : '색을 모두 선택하세요',
                   style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
                 ),
               ],

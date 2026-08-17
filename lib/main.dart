@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +16,8 @@ import 'screens/board_select_screen.dart';
 import 'screens/axis_select_screen.dart';
 import 'screens/keycap_fill_screen.dart';
 import 'screens/complete_screen.dart';
+import 'screens/design_confirm_screen.dart';
+import 'screens/receipt_screen.dart';
 
 void main() {
   runApp(const ClickyKeyringApp());
@@ -26,9 +29,9 @@ void main() {
 const bool kBoardSelectEnabled = false;
 
 // [임시] COSS 백엔드 서버 문제로 API 연동을 끊고 프론트 동작(화면 흐름/애니메이션)만
-// 확인하기 위한 플래그. 서버 복구되면 이 값을 true로 되돌리면 원래대로
-// 실제 API(재고 조회 / 주문 생성 / 상태 폴링)를 호출합니다.
-const bool kApiEnabled = false;
+// 확인하기 위한 플래그. 서버 복구되어 true로 되돌림 -> 실제 API
+// (재고 조회 / 주문 생성 / 상태 폴링)를 호출합니다.
+const bool kApiEnabled = true;
 
 enum AppStep {
   home,
@@ -39,7 +42,9 @@ enum AppStep {
   boardSelect,
   axisSelect,
   keycapFill,
-  complete,
+  complete, // [보류] 로봇 조립 애니메이션 — 현재 플로우에서는 사용하지 않음(팀 논의 후 결정). 코드는 보존.
+  designConfirm, // [신규] STEP 06 — 완성된 디자인 확인 화면 (Enter=접수 / Esc=초기화 후 STEP01)
+  receipt, // [신규] 영수증 화면 (표시 전용, STEP 번호 없음, 8초 후 자동 복귀)
 }
 
 class ClickyKeyringApp extends StatelessWidget {
@@ -153,6 +158,32 @@ class _AppRootState extends State<AppRoot> {
   Map<String, dynamic>? _orderStatus;
   bool _polling = false;
   Timer? _autoRestartTimer;
+
+  // ---------------- 영수증 화면 표시용 값 ----------------
+  String? _receiptOrderNumber;
+  String? _receiptTime;
+  Uint8List? _receiptQrBytes; // GET /order/{order_id}/qr 로 받아온 실제 QR 이미지
+
+  // 영수증에 표시할 축 이름/색상 (axis_select_screen.dart의 표기와 동일하게 유지)
+  static const Map<String, String> _axisLabels = {
+    'blue': '청축',
+    'brown': '갈축',
+    'red': '적축',
+    'black': '흑축',
+  };
+  static const Map<String, Color> _axisColors = {
+    'blue': Color(0xFF3E7CE0),
+    'brown': Color(0xFF9C6B3F),
+    'red': Color(0xFFD5473C),
+    'black': Color(0xFF2B2B2B),
+  };
+  // 영수증에 표시할 키캡 색상 이름 (keycap_fill_screen.dart의 범례와 동일)
+  static const Map<String, String> _keycapColorLabels = {
+    'g': '초록',
+    'y': '노랑',
+    'b': '파랑',
+    'r': '빨강',
+  };
 
   // Mobius/창고/조립대 콜백이 아직 실제로 연결 안 된 동안의 임시 안전장치.
   // 이 시간 안에 'done'이 안 되면 자동으로 홈 화면으로 돌아감.
@@ -569,8 +600,19 @@ class _AppRootState extends State<AppRoot> {
         await _handleKeycapFillKey(event);
         break;
 
+      case AppStep.designConfirm:
+        if (isEnter) {
+          await _confirmAndSubmitOrder();
+        } else if (event.physicalKey == PhysicalKeyboardKey.escape) {
+          _cancelDesignAndReset();
+        }
+        break;
+
+      case AppStep.receipt:
+        break; // 영수증 화면은 표시 전용 — 키 입력 무시
+
       case AppStep.complete:
-        break; // 완료/진행 화면에서는 키 입력 무시
+        break; // [보류] 현재 플로우에서 쓰지 않음
     }
   }
 
@@ -821,12 +863,47 @@ class _AppRootState extends State<AppRoot> {
         return;
       }
 
-      await _submitOrder();
+      // [수정] 여기서 바로 주문을 보내지 않고, 먼저 디자인 확인 화면으로
+      // 이동합니다. 실제 주문 전송은 그 화면에서 Enter를 눌러야만 일어납니다.
+      _goToDesignConfirm();
     }
   }
 
-  Future<void> _submitOrder() async {
-    // 주문 생성 직전 마지막 재고 확인
+  // 색 선택을 모두 마친 뒤 STEP 06(디자인 확인)으로 이동.
+  // 이 시점에는 아직 어떤 정보도 서버로 전송하지 않습니다.
+  void _goToDesignConfirm() {
+    setState(() {
+      _step = AppStep.designConfirm;
+      _keycapMessage = null;
+    });
+  }
+
+  // STEP 06(디자인 확인)에서 Esc를 눌렀을 때: 아무 정보도 전송하지 않고
+  // 모든 선택값을 초기화한 뒤 STEP 01(MBTI를 아는지 선택)로 되돌아갑니다.
+  void _cancelDesignAndReset() {
+    setState(() {
+      _direction = -1;
+      _step = AppStep.mbtiChoice;
+      _boardShape = null;
+      _axis = null;
+      _mbtiResult = null;
+      _keycapMessage = null;
+      _resetQuiz();
+      _resetManual();
+      _orderId = null;
+      _orderStatus = null;
+      _receiptOrderNumber = null;
+      _receiptTime = null;
+      _receiptQrBytes = null;
+      _resetLetters();
+    });
+  }
+
+  // STEP 06(디자인 확인)에서 Enter를 눌렀을 때 호출됩니다.
+  // 이 시점에 비로소 실제 주문/제작 정보가 서버로 전송됩니다.
+  Future<void> _confirmAndSubmitOrder() async {
+    // 접수 직전 마지막 재고 확인 (디자인 확인 화면에 머무는 동안 재고가
+    // 바뀌었을 수 있으므로 다시 확인합니다)
     final success = await _loadSoldOutStock();
 
     if (!mounted || !success) return;
@@ -839,10 +916,11 @@ class _AppRootState extends State<AppRoot> {
       if (invalidIndex != null) {
         _cursor = invalidIndex!;
         _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+        _step = AppStep.keycapFill;
       }
     });
 
-    // 재고가 변경된 키캡이 있으면 주문 생성 금지
+    // 재고가 변경된 키캡이 있으면 주문 생성 금지 (키캡 화면으로 돌려보냄)
     if (invalidIndex != null) {
       return;
     }
@@ -854,24 +932,23 @@ class _AppRootState extends State<AppRoot> {
       setState(() {
         _cursor = firstEmptyIndex;
         _keycapMessage = '색을 모두 선택하세요.';
+        _step = AppStep.keycapFill;
       });
       return;
     }
 
-    // 모든 검사를 통과한 뒤에만 완료 화면으로 이동
     setState(() {
-      _step = AppStep.complete;
+      _orderId = null;
       _orderStatus = null;
-      _keycapMessage = null;
+      _receiptOrderNumber = null;
+      _receiptTime = _formatNowHHmm();
+      _receiptQrBytes = null;
     });
 
-    _startAutoRestartTimer();
-
     // [임시] API 연동이 꺼져있으면 실제 서버 대신 로컬에서 가짜 진행 상태를
-    // 흘려보내서, 완성 화면(로봇 이동/조립 연출 등) 애니메이션까지
-    // 백엔드 없이 확인할 수 있게 합니다.
+    // 흘려보내서, 영수증 화면까지 백엔드 없이 확인할 수 있게 합니다.
     if (!kApiEnabled) {
-      _mockOrderFlow();
+      _mockSubmitAndGoToReceipt();
       return;
     }
 
@@ -890,41 +967,109 @@ class _AppRootState extends State<AppRoot> {
       setState(() {
         _orderId = result['order_id'] as String?;
         _orderStatus = result;
+        _receiptOrderNumber = _formatOrderNumber(result);
+        _step = AppStep.receipt;
       });
 
+      // 영수증 화면 진입 직후부터 8초 뒤 자동으로 처음 화면으로 복귀
+      _scheduleDoneRestart();
+
+      // 조립대 배정 상태를 계속 조회해서 "배정 조립대" 박스 문구를
+      // complete_screen.dart와 같은 방식(대기열 N번째 → N번 조립대로
+      // 이동해주세요 → 제작 중 → 완료)으로 실시간 갱신합니다.
       _pollStatus();
+
+      // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
+      // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
+      final orderId = _orderId;
+      if (orderId != null) {
+        try {
+          final qrBytes = await _api.getOrderQr(orderId);
+          if (mounted) {
+            setState(() => _receiptQrBytes = qrBytes);
+          }
+        } catch (e) {
+          print('>>> QR 조회 실패: $e');
+        }
+      }
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _orderStatus = {'status': 'error', 'error': e.toString()};
-      });
+      final message = e.toString();
+
+      // 백엔드가 "대기열이 가득 찼습니다" 오류를 준다는 것은 조립대/대기열이
+      // 가득 찼다는 뜻입니다. 이 경우 오류 문구를 그대로 노출하지 않고,
+      // "대기 중 · 미배정" 상태의 영수증 화면으로 대신 이동합니다.
+      final isQueueFull = message.contains('대기열이 가득');
+
+      if (isQueueFull) {
+        setState(() {
+          _receiptOrderNumber = null;
+          _receiptQrBytes = null; // 실제 주문이 생성되지 않았으므로 QR도 없음
+          _step = AppStep.receipt;
+        });
+        _scheduleDoneRestart();
+      } else {
+        // 그 외의 오류(네트워크 오류 등)는 키캡 화면으로 돌려보내고
+        // 안내 문구로 표시합니다.
+        setState(() {
+          _step = AppStep.keycapFill;
+          _keycapMessage = '주문 처리 중 오류가 발생했습니다. 다시 시도해 주세요.';
+        });
+      }
     }
   }
 
-  // [임시] 백엔드 없이 completion 화면 애니메이션을 확인하기 위한
-  // 가짜 주문 진행 시뮬레이션. 2초 간격으로 waiting → assigned →
-  // in_progress → done 상태를 순서대로 흘려보냅니다.
-  void _mockOrderFlow() {
+  // [임시] API 연동이 꺼져있을 때, 접수 → 영수증까지의 흐름을 백엔드 없이
+  // 확인할 수 있도록 하는 가짜 처리.
+  void _mockSubmitAndGoToReceipt() {
     _orderId = 'mock-order-id';
+    setState(() {
+      _receiptOrderNumber = (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
+      _orderStatus = {'status': 'waiting', 'position_in_queue': 1};
+      _receiptQrBytes = null; // 목업 모드에서는 실제 QR 이미지가 없음(자리표시자로 표시)
+      _step = AppStep.receipt;
+    });
+    _scheduleDoneRestart();
 
+    // [임시] 실제 서버 폴링 대신, 2초 간격으로 waiting → assigned →
+    // in_progress → done 상태를 흘려보내서 영수증 박스 애니메이션까지
+    // 백엔드 없이 확인할 수 있게 합니다.
     final mockSteps = <Map<String, dynamic>>[
       {'status': 'waiting', 'position_in_queue': 1},
       {'status': 'assigned', 'station_id': 1},
       {'status': 'in_progress', 'station_id': 1},
-      {'status': 'done'},
+      {'status': 'done', 'station_id': 1},
     ];
-
     for (var i = 0; i < mockSteps.length; i++) {
       Future.delayed(Duration(seconds: 2 * (i + 1)), () {
-        if (!mounted) return;
+        if (!mounted || _step != AppStep.receipt) return;
         setState(() => _orderStatus = mockSteps[i]);
-        if (mockSteps[i]['status'] == 'done') {
-          _autoRestartTimer?.cancel();
-          _scheduleDoneRestart();
-        }
       });
     }
+  }
+
+  String _formatNowHHmm() {
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  // 백엔드가 order_status 응답에 "order_seq"(몇 번째 주문인지)를 함께 내려주면
+  // 그 값을 그대로 영수증 주문번호로 사용합니다. 혹시 order_seq가 없는
+  // 응답이 오는 예외 상황을 대비해 order_id 기반 대체값도 남겨둡니다.
+  String _formatOrderNumber(Map<String, dynamic> result) {
+    final seq = result['order_seq'];
+    if (seq != null) {
+      return seq.toString().padLeft(3, '0');
+    }
+
+    final orderId = result['order_id'];
+    if (orderId == null) return '-';
+    final str = orderId.toString();
+    if (str.length > 3) return str.substring(str.length - 3).toUpperCase();
+    return str;
   }
 
   // 완성 상태가 되면 일정 시간 뒤 자동으로 처음 화면으로 복귀
@@ -954,9 +1099,10 @@ class _AppRootState extends State<AppRoot> {
         final status = await _api.getOrderStatus(_orderId!);
         if (!mounted) return false;
         setState(() => _orderStatus = status);
+        // [수정] 영수증 화면의 8초 자동 복귀 타이머는 화면 진입 시 이미
+        // 예약되어 있으므로 여기서 다시 예약하지 않습니다. (다시 예약하면
+        // 화면에 보이는 카운트다운과 실제 복귀 시점이 어긋납니다)
         if (status['status'] == 'done') {
-          _autoRestartTimer?.cancel();
-          _scheduleDoneRestart();
           return false;
         }
         return true;
@@ -964,6 +1110,44 @@ class _AppRootState extends State<AppRoot> {
         return false;
       }
     }).whenComplete(() => _polling = false);
+  }
+
+  // 영수증 화면의 "배정 조립대" 박스에 표시할 큰 문구.
+  // complete_screen.dart의 _statusText()와 같은 문구 방식을 따릅니다.
+  String _receiptStatusHeadline() {
+    // 대기열/조립대가 가득 차서 주문 자체가 생성되지 못한 경우
+    if (_orderId == null) return '대기 중';
+
+    final status = _orderStatus?['status'] as String?;
+    switch (status) {
+      case 'waiting':
+        final pos = _orderStatus?['position_in_queue'];
+        return pos != null ? '대기열 $pos번째' : '대기 중';
+      case 'assigned':
+        final st = _orderStatus?['station_id'];
+        return st != null ? '$st번 조립대로 이동해주세요' : '조립대 배정됨';
+      case 'in_progress':
+        final st = _orderStatus?['station_id'];
+        return st != null ? '$st번 조립대에서 제작 중' : '제작 중';
+      case 'done':
+        return '제작 완료!';
+      default:
+        return '접수 처리 중...';
+    }
+  }
+
+  // 큰 문구 아래에 덧붙일 작은 보조 문구 (필요한 경우에만)
+  String? _receiptStatusCaption() {
+    if (_orderId == null) return '스태프가 안내해 드립니다';
+    return null;
+  }
+
+  // 박스 배경색 결정: 실제로 조립대가 움직이고 있는 상태(배정/제작/완료)면
+  // 진한 검정, 그 외(대기/접수 처리 중/미배정)에는 옅은 갈색으로 표시합니다.
+  bool _receiptStatusIsActive() {
+    if (_orderId == null) return false;
+    final status = _orderStatus?['status'] as String?;
+    return status == 'assigned' || status == 'in_progress' || status == 'done';
   }
 
   void _restart() {
@@ -980,6 +1164,9 @@ class _AppRootState extends State<AppRoot> {
       _resetManual();
       _orderId = null;
       _orderStatus = null;
+      _receiptOrderNumber = null;
+      _receiptTime = null;
+      _receiptQrBytes = null;
       _resetLetters();
     });
   }
@@ -1060,6 +1247,8 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.complete:
+        // [보류] 로봇 조립 애니메이션 — 현재 플로우에서는 진입하지 않지만
+        // 코드는 그대로 보존합니다. (팀 논의 후 사용 여부 결정)
         screen = CompleteScreen(
           boardShape: _boardShape ?? '1x4',
           letters: _letters,
@@ -1068,9 +1257,41 @@ class _AppRootState extends State<AppRoot> {
           onRestart: _restart,
         );
         break;
+
+      case AppStep.designConfirm:
+        screen = DesignConfirmScreen(
+          boardShape: _boardShape ?? '1x4',
+          letters: _letters,
+          colorAt: _colorAt,
+          axisLabel: _axisLabels[_axis] ?? '-',
+          axisColor: _axisColors[_axis] ?? AppColors.ink,
+        );
+        break;
+
+      case AppStep.receipt:
+        screen = ReceiptScreen(
+          orderNumber: _receiptOrderNumber ?? '-',
+          time: _receiptTime ?? _formatNowHHmm(),
+          mbti: _mbtiResult ?? '----',
+          axisLabel: _axisLabels[_axis] ?? '-',
+          axisColor: _axisColors[_axis] ?? AppColors.ink,
+          keycapColors: List.generate(_boardCount, (i) => _colorAt(i)),
+          keycapLabels: List.generate(
+            _boardCount,
+            (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
+          ),
+          statusHeadline: _receiptStatusHeadline(),
+          statusCaption: _receiptStatusCaption(),
+          isActive: _receiptStatusIsActive(),
+          qrBytes: _receiptQrBytes,
+        );
+        break;
     }
 
-    final showBackButton = _step != AppStep.home && _step != AppStep.complete;
+    final showBackButton = _step != AppStep.home &&
+        _step != AppStep.complete &&
+        _step != AppStep.designConfirm &&
+        _step != AppStep.receipt;
 
     return KeyboardListener(
       focusNode: _focusNode,
