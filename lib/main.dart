@@ -490,7 +490,7 @@ class _DeviceRootState extends State<DeviceRoot> {
       case DeviceStep.orderCall:
         screen = OrderCallScreen(
           orderNumber: _orderCallNumber == null
-              ? '--'
+              ? '조립대 ${_workstationNumber ?? '--'}'
               : _orderCallNumber.toString().padLeft(2, '0'),
           onQrScan: _openQrScanner,
         );
