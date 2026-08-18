@@ -607,7 +607,7 @@ def mobius_callback():
             # 주문 상태는 assigned 유지 - in_progress는 QR start에서만 전이
             _try_assign_next()
 
-        elif source == "station":
+        elif source == "agv":
             station_id = str(data.get("station_id"))
             if station_id not in ("1", "2", "3"):
                 return jsonify({'error': '잘못된 station_id'}), 400
@@ -626,7 +626,7 @@ def mobius_callback():
             _try_assign_next()  # 조립대가 풀렸으니 다음 대기 주문 배정 시도
 
         else:
-            return jsonify({'error': 'source는 warehouse 또는 station 이어야 합니다'}), 400
+            return jsonify({'error': 'source는 warehouse 또는 agv 이어야 합니다'}), 400
 
         return jsonify({'ok': True}), 200
 
@@ -677,7 +677,7 @@ def get_station_status(station_id):
         example: "1"
     responses:
       200:
-        description: 조회 성공
+        description: 조회 성공. status가 "agv_arrived"일 때만 사용자를 호출해야 함 — "assigned"는 아직 부품 운송 중.
         schema:
           type: object
           properties:
@@ -685,10 +685,18 @@ def get_station_status(station_id):
               type: string
               example: ord_a1b2c3d4
             order_seq:
-              type: integer
-              example: 12
+              type: string
+              example: "12"
+            status:
+              type: string
+              enum: [assigned, agv_arrived, in_progress]
+              description: >
+                assigned - 배정됨, 아직 부품 운송 중 (사용자 호출 금지) /
+                agv_arrived - AGV 도착, 사용자 호출 시점 /
+                in_progress - QR 인증 완료, 조립 중 (디스플레이 재연결 시 화면 복구용)
+              example: agv_arrived
       400:
-        description: 이 조립대에 배정된 주문이 없음
+        description: 이 조립대에 배정된 주문이 없음 (미배정 또는 완료되어 정리됨)
         schema:
           type: object
           properties:
@@ -708,4 +716,5 @@ def get_station_status(station_id):
     return jsonify({
         "order_id": order_id,
         "order_seq": order_data.get("order_seq"),
+        "status": order_data.get("status")
     }), 200
