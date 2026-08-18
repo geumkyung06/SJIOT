@@ -13,6 +13,11 @@ class KeycapFillScreen extends StatefulWidget {
   final String? message;
   final bool stockLoading;
 
+  // 터치 지원
+  final void Function(int index)? onCellTap; // 칸을 탭하면 그 칸으로 커서 이동
+  final void Function(int digit)? onColorTap; // 색상 팔레트를 탭하면 현재 칸에 그 색 적용
+  final VoidCallback? onSubmit; // 완료 버튼(=ENTER) 탭
+
   const KeycapFillScreen({
     super.key,
     required this.boardShape,
@@ -22,6 +27,9 @@ class KeycapFillScreen extends StatefulWidget {
     required this.soldOutColors,
     this.message,
     required this.stockLoading,
+    this.onCellTap,
+    this.onColorTap,
+    this.onSubmit,
   });
 
   @override
@@ -111,7 +119,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
-            '숫자 1~4 → 색상 선택(자동으로 다음 칸 이동)  ·  화살표 → 이동  ·  ENTER로 디자인 확인',
+            '칸을 탭하거나 숫자 1~4로 색상 선택  ·  화살표 → 이동  ·  ENTER로 디자인 확인',
             style: AppTextStyles.body,
             textAlign: TextAlign.center,
           ),
@@ -143,10 +151,16 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                           final isCursor = i == widget.cursor;
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: _KeycapCell(
-                              isCursor: isCursor,
-                              color: widget.colorAt(i),
-                              letter: widget.letters[i],
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: widget.stockLoading || widget.onCellTap == null
+                                  ? null
+                                  : () => widget.onCellTap!(i),
+                              child: _KeycapCell(
+                                isCursor: isCursor,
+                                color: widget.colorAt(i),
+                                letter: widget.letters[i],
+                              ),
                             ),
                           );
                         }),
@@ -171,10 +185,10 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                 children: [
                   const Text('색상 선택', style: AppTextStyles.body),
                   const SizedBox(height: 8),
-                  _legendRow('1', 'g', KeycapColors.green, '초록'),
-                  _legendRow('2', 'y', KeycapColors.yellow, '노랑'),
-                  _legendRow('3', 'b', KeycapColors.blue, '파랑'),
-                  _legendRow('4', 'r', KeycapColors.red, '빨강'),
+                  _legendRow(1, 'g', KeycapColors.green, '초록'),
+                  _legendRow(2, 'y', KeycapColors.yellow, '노랑'),
+                  _legendRow(3, 'b', KeycapColors.blue, '파랑'),
+                  _legendRow(4, 'r', KeycapColors.red, '빨강'),
                   const SizedBox(height: 8),
                   Text('$filled / ${widget.letters.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ],
@@ -209,25 +223,29 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         _FadeSlideY(
           opacity: _buttonOpacity,
           y: _buttonY,
-          child: Container(
-            width: boardWidth,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            alignment: Alignment.center,
-            color: complete ? AppColors.ink : AppColors.muted,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  color: Colors.white,
-                  child: const Text('ENTER', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  complete ? '엔터로 디자인 확인' : '색을 모두 선택하세요',
-                  style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
-                ),
-              ],
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.stockLoading ? null : widget.onSubmit,
+            child: Container(
+              width: boardWidth,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              alignment: Alignment.center,
+              color: complete ? AppColors.ink : AppColors.muted,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    color: Colors.white,
+                    child: const Text('ENTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    complete ? '엔터로 디자인 확인' : '색을 모두 선택하세요',
+                    style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -236,14 +254,20 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
   }
 
   Widget _legendRow(
-    String num,
+    int digit,
     String colorCode,
     Color color,
     String name,
   ) {
     final isSoldOut = widget.soldOutColors.contains(colorCode);
+    final num = '$digit';
 
-    return Padding(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: (widget.stockLoading || isSoldOut || widget.onColorTap == null)
+          ? null
+          : () => widget.onColorTap!(digit),
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
@@ -314,6 +338,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
               ),
             ),
         ],
+      ),
       ),
     );
   }

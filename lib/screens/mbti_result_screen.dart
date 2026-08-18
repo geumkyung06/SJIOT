@@ -5,8 +5,9 @@ import '../theme/app_theme.dart';
 /// 피그마 `App.tsx > MbtiResultScreen` 모션 1:1 이식.
 class MbtiResultScreen extends StatefulWidget {
   final String mbti;
+  final VoidCallback? onNext; // 터치 지원: ENTER(다음으로) 배지 탭
 
-  const MbtiResultScreen({super.key, required this.mbti});
+  const MbtiResultScreen({super.key, required this.mbti, this.onNext});
 
   @override
   State<MbtiResultScreen> createState() => _MbtiResultScreenState();
@@ -116,20 +117,24 @@ class _MbtiResultScreenState extends State<MbtiResultScreen> with TickerProvider
           child: AnimatedBuilder(
             animation: _pulseOpacity,
             builder: (context, child) => Opacity(opacity: _pulseOpacity.value, child: child),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: AppColors.muted,
-                    child: const Text('ENTER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 16),
-                  const Text('다음으로', style: TextStyle(fontSize: 18)),
-                ],
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onNext,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: AppColors.muted,
+                      child: const Text('ENTER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text('다음으로', style: TextStyle(fontSize: 18)),
+                  ],
+                ),
               ),
             ),
           ),

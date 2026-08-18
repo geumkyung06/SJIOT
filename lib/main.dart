@@ -575,9 +575,9 @@ class _AppRootState extends State<AppRoot> {
         break;
       case AppStep.mbtiChoice:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          await _moveToStep(AppStep.mbtiQuiz, beforeMove: _resetQuiz);
+          await _selectMbtiChoice(1);
         } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          await _moveToStep(AppStep.mbtiManual, beforeMove: _resetManual);
+          await _selectMbtiChoice(2);
         }
         break;
 
@@ -591,18 +591,7 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.mbtiResult:
         if (isEnter) {
-          if (kBoardSelectEnabled) {
-            setState(() => _step = AppStep.boardSelect);
-          } else {
-            _boardShape = '1x4';
-            _boardCount = 4;
-            if (kAxisSelectEnabled) {
-              setState(() => _step = AppStep.axisSelect);
-            } else {
-              // [임시] 축 선택 화면을 건너뛰고 고정 축(흑축)으로 바로 진행
-              await _goToKeycapFillWithAxis(kFixedAxis);
-            }
-          }
+          await _proceedFromMbtiResult();
         }
         break;
 
@@ -652,10 +641,39 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
+  // (터치/키보드 공용) MBTI 결과 화면에서 다음으로 진행
+  Future<void> _proceedFromMbtiResult() async {
+    if (kBoardSelectEnabled) {
+      setState(() => _step = AppStep.boardSelect);
+    } else {
+      _boardShape = '1x4';
+      _boardCount = 4;
+      if (kAxisSelectEnabled) {
+        setState(() => _step = AppStep.axisSelect);
+      } else {
+        // [임시] 축 선택 화면을 건너뛰고 고정 축(흑축)으로 바로 진행
+        await _goToKeycapFillWithAxis(kFixedAxis);
+      }
+    }
+  }
+
+  // (터치/키보드 공용) MBTI 아는지 선택: 1=몰라요(퀴즈), 2=알아요(직접입력)
+  Future<void> _selectMbtiChoice(int digit) async {
+    if (digit == 1) {
+      await _moveToStep(AppStep.mbtiQuiz, beforeMove: _resetQuiz);
+    } else if (digit == 2) {
+      await _moveToStep(AppStep.mbtiManual, beforeMove: _resetManual);
+    }
+  }
+
   Future<void> _handleQuizKey(KeyEvent event) async {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
+    await _selectQuizOption(digit);
+  }
 
+  // (터치/키보드 공용) 퀴즈 보기 선택
+  Future<void> _selectQuizOption(int digit) async {
     final options = _mbtiQuestions[_quizIndex]['options'] as List;
     final letter = options[digit - 1]['letter'] as String;
 
@@ -694,7 +712,11 @@ class _AppRootState extends State<AppRoot> {
   Future<void> _handleManualKey(KeyEvent event) async {
     final letter = _keyCharMap[event.physicalKey];
     if (letter == null) return;
+    await _selectManualLetter(letter);
+  }
 
+  // (터치/키보드 공용) 직접입력 화면에서 알파벳 하나 선택
+  Future<void> _selectManualLetter(String letter) async {
     final pair = _manualPairs[_manualIndex];
 
     // 현재 단계의 글자가 아니면 무시
@@ -723,7 +745,11 @@ class _AppRootState extends State<AppRoot> {
   Future<void> _handleAxisKey(KeyEvent event) async {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
+    await _selectAxis(digit);
+  }
 
+  // (터치/키보드 공용) 축 선택 (kAxisSelectEnabled=true일 때만 화면에 노출됨)
+  Future<void> _selectAxis(int digit) async {
     const axes = ['blue', 'brown', 'red', 'black'];
     final selectedAxis = axes[digit - 1];
 
@@ -764,54 +790,7 @@ class _AppRootState extends State<AppRoot> {
     // 1~4 숫자키: 키캡 색상 선택 또는 변경
     // --------------------------------------------------
     if (digit != null) {
-      final selectedColor = _pastelColorCycle[digit - 1];
-
-      // 선택 직전 최신 재고 조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      final selectedLetter = _letters[_cursor];
-      final stockCode = '${selectedLetter}_$selectedColor';
-
-      setState(() {
-        // 기존 선택 중 새로 품절된 색상이 있으면 해제
-        final invalidIndex = _removeInvalidColorSelections();
-
-        if (invalidIndex != null) {
-          _cursor = invalidIndex;
-          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-          return;
-        }
-
-        // 현재 글자의 모든 색상이 품절
-        if (_isLetterSoldOut(selectedLetter)) {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-          return;
-        }
-
-        // 사용자가 누른 색상이 품절이면 기존 선택 유지
-        // 커서도 다음 칸으로 이동하지 않음
-        if (_soldOutKeycaps.contains(stockCode)) {
-          _keycapMessage = '$selectedLetter 키캡의 해당 색상은 재고가 없습니다.';
-          return;
-        }
-
-        // 선택 가능한 색상이므로 저장
-        _colorCodes[_cursor] = selectedColor;
-        _keycapMessage = null;
-
-        // 마지막 칸이 아닐 때만 다음 칸으로 자동 이동
-        if (_cursor < _boardCount - 1) {
-          _cursor++;
-        }
-
-        // 자동 이동한 글자의 모든 색상이 품절인지 검사
-        if (_isLetterSoldOut(_letters[_cursor])) {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-        }
-      });
-
+      await _selectKeycapColorDigit(digit);
       return;
     }
 
@@ -833,14 +812,7 @@ class _AppRootState extends State<AppRoot> {
     }
 
     if (nextCursor != null) {
-      // 우선 커서를 이동
-      setState(() {
-        _cursor = nextCursor!;
-        _keycapMessage = null;
-      });
-
-      // 이동한 키캡 글자의 최신 재고 확인
-      await _refreshKeycapStockForCursor();
+      await _selectKeycapCell(nextCursor);
       return;
     }
 
@@ -863,52 +835,129 @@ class _AppRootState extends State<AppRoot> {
         physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     if (isEnter) {
-      // 색상을 선택하지 않은 첫 번째 칸 찾기
-      final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
+      await _trySubmitKeycapFill();
+    }
+  }
 
-      if (firstEmptyIndex != -1) {
-        setState(() {
-          _cursor = firstEmptyIndex;
-          _keycapMessage = '색을 모두 선택하세요.';
-        });
+  // (터치/키보드 공용) 커서 위치의 색을 digit(1~4)에 해당하는 색으로 선택.
+  Future<void> _selectKeycapColorDigit(int digit) async {
+    if (_stockLoading) return;
 
-        await _refreshKeycapStockForCursor();
+    final selectedColor = _pastelColorCycle[digit - 1];
+
+    // 선택 직전 최신 재고 조회
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    final selectedLetter = _letters[_cursor];
+    final stockCode = '${selectedLetter}_$selectedColor';
+
+    setState(() {
+      // 기존 선택 중 새로 품절된 색상이 있으면 해제
+      final invalidIndex = _removeInvalidColorSelections();
+
+      if (invalidIndex != null) {
+        _cursor = invalidIndex;
+        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
         return;
       }
 
-      // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
-      final success = await _loadSoldOutStock();
+      // 현재 글자의 모든 색상이 품절
+      if (_isLetterSoldOut(selectedLetter)) {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+        return;
+      }
 
-      if (!mounted || !success) return;
+      // 사용자가 누른 색상이 품절이면 기존 선택 유지
+      // 커서도 다음 칸으로 이동하지 않음
+      if (_soldOutKeycaps.contains(stockCode)) {
+        _keycapMessage = '$selectedLetter 키캡의 해당 색상은 재고가 없습니다.';
+        return;
+      }
 
-      int? firstInvalidIndex;
+      // 선택 가능한 색상이므로 저장
+      _colorCodes[_cursor] = selectedColor;
+      _keycapMessage = null;
 
+      // 마지막 칸이 아닐 때만 다음 칸으로 자동 이동
+      if (_cursor < _boardCount - 1) {
+        _cursor++;
+      }
+
+      // 자동 이동한 글자의 모든 색상이 품절인지 검사
+      if (_isLetterSoldOut(_letters[_cursor])) {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+      }
+    });
+  }
+
+  // (터치 전용) 키캡 칸을 직접 탭했을 때 커서를 그 칸으로 바로 이동.
+  // 키보드의 화살표 이동과 달리 원하는 칸으로 한 번에 건너뜁니다.
+  Future<void> _selectKeycapCell(int index) async {
+    if (_stockLoading) return;
+
+    final clamped = index.clamp(0, _boardCount - 1);
+
+    setState(() {
+      _cursor = clamped;
+      _keycapMessage = null;
+    });
+
+    // 이동한 키캡 글자의 최신 재고 확인
+    await _refreshKeycapStockForCursor();
+  }
+
+  // (터치/키보드 공용) 키캡 채우기 완료(=ENTER) 시도.
+  // 다 채웠으면 디자인 확인 화면으로, 아니면 빈 칸으로 안내합니다.
+  Future<void> _trySubmitKeycapFill() async {
+    if (_stockLoading) return;
+
+    // 색상을 선택하지 않은 첫 번째 칸 찾기
+    final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
+
+    if (firstEmptyIndex != -1) {
       setState(() {
-        firstInvalidIndex = _removeInvalidColorSelections();
-
-        if (firstInvalidIndex != null) {
-          _cursor = firstInvalidIndex!;
-          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-        }
+        _cursor = firstEmptyIndex;
+        _keycapMessage = '색을 모두 선택하세요.';
       });
 
-      // 품절된 선택이 하나라도 있었다면 주문하지 않음
-      if (firstInvalidIndex != null) {
-        return;
-      }
-
-      // 현재 커서의 글자가 모든 색상 품절인지 마지막으로 검사
-      if (_isLetterSoldOut(_letters[_cursor])) {
-        setState(() {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-        });
-        return;
-      }
-
-      // [수정] 여기서 바로 주문을 보내지 않고, 먼저 디자인 확인 화면으로
-      // 이동합니다. 실제 주문 전송은 그 화면에서 Enter를 눌러야만 일어납니다.
-      _goToDesignConfirm();
+      await _refreshKeycapStockForCursor();
+      return;
     }
+
+    // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    int? firstInvalidIndex;
+
+    setState(() {
+      firstInvalidIndex = _removeInvalidColorSelections();
+
+      if (firstInvalidIndex != null) {
+        _cursor = firstInvalidIndex!;
+        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+      }
+    });
+
+    // 품절된 선택이 하나라도 있었다면 주문하지 않음
+    if (firstInvalidIndex != null) {
+      return;
+    }
+
+    // 현재 커서의 글자가 모든 색상 품절인지 마지막으로 검사
+    if (_isLetterSoldOut(_letters[_cursor])) {
+      setState(() {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+      });
+      return;
+    }
+
+    // [수정] 여기서 바로 주문을 보내지 않고, 먼저 디자인 확인 화면으로
+    // 이동합니다. 실제 주문 전송은 그 화면에서 Enter를 눌러야만 일어납니다.
+    _goToDesignConfirm();
   }
 
   // 색 선택을 모두 마친 뒤 STEP 06(디자인 확인)으로 이동.
@@ -1285,11 +1334,14 @@ class _AppRootState extends State<AppRoot> {
     Widget screen;
     switch (_step) {
       case AppStep.home:
-        screen = const HomeScreen();
+        screen = HomeScreen(
+          onEnter: () => _startOrder(),
+          enabled: !_stockLoading,
+        );
         break;
 
       case AppStep.mbtiChoice:
-        screen = const MbtiChoiceScreen();
+        screen = MbtiChoiceScreen(onSelect: (digit) => _selectMbtiChoice(digit));
         break;
 
       case AppStep.mbtiQuiz:
@@ -1301,6 +1353,7 @@ class _AppRootState extends State<AppRoot> {
           optionTexts: (q['options'] as List)
               .map((o) => o['text'] as String)
               .toList(),
+          onSelect: (digit) => _selectQuizOption(digit),
         );
         break;
 
@@ -1314,11 +1367,15 @@ class _AppRootState extends State<AppRoot> {
           letterB: pair[1],
           letterASoldOut: _isLetterSoldOut(pair[0]),
           letterBSoldOut: _isLetterSoldOut(pair[1]),
+          onSelect: (letter) => _selectManualLetter(letter),
         );
         break;
 
       case AppStep.mbtiResult:
-        screen = MbtiResultScreen(mbti: _mbtiResult ?? '----');
+        screen = MbtiResultScreen(
+          mbti: _mbtiResult ?? '----',
+          onNext: () => _proceedFromMbtiResult(),
+        );
         break;
 
       case AppStep.boardSelect:
@@ -1326,7 +1383,10 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        screen = AxisSelectScreen(soldOutAxes: _soldOutSwitches);
+        screen = AxisSelectScreen(
+          soldOutAxes: _soldOutSwitches,
+          onSelect: (digit) => _selectAxis(digit),
+        );
         break;
 
       case AppStep.keycapFill:
@@ -1344,6 +1404,11 @@ class _AppRootState extends State<AppRoot> {
 
           // 재고 조회 중 표시용
           stockLoading: _stockLoading,
+
+          // 터치 지원
+          onCellTap: (index) => _selectKeycapCell(index),
+          onColorTap: (digit) => _selectKeycapColorDigit(digit),
+          onSubmit: () => _trySubmitKeycapFill(),
         );
         break;
 
@@ -1367,6 +1432,8 @@ class _AppRootState extends State<AppRoot> {
           axisLabel: _axisLabels[_axis] ?? '-',
           axisColor: _axisColors[_axis] ?? AppColors.ink,
           isSubmitting: _submittingOrder,
+          onConfirm: () => _confirmAndSubmitOrder(),
+          onCancel: _cancelDesignAndReset,
         );
         break;
 

@@ -18,6 +18,8 @@ class DesignConfirmScreen extends StatefulWidget {
   final String axisLabel; // 예: 청축 / 갈축 / 적축 / 흑축
   final Color axisColor;
   final bool isSubmitting; // true면 주문 전송 중 — Enter/ESC 힌트를 비활성 표시로 바꿈
+  final VoidCallback? onConfirm; // 터치 지원: ENTER(접수하기) 탭
+  final VoidCallback? onCancel; // 터치 지원: ESC(다시 만들기) 탭
 
   const DesignConfirmScreen({
     super.key,
@@ -27,6 +29,8 @@ class DesignConfirmScreen extends StatefulWidget {
     required this.axisLabel,
     required this.axisColor,
     this.isSubmitting = false,
+    this.onConfirm,
+    this.onCancel,
   });
 
   @override
@@ -122,7 +126,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
-            '마음에 들면 Enter, 다시 고르려면 Esc',
+            '마음에 들면 ENTER(탭), 다시 고르려면 ESC(탭)',
             style: AppTextStyles.body,
           ),
         ),
@@ -217,9 +221,17 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _KeyHint(keyLabel: 'ENTER', text: '접수하기', accent: AppColors.green),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onConfirm,
+                      child: _KeyHint(keyLabel: 'ENTER', text: '접수하기', accent: AppColors.green),
+                    ),
                     const SizedBox(width: 32),
-                    _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onCancel,
+                      child: _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
+                    ),
                   ],
                 ),
         ),

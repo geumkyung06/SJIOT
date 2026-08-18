@@ -4,7 +4,9 @@ import '../theme/app_theme.dart';
 /// STEP 01 — MBTI를 알고 계신가요?
 /// 피그마 `App.tsx > MbtiKnowScreen`의 모션을 1:1 이식.
 class MbtiChoiceScreen extends StatefulWidget {
-  const MbtiChoiceScreen({super.key});
+  final void Function(int digit)? onSelect; // 터치 지원: 1=몰라요, 2=알아요
+
+  const MbtiChoiceScreen({super.key, this.onSelect});
 
   @override
   State<MbtiChoiceScreen> createState() => _MbtiChoiceScreenState();
@@ -98,22 +100,30 @@ class _MbtiChoiceScreenState extends State<MbtiChoiceScreen> with TickerProvider
             _FadeSlide(
               opacity: _optionOpacity[0],
               y: _optionY[0],
-              child: const _ChoiceOption(
-                accent: AppColors.yellow,
-                keyLabel: '1',
-                title: 'MBTI 몰라요',
-                subtitle: '간단한 질문으로 찾아드릴게요',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onSelect == null ? null : () => widget.onSelect!(1),
+                child: const _ChoiceOption(
+                  accent: AppColors.yellow,
+                  keyLabel: '1',
+                  title: 'MBTI 몰라요',
+                  subtitle: '간단한 질문으로 찾아드릴게요',
+                ),
               ),
             ),
             const SizedBox(width: 56),
             _FadeSlide(
               opacity: _optionOpacity[1],
               y: _optionY[1],
-              child: const _ChoiceOption(
-                accent: AppColors.coral,
-                keyLabel: '2',
-                title: 'MBTI 알아요',
-                subtitle: '직접 입력할게요',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onSelect == null ? null : () => widget.onSelect!(2),
+                child: const _ChoiceOption(
+                  accent: AppColors.coral,
+                  keyLabel: '2',
+                  title: 'MBTI 알아요',
+                  subtitle: '직접 입력할게요',
+                ),
               ),
             ),
           ],

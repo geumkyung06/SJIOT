@@ -8,6 +8,7 @@ class MbtiQuizScreen extends StatefulWidget {
   final int totalQuestions;
   final String question;
   final List<String> optionTexts; // 4개
+  final void Function(int digit)? onSelect; // 터치 지원: 1~4번 보기 선택
 
   const MbtiQuizScreen({
     super.key,
@@ -15,6 +16,7 @@ class MbtiQuizScreen extends StatefulWidget {
     required this.totalQuestions,
     required this.question,
     required this.optionTexts,
+    this.onSelect,
   });
 
   @override
@@ -97,7 +99,7 @@ class _MbtiQuizScreenState extends State<MbtiQuizScreen> with TickerProviderStat
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('숫자 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
+          child: const Text('숫자 1~4 를 눌러 선택하세요 (또는 탭)', style: AppTextStyles.body),
         ),
         const SizedBox(height: 32),
         Column(
@@ -107,25 +109,29 @@ class _MbtiQuizScreenState extends State<MbtiQuizScreen> with TickerProviderStat
               child: _FadeSlideX(
                 opacity: _optOpacity[i],
                 x: _optX[i],
-                child: Container(
-                  width: 560,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        alignment: Alignment.center,
-                        color: AppColors.ink,
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onSelect == null ? null : () => widget.onSelect!(i + 1),
+                  child: Container(
+                    width: 560,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          color: AppColors.ink,
+                          child: Text(
+                            '${i + 1}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(child: Text(widget.optionTexts[i], style: AppTextStyles.body)),
-                    ],
+                        const SizedBox(width: 16),
+                        Expanded(child: Text(widget.optionTexts[i], style: AppTextStyles.body)),
+                      ],
+                    ),
                   ),
                 ),
               ),
