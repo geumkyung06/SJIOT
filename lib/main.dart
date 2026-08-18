@@ -150,16 +150,7 @@ class _DeviceRootState extends State<DeviceRoot> {
     super.dispose();
   }
 
-  /// 테스트용 주문 정보
-  ///
-  /// 현재는 QR 스캔 기능이 없으므로 임시 데이터를 사용합니다.
-  /// 나중에는 QR 코드의 JSON 데이터를 OrderInfo.fromJson()으로 변환합니다.
-  OrderInfo _order = const OrderInfo(
-    orderId: 'ORD-20260728-0001',
-    mbti: 'ISTJ',
-    colors: ['green', 'yellow', 'blue', 'pink'],
-    assignedWorkstation: 1,
-  );
+  OrderInfo? _order;
 
   void _selectWorkstation(String number) {
     _stopStationStatusPolling();
@@ -277,18 +268,6 @@ class _DeviceRootState extends State<DeviceRoot> {
       debugPrint('조립대 주문 조회 중 통신 오류: $e');
     } finally {
       _isFetchingStationStatus = false;
-    }
-  }
-
-  void _processTestQr() {
-    final String currentWorkstation = _workstationNumber ?? '';
-
-    final String assignedWorkstation = _order.workstationLabel;
-
-    if (currentWorkstation == assignedWorkstation) {
-      _moveTo(DeviceStep.authenticated);
-    } else {
-      _moveTo(DeviceStep.wrongWorkstation);
     }
   }
 
@@ -507,8 +486,8 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       case DeviceStep.authenticated:
         screen = AuthenticatedScreen(
-          mbti: _order.mbti,
-          colors: _order.colors,
+          mbti: _order!.mbti,
+          colors: _order!.colors,
           onStart: () {
             _moveTo(DeviceStep.assembling);
           },
@@ -517,16 +496,16 @@ class _DeviceRootState extends State<DeviceRoot> {
 
       case DeviceStep.assembling:
         screen = AssemblingScreen(
-          mbti: _order.mbti,
-          colors: _order.colors,
+          mbti: _order!.mbti,
+          colors: _order!.colors,
           onComplete: _finishAssembly,
         );
         break;
 
       case DeviceStep.completed:
         screen = CompletedScreen(
-          mbti: _order.mbti,
-          colors: _order.colors,
+          mbti: _order!.mbti,
+          colors: _order!.colors,
           onRestart: _reset,
         );
         break;
@@ -596,7 +575,7 @@ class _DeviceRootState extends State<DeviceRoot> {
     try {
       final result = await _api.completeStation(
         stationId: stationId,
-        orderId: _order.orderId,
+        orderId: _order!.orderId,
       );
 
       debugPrint('조립 완료 API 결과: $result');
