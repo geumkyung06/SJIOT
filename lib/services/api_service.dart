@@ -13,6 +13,7 @@ class ApiService {
     required String keycap,
     required List<String> colors,
     String? axis, // 'blue' | 'brown' | 'red' | 'black' — 백엔드에는 'switch' 키로 전송
+    required String idempotencyKey, // [신규] 같은 주문이 중복 처리되지 않도록 하는 키
   }) async {
     final payload = {
       'board': board,
@@ -23,14 +24,23 @@ class ApiService {
     };
 
     // [수정] http.post 실행 직전에 로그를 남깁니다.
-    print(">>> [DEBUG] 전송 시작!");
+    print(">>> [DEBUG] 전송 시작! (Idempotency-Key: $idempotencyKey)");
     print(">>> [DEBUG] 전송 데이터: ${jsonEncode(payload)}");
 
-    final res = await http.post(
-      Uri.parse('$baseUrl/order'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/order'),
+          headers: {
+            'Content-Type': 'application/json',
+            // [신규] 같은 uuid로 재시도해도 서버가 같은 주문으로 취급하게 하는 헤더
+            'Idempotency-Key': idempotencyKey,
+          },
+          body: jsonEncode(payload),
+        )
+        // 응답이 영영 안 오는 상황(네트워크 문제)에 무한 대기하지 않도록 타임아웃을 둡니다.
+        // 타임아웃이 나면 TimeoutException이 발생하고, main.dart에서 "응답을 못 받은
+        // 경우"로 판단해 같은 idempotencyKey로 재시도합니다.
+        .timeout(const Duration(seconds: 10));
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode != 200) {
