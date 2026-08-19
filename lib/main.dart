@@ -149,6 +149,7 @@ class _AppRootState extends State<AppRoot> {
   // ---------------- 품절 재고 ----------------
   Set<String> _soldOutBoards = {};
   Set<String> _soldOutKeycaps = {};
+  Set<String> _soldOutAxes = {};
   Set<String> _soldOutSwitches = {};
 
   bool _stockLoading = false;
@@ -156,6 +157,9 @@ class _AppRootState extends State<AppRoot> {
 
   // 키캡 색상 선택 화면 안내 문구
   String? _keycapMessage;
+
+  // 디자인 확인 화면에서 수정/재고 안내 문구
+  String? _designConfirmMessage;
 
   // ---------------- 키캡 색상 ----------------
   late List<String> _letters;
@@ -558,8 +562,7 @@ class _AppRootState extends State<AppRoot> {
 
     _direction = 1; // 여기서부터 아래는 전부 "앞으로" 이동이므로 미리 표시
 
-    final isEnter =
-        event.physicalKey == PhysicalKeyboardKey.enter ||
+    final isEnter = event.physicalKey == PhysicalKeyboardKey.enter ||
         event.physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     switch (_step) {
@@ -830,8 +833,7 @@ class _AppRootState extends State<AppRoot> {
     // --------------------------------------------------
     // ENTER: 전체 선택 여부 및 주문 직전 재고 검사
     // --------------------------------------------------
-    final isEnter =
-        physicalKey == PhysicalKeyboardKey.enter ||
+    final isEnter = physicalKey == PhysicalKeyboardKey.enter ||
         physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     if (isEnter) {
@@ -966,7 +968,73 @@ class _AppRootState extends State<AppRoot> {
     setState(() {
       _step = AppStep.designConfirm;
       _keycapMessage = null;
+      _designConfirmMessage = null; // [수정] 디자인 수정용
     });
+  }
+
+  // STEP 06(디자인 확인)애서 특정 키캡을 클릭하여 키캡의 색상 변경
+  Future<bool> _changeDesignKeycapColor(
+    int index,
+    String colorCode,
+  ) async {
+    if (_submittingOrder || _stockLoading) return false;
+
+    if (index < 0 || index >= _letters.length) return false;
+
+    // 실제 변경 직전에 최신 재고 확인
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) {
+      setState(() {
+        _designConfirmMessage = '재고 정보를 확인하지 못했습니다.';
+      });
+      return false;
+    }
+
+    final letter = _letters[index];
+
+    // 선택하려는 키캡 색상이 품절인지 확인
+    if (_isKeycapColorSoldOut(letter, colorCode)) {
+      setState(() {
+        _designConfirmMessage = '$letter 키캡의 해당 색상은 현재 품절입니다.';
+      });
+      return false;
+    }
+
+    setState(() {
+      _colorCodes[index] = colorCode;
+      _designConfirmMessage = null;
+    });
+
+    return true;
+  }
+
+  // STEP 06(디자인 확인)에서 축 종류 변경
+  Future<bool> _changeDesignAxis(String axis) async {
+    if (_submittingOrder || _stockLoading) return false;
+
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) {
+      setState(() {
+        _designConfirmMessage = '재고 정보를 확인하지 못했습니다.';
+      });
+      return false;
+    }
+
+    if (_isAxisSoldOut(axis)) {
+      setState(() {
+        _designConfirmMessage = '${_axisLabels[axis] ?? axis}은 현재 품절입니다.';
+      });
+      return false;
+    }
+
+    setState(() {
+      _axis = axis;
+      _designConfirmMessage = null;
+    });
+
+    return true;
   }
 
   // STEP 06(디자인 확인)에서 Esc를 눌렀을 때: 아무 정보도 전송하지 않고
@@ -1003,6 +1071,16 @@ class _AppRootState extends State<AppRoot> {
     // 바뀌었을 수 있으므로 다시 확인합니다)
     final success = await _loadSoldOutStock();
 
+    final selectedAxis = _axis;
+
+    if (selectedAxis == null || _isAxisSoldOut(selectedAxis)) {
+      setState(() {
+        _designConfirmMessage = '선택한 축의 재고가 변경되었습니다. 다른 축을 선택해 주세요.';
+      });
+
+      return;
+    }
+
     if (!mounted || !success) return;
 
     int? invalidIndex;
@@ -1011,9 +1089,7 @@ class _AppRootState extends State<AppRoot> {
       invalidIndex = _removeInvalidColorSelections();
 
       if (invalidIndex != null) {
-        _cursor = invalidIndex!;
-        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-        _step = AppStep.keycapFill;
+        _designConfirmMessage = '선택한 키캡의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
       }
     });
 
@@ -1027,10 +1103,9 @@ class _AppRootState extends State<AppRoot> {
 
     if (firstEmptyIndex != -1) {
       setState(() {
-        _cursor = firstEmptyIndex;
-        _keycapMessage = '색을 모두 선택하세요.';
-        _step = AppStep.keycapFill;
+        _designConfirmMessage = '색상이 비어 있는 키캡이 있습니다. 해당 키캡을 눌러 색상을 선택해 주세요.';
       });
+
       return;
     }
 
@@ -1173,7 +1248,8 @@ class _AppRootState extends State<AppRoot> {
   void _mockSubmitAndGoToReceipt() {
     _orderId = 'mock-order-id';
     setState(() {
-      _receiptOrderNumber = (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
+      _receiptOrderNumber =
+          (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
       _orderStatus = {'status': 'waiting', 'position_in_queue': 1};
       _receiptQrBytes = null; // 목업 모드에서는 실제 QR 이미지가 없음(자리표시자로 표시)
       _step = AppStep.receipt;
@@ -1341,7 +1417,8 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.mbtiChoice:
-        screen = MbtiChoiceScreen(onSelect: (digit) => _selectMbtiChoice(digit));
+        screen =
+            MbtiChoiceScreen(onSelect: (digit) => _selectMbtiChoice(digit));
         break;
 
       case AppStep.mbtiQuiz:
@@ -1350,9 +1427,8 @@ class _AppRootState extends State<AppRoot> {
           questionIndex: _quizIndex,
           totalQuestions: _mbtiQuestions.length,
           question: q['question'] as String,
-          optionTexts: (q['options'] as List)
-              .map((o) => o['text'] as String)
-              .toList(),
+          optionTexts:
+              (q['options'] as List).map((o) => o['text'] as String).toList(),
           onSelect: (digit) => _selectQuizOption(digit),
         );
         break;
@@ -1429,8 +1505,17 @@ class _AppRootState extends State<AppRoot> {
           boardShape: _boardShape ?? '1x4',
           letters: _letters,
           colorAt: _colorAt,
-          axisLabel: _axisLabels[_axis] ?? '-',
-          axisColor: _axisColors[_axis] ?? AppColors.ink,
+          colorCodes: _colorCodes, // 현재 키캡 색상 코드
+          keycapColorOptions: _colorMap, // 선택 가능한 키캡 색상
+          soldOutKeycaps: _soldOutKeycaps, // 품절 키캡
+          axis: _axis ?? kFixedAxis, // 현재 축
+          axisLabels: _axisLabels,
+          axisColors: _axisColors,
+          soldOutAxes: _soldOutAxes,
+          onKeycapColorChanged: _changeDesignKeycapColor,
+          onAxisChanged: _changeDesignAxis,
+          stockLoading: _stockLoading,
+          message: _designConfirmMessage,
           isSubmitting: _submittingOrder,
           onConfirm: () => _confirmAndSubmitOrder(),
           onCancel: _cancelDesignAndReset,
@@ -1492,15 +1577,15 @@ class _AppRootState extends State<AppRoot> {
                             reverse: _direction == -1,
                             transitionBuilder:
                                 (child, primaryAnimation, secondaryAnimation) {
-                                  return SharedAxisTransition(
-                                    animation: primaryAnimation,
-                                    secondaryAnimation: secondaryAnimation,
-                                    transitionType:
-                                        SharedAxisTransitionType.horizontal,
-                                    fillColor: Colors.transparent,
-                                    child: child,
-                                  );
-                                },
+                              return SharedAxisTransition(
+                                animation: primaryAnimation,
+                                secondaryAnimation: secondaryAnimation,
+                                transitionType:
+                                    SharedAxisTransitionType.horizontal,
+                                fillColor: Colors.transparent,
+                                child: child,
+                              );
+                            },
                             child: KeyedSubtree(
                               key: ValueKey(_step),
                               child: screen,

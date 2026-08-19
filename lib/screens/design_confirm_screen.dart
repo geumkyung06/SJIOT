@@ -15,22 +15,46 @@ class DesignConfirmScreen extends StatefulWidget {
   final String boardShape; // '1x4' | '2x2'
   final List<String> letters;
   final Color Function(int index) colorAt;
-  final String axisLabel; // 예: 청축 / 갈축 / 적축 / 흑축
-  final Color axisColor;
+
+  final List<String?> colorCodes;
+  final Map<String, Color> keycapColorOptions;
+  final Set<String> soldOutKeycaps;
+
+  final String axis;
+  final Map<String, String> axisLabels; // 예: 청축 / 갈축 / 적축 / 흑축
+  final Map<String, Color> axisColors;
+  final Set<String> soldOutAxes;
+
   final bool isSubmitting; // true면 주문 전송 중 — Enter/ESC 힌트를 비활성 표시로 바꿈
   final VoidCallback? onConfirm; // 터치 지원: ENTER(접수하기) 탭
   final VoidCallback? onCancel; // 터치 지원: ESC(다시 만들기) 탭
+
+  final Future<bool> Function(int index, String colorCode) onKeycapColorChanged;
+
+  final Future<bool> Function(String axis) onAxisChanged;
+
+  final bool stockLoading;
+  final String? message;
 
   const DesignConfirmScreen({
     super.key,
     required this.boardShape,
     required this.letters,
     required this.colorAt,
-    required this.axisLabel,
-    required this.axisColor,
-    this.isSubmitting = false,
-    this.onConfirm,
-    this.onCancel,
+    required this.colorCodes,
+    required this.keycapColorOptions,
+    required this.soldOutKeycaps,
+    required this.axis,
+    required this.axisLabels,
+    required this.axisColors,
+    required this.soldOutAxes,
+    required this.onKeycapColorChanged,
+    required this.onAxisChanged,
+    required this.stockLoading,
+    required this.message,
+    required this.isSubmitting,
+    required this.onConfirm,
+    required this.onCancel,
   });
 
   @override
@@ -40,6 +64,14 @@ class DesignConfirmScreen extends StatefulWidget {
 class _DesignConfirmScreenState extends State<DesignConfirmScreen>
     with TickerProviderStateMixin {
   static const int _durationMs = 750;
+
+  // 어떤 MBTI 키캡의 색상을 수정 중인지
+  int? _editingKeycapIndex;
+
+  // 축 선택창이 열렸는지
+  bool _axisSelectorOpen = false;
+
+  bool _changing = false;
 
   late final AnimationController _controller;
 
@@ -64,20 +96,23 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
     Animation<double> fadeIn(double s, double e) => CurvedAnimation(
           parent: _controller,
-          curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut),
+          curve:
+              Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut),
         );
     Animation<double> slideY(double s, double e, double from) =>
         Tween<double>(begin: from, end: 0).animate(
           CurvedAnimation(
             parent: _controller,
-            curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut),
+            curve: Interval(s / _durationMs, e / _durationMs,
+                curve: Curves.easeOut),
           ),
         );
     Animation<double> springScale(double s, double e, double from) =>
         Tween<double>(begin: from, end: 1.0).animate(
           CurvedAnimation(
             parent: _controller,
-            curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOutBack),
+            curve: Interval(s / _durationMs, e / _durationMs,
+                curve: Curves.easeOutBack),
           ),
         );
 
@@ -101,6 +136,203 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Widget _buildColorSelector() {
+    final index = _editingKeycapIndex!;
+
+    final letter = widget.letters[index];
+    final currentColor = widget.colorCodes[index];
+
+    const order = ['g', 'y', 'b', 'r'];
+
+    return Container(
+      width: 620,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 28,
+        vertical: 22,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+          color: AppColors.ink,
+          width: 3,
+        ),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: order.map((code) {
+          final color = widget.keycapColorOptions[code]!;
+
+          final soldOut = widget.soldOutKeycaps.contains('${letter}_$code');
+
+          final selected = currentColor == code;
+
+          return GestureDetector(
+            onTap: soldOut || _changing || widget.stockLoading
+                ? null
+                : () async {
+                    setState(() {
+                      _changing = true;
+                    });
+
+                    final changed = await widget.onKeycapColorChanged(
+                      index,
+                      code,
+                    );
+
+                    if (!mounted) return;
+
+                    setState(() {
+                      _changing = false;
+
+                      if (changed) {
+                        // 색상 변경 성공 → 선택창 닫기
+                        _editingKeycapIndex = null;
+                      }
+                    });
+                  },
+            child: Opacity(
+              opacity: soldOut ? 0.25 : 1,
+              child: Container(
+                width: 105,
+                height: 105,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(20),
+                  border: selected
+                      ? Border.all(
+                          color: AppColors.ink,
+                          width: 4,
+                        )
+                      : null,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.75),
+                      offset: const Offset(0, 9),
+                    ),
+                  ],
+                ),
+                child: selected
+                    ? const Icon(
+                        Icons.check,
+                        size: 36,
+                        color: Colors.white,
+                      )
+                    : null,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildAxisSelector() {
+    const axisOrder = [
+      'blue',
+      'red',
+      'brown',
+      'black',
+    ];
+
+    // 현재 선택된 축은 목록에서 제외
+    final availableAxes =
+        axisOrder.where((axis) => axis != widget.axis).toList();
+
+    return Container(
+      width: 330,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+          color: AppColors.ink,
+          width: 3,
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: List.generate(
+          availableAxes.length,
+          (index) {
+            final axis = availableAxes[index];
+
+            final soldOut = widget.soldOutAxes.contains(axis);
+
+            return Column(
+              children: [
+                GestureDetector(
+                  onTap: soldOut || _changing || widget.stockLoading
+                      ? null
+                      : () async {
+                          setState(() {
+                            _changing = true;
+                          });
+
+                          final changed = await widget.onAxisChanged(axis);
+
+                          if (!mounted) return;
+
+                          setState(() {
+                            _changing = false;
+
+                            // 변경 성공하면 선택창 닫기
+                            if (changed) {
+                              _axisSelectorOpen = false;
+                            }
+                          });
+                        },
+                  child: Opacity(
+                    opacity: soldOut ? 0.25 : 1,
+                    child: Container(
+                      height: 92,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: widget.axisColors[axis] ?? AppColors.ink,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Text(
+                            widget.axisLabels[axis] ?? axis,
+                            style: const TextStyle(
+                              fontSize: 27,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (soldOut)
+                            const Text(
+                              '품절',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 15,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (index != availableAxes.length - 1)
+                  const Divider(
+                    height: 1,
+                    thickness: 1,
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -164,19 +396,48 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: List.generate(cols, (c) {
                           final i = r * cols + c;
+
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Container(
-                              width: 84,
-                              height: 84,
-                              alignment: Alignment.center,
-                              color: widget.colorAt(i),
-                              child: Text(
-                                widget.letters[i],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w900,
+                            child: GestureDetector(
+                              onTap: widget.isSubmitting || _changing
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        if (_editingKeycapIndex == i) {
+                                          // 이미 열려 있는 키캡을 다시 누르면 닫기
+                                          _editingKeycapIndex = null;
+                                        } else {
+                                          // 누른 키캡의 색상 선택창 열기
+                                          _editingKeycapIndex = i;
+
+                                          // 축 선택창이 열려 있었다면 닫기
+                                          _axisSelectorOpen = false;
+                                        }
+                                      });
+                                    },
+                              child: Container(
+                                width: 84,
+                                height: 84,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: widget.colorAt(i),
+
+                                  // 현재 수정 중인 키캡이면 테두리 표시
+                                  border: _editingKeycapIndex == i
+                                      ? Border.all(
+                                          color: AppColors.ink,
+                                          width: 4,
+                                        )
+                                      : null,
+                                ),
+                                child: Text(
+                                  widget.letters[i],
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w900,
+                                  ),
                                 ),
                               ),
                             ),
@@ -190,28 +451,79 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
             ],
           ),
         ),
+        if (_editingKeycapIndex != null) ...[
+          const SizedBox(height: 16),
+          _buildColorSelector(),
+        ],
         const SizedBox(height: 24),
         _FadeSlideY(
           opacity: _axisOpacity,
           y: _axisY,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('축', style: TextStyle(fontSize: 14, color: AppColors.muted, fontWeight: FontWeight.w700)),
-                const SizedBox(width: 12),
-                Container(width: 20, height: 20, color: widget.axisColor),
-                const SizedBox(width: 10),
-                Text(
-                  widget.axisLabel,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.ink),
+          child: GestureDetector(
+            onTap: widget.isSubmitting || _changing
+                ? null
+                : () {
+                    setState(() {
+                      // 열려 있으면 닫고, 닫혀 있으면 열기
+                      _axisSelectorOpen = !_axisSelectorOpen;
+
+                      // 키캡 색상 선택창은 닫기
+                      _editingKeycapIndex = null;
+                    });
+                  },
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 16,
+              ),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: AppColors.ink,
+                  width: 2,
                 ),
-              ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '축',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Container(
+                    width: 28,
+                    height: 28,
+                    color: widget.axisColors[widget.axis] ?? AppColors.ink,
+                  ),
+                  const SizedBox(width: 14),
+                  Text(
+                    widget.axisLabels[widget.axis] ?? '-',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Icon(
+                    _axisSelectorOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: AppColors.ink,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+        if (_axisSelectorOpen) ...[
+          const SizedBox(height: 8),
+          _buildAxisSelector(),
+        ],
         const SizedBox(height: 32),
         _FadeSlideY(
           opacity: _hintOpacity,
@@ -224,13 +536,19 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: widget.onConfirm,
-                      child: _KeyHint(keyLabel: 'ENTER', text: '접수하기', accent: AppColors.green),
+                      child: _KeyHint(
+                          keyLabel: 'ENTER',
+                          text: '접수하기',
+                          accent: AppColors.green),
                     ),
                     const SizedBox(width: 32),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: widget.onCancel,
-                      child: _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
+                      child: _KeyHint(
+                          keyLabel: 'ESC',
+                          text: '다시 만들기',
+                          accent: AppColors.coral),
                     ),
                   ],
                 ),
@@ -249,7 +567,8 @@ class _Fade extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: opacity,
-      builder: (context, child) => Opacity(opacity: opacity.value.clamp(0.0, 1.0), child: child),
+      builder: (context, child) =>
+          Opacity(opacity: opacity.value.clamp(0.0, 1.0), child: child),
       child: child,
     );
   }
@@ -259,7 +578,8 @@ class _FadeSlideY extends StatelessWidget {
   final Animation<double> opacity;
   final Animation<double> y;
   final Widget child;
-  const _FadeSlideY({required this.opacity, required this.y, required this.child});
+  const _FadeSlideY(
+      {required this.opacity, required this.y, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -284,19 +604,24 @@ class _SubmittingIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: BoxDecoration(border: Border.all(color: AppColors.muted, width: 2)),
+      decoration:
+          BoxDecoration(border: Border.all(color: AppColors.muted, width: 2)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.muted),
+            child: CircularProgressIndicator(
+                strokeWidth: 2.4, color: AppColors.muted),
           ),
           const SizedBox(width: 14),
           Text(
             '주문을 접수하고 있어요...',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.muted),
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted),
           ),
         ],
       ),
@@ -308,13 +633,15 @@ class _KeyHint extends StatelessWidget {
   final String keyLabel;
   final String text;
   final Color accent;
-  const _KeyHint({required this.keyLabel, required this.text, required this.accent});
+  const _KeyHint(
+      {required this.keyLabel, required this.text, required this.accent});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+      decoration:
+          BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -323,11 +650,16 @@ class _KeyHint extends StatelessWidget {
             color: AppColors.muted,
             child: Text(
               keyLabel,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13),
             ),
           ),
           const SizedBox(width: 12),
-          Text(text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: accent)),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700, color: accent)),
         ],
       ),
     );
