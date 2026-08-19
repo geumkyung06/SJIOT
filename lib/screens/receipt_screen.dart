@@ -25,8 +25,6 @@ class ReceiptScreen extends StatefulWidget {
   final String orderNumber; // 표시용 주문번호. 없으면 '-'
   final String time; // 접수 시각 (예: '14:32')
   final String mbti;
-  final String axisLabel; // 예: 청축 / 갈축 / 적축 / 흑축
-  final Color axisColor;
   final List<Color> keycapColors;
   final List<String> keycapLabels; // 예: 파랑 / 초록 / 노랑 / 빨강
   final String statusHeadline; // "배정 조립대" 박스에 보여줄 큰 문구 (실시간으로 바뀜)
@@ -40,8 +38,6 @@ class ReceiptScreen extends StatefulWidget {
     required this.orderNumber,
     required this.time,
     required this.mbti,
-    required this.axisLabel,
-    required this.axisColor,
     required this.keycapColors,
     required this.keycapLabels,
     required this.statusHeadline,
@@ -231,18 +227,6 @@ class _ReceiptScreenState extends State<ReceiptScreen> with TickerProviderStateM
                               letterSpacing: 2,
                               color: _ink,
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _MetaRow(
-                          label: '축',
-                          valueWidget: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(width: 14, height: 14, color: widget.axisColor),
-                              const SizedBox(width: 8),
-                              Text(widget.axisLabel, style: const TextStyle(fontSize: 13, color: _ink)),
-                            ],
                           ),
                         ),
                         const SizedBox(height: 10),

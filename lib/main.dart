@@ -30,11 +30,11 @@ void main() {
 // true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
 const bool kBoardSelectEnabled = false;
 
-// [임시] 팀 회의 결과로 축(스위치) 선택 단계를 건너뛰고 흑축으로 고정합니다.
+// [임시] 팀 회의 결과로 축(스위치) 선택 단계를 건너뛰고 청축으로 고정합니다.
 // axis_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
 // true로 되돌리면 원래 흐름(축 선택 화면 노출)이 복원됩니다.
 const bool kAxisSelectEnabled = false;
-const String kFixedAxis = 'black';
+const String kFixedAxis = 'blue';
 
 // [임시] COSS 백엔드 서버 문제로 API 연동을 끊고 프론트 동작(화면 흐름/애니메이션)만
 // 확인하기 위한 플래그. 서버 복구되어 true로 되돌림 -> 실제 API
@@ -167,8 +167,6 @@ class _AppRootState extends State<AppRoot> {
   bool _polling = false;
   Timer? _autoRestartTimer;
 
-<<<<<<< HEAD
-=======
   // ---------------- 중복 주문 방지 ----------------
   // "한 번의 주문 시도"마다 하나씩 갖는 idempotency 키.
   // - [주문하기](Enter) 버튼을 누르는 순간 생성
@@ -180,25 +178,15 @@ class _AppRootState extends State<AppRoot> {
   // 중복 클릭으로 같은 주문이 두 번 나가는 것을 막습니다.
   bool _submittingOrder = false;
 
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
   // ---------------- 영수증 화면 표시용 값 ----------------
   String? _receiptOrderNumber;
   String? _receiptTime;
   Uint8List? _receiptQrBytes; // GET /order/{order_id}/qr 로 받아온 실제 QR 이미지
 
-  // 영수증에 표시할 축 이름/색상 (axis_select_screen.dart의 표기와 동일하게 유지)
-  static const Map<String, String> _axisLabels = {
-    'blue': '청축',
-    'brown': '갈축',
-    'red': '적축',
-    'black': '흑축',
-  };
-  static const Map<String, Color> _axisColors = {
-    'blue': Color(0xFF3E7CE0),
-    'brown': Color(0xFF9C6B3F),
-    'red': Color(0xFFD5473C),
-    'black': Color(0xFF2B2B2B),
-  };
+  // [수정] 팀 논의로 축(스위치)을 제품에서 아예 제외하기로 하면서, 화면에
+  // 축 이름/색을 표시할 일이 없어져 이 매핑은 삭제했습니다. (기존에는
+  // 여기서 _axisLabels/_axisColors로 디자인 확인·영수증 화면에 표시했음)
+
   // 영수증에 표시할 키캡 색상 이름 (keycap_fill_screen.dart의 범례와 동일)
   static const Map<String, String> _keycapColorLabels = {
     'g': '초록',
@@ -594,22 +582,7 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.mbtiResult:
         if (isEnter) {
-<<<<<<< HEAD
-          if (kBoardSelectEnabled) {
-            setState(() => _step = AppStep.boardSelect);
-          } else {
-            _boardShape = '1x4';
-            _boardCount = 4;
-            if (kAxisSelectEnabled) {
-              setState(() => _step = AppStep.axisSelect);
-            } else {
-              // [임시] 축 선택 화면을 건너뛰고 고정 축(흑축)으로 바로 진행
-              await _goToKeycapFillWithAxis(kFixedAxis);
-            }
-          }
-=======
           await _proceedFromMbtiResult();
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         }
         break;
 
@@ -642,11 +615,8 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.designConfirm:
-<<<<<<< HEAD
-=======
         // 응답을 기다리는 동안에는 Enter/Esc 모두 무시 (중복 클릭 방지)
         if (_submittingOrder) break;
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         if (isEnter) {
           await _confirmAndSubmitOrder();
         } else if (event.physicalKey == PhysicalKeyboardKey.escape) {
@@ -659,8 +629,6 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.complete:
         break; // [보류] 현재 플로우에서 쓰지 않음
-<<<<<<< HEAD
-=======
     }
   }
 
@@ -686,7 +654,6 @@ class _AppRootState extends State<AppRoot> {
       await _moveToStep(AppStep.mbtiQuiz, beforeMove: _resetQuiz);
     } else if (digit == 2) {
       await _moveToStep(AppStep.mbtiManual, beforeMove: _resetManual);
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
     }
   }
 
@@ -859,56 +826,6 @@ class _AppRootState extends State<AppRoot> {
         physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     if (isEnter) {
-<<<<<<< HEAD
-      // 색상을 선택하지 않은 첫 번째 칸 찾기
-      final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
-
-      if (firstEmptyIndex != -1) {
-        setState(() {
-          _cursor = firstEmptyIndex;
-          _keycapMessage = '색을 모두 선택하세요.';
-        });
-
-        await _refreshKeycapStockForCursor();
-        return;
-      }
-
-      // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      int? firstInvalidIndex;
-
-      setState(() {
-        firstInvalidIndex = _removeInvalidColorSelections();
-
-        if (firstInvalidIndex != null) {
-          _cursor = firstInvalidIndex!;
-          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-        }
-      });
-
-      // 품절된 선택이 하나라도 있었다면 주문하지 않음
-      if (firstInvalidIndex != null) {
-        return;
-      }
-
-      // 현재 커서의 글자가 모든 색상 품절인지 마지막으로 검사
-      if (_isLetterSoldOut(_letters[_cursor])) {
-        setState(() {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-        });
-        return;
-      }
-
-      // [수정] 여기서 바로 주문을 보내지 않고, 먼저 디자인 확인 화면으로
-      // 이동합니다. 실제 주문 전송은 그 화면에서 Enter를 눌러야만 일어납니다.
-      _goToDesignConfirm();
-    }
-  }
-
-=======
       await _trySubmitKeycapFill();
     }
   }
@@ -1034,7 +951,6 @@ class _AppRootState extends State<AppRoot> {
     _goToDesignConfirm();
   }
 
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
   // 색 선택을 모두 마친 뒤 STEP 06(디자인 확인)으로 이동.
   // 이 시점에는 아직 어떤 정보도 서버로 전송하지 않습니다.
   void _goToDesignConfirm() {
@@ -1061,11 +977,8 @@ class _AppRootState extends State<AppRoot> {
       _receiptOrderNumber = null;
       _receiptTime = null;
       _receiptQrBytes = null;
-<<<<<<< HEAD
-=======
       _orderAttemptId = null; // 뒤로 가는 경우 = 다음 시도는 새 uuid
       _submittingOrder = false;
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _resetLetters();
     });
   }
@@ -1073,13 +986,10 @@ class _AppRootState extends State<AppRoot> {
   // STEP 06(디자인 확인)에서 Enter를 눌렀을 때 호출됩니다.
   // 이 시점에 비로소 실제 주문/제작 정보가 서버로 전송됩니다.
   Future<void> _confirmAndSubmitOrder() async {
-<<<<<<< HEAD
-=======
     // 이미 응답을 기다리는 중이면 중복 실행 금지 (안전장치. 실제로는
     // _handleKey에서 이미 걸러지지만, 혹시 모를 재진입에 대비)
     if (_submittingOrder) return;
 
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
     // 접수 직전 마지막 재고 확인 (디자인 확인 화면에 머무는 동안 재고가
     // 바뀌었을 수 있으므로 다시 확인합니다)
     final success = await _loadSoldOutStock();
@@ -1115,9 +1025,6 @@ class _AppRootState extends State<AppRoot> {
       return;
     }
 
-<<<<<<< HEAD
-    setState(() {
-=======
     // [주문하기(Enter)를 누른 순간] 이번 "한 번의 주문 시도"에 쓸 idempotency
     // 키를 확보합니다. 이미 값이 있다면(=응답을 못 받아 자동 재시도하는 상황)
     // 그 값을 그대로 재사용하고, 없으면(=새 시도) 새로 만듭니다.
@@ -1125,7 +1032,6 @@ class _AppRootState extends State<AppRoot> {
 
     setState(() {
       _submittingOrder = true; // Enter를 다시 눌러도 무시되도록 잠금
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _orderId = null;
       _orderStatus = null;
       _receiptOrderNumber = null;
@@ -1136,11 +1042,8 @@ class _AppRootState extends State<AppRoot> {
     // [임시] API 연동이 꺼져있으면 실제 서버 대신 로컬에서 가짜 진행 상태를
     // 흘려보내서, 영수증 화면까지 백엔드 없이 확인할 수 있게 합니다.
     if (!kApiEnabled) {
-<<<<<<< HEAD
-=======
       _orderAttemptId = null; // 이 시도는 여기서 끝남
       setState(() => _submittingOrder = false);
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _mockSubmitAndGoToReceipt();
       return;
     }
@@ -1159,60 +1062,6 @@ class _AppRootState extends State<AppRoot> {
           idempotencyKey: attemptId,
         );
 
-<<<<<<< HEAD
-      setState(() {
-        _orderId = result['order_id'] as String?;
-        _orderStatus = result;
-        _receiptOrderNumber = _formatOrderNumber(result);
-        _step = AppStep.receipt;
-      });
-
-      // 영수증 화면 진입 직후부터 8초 뒤 자동으로 처음 화면으로 복귀
-      _scheduleDoneRestart();
-
-      // 조립대 배정 상태를 계속 조회해서 "배정 조립대" 박스 문구를
-      // complete_screen.dart와 같은 방식(대기열 N번째 → N번 조립대로
-      // 이동해주세요 → 제작 중 → 완료)으로 실시간 갱신합니다.
-      _pollStatus();
-
-      // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
-      // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
-      final orderId = _orderId;
-      if (orderId != null) {
-        try {
-          final qrBytes = await _api.getOrderQr(orderId);
-          if (mounted) {
-            setState(() => _receiptQrBytes = qrBytes);
-          }
-        } catch (e) {
-          print('>>> QR 조회 실패: $e');
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      final message = e.toString();
-
-      // 백엔드가 "대기열이 가득 찼습니다" 오류를 준다는 것은 조립대/대기열이
-      // 가득 찼다는 뜻입니다. 이 경우 오류 문구를 그대로 노출하지 않고,
-      // "대기 중 · 미배정" 상태의 영수증 화면으로 대신 이동합니다.
-      final isQueueFull = message.contains('대기열이 가득');
-
-      if (isQueueFull) {
-        setState(() {
-          _receiptOrderNumber = null;
-          _receiptQrBytes = null; // 실제 주문이 생성되지 않았으므로 QR도 없음
-          _step = AppStep.receipt;
-        });
-        _scheduleDoneRestart();
-      } else {
-        // 그 외의 오류(네트워크 오류 등)는 키캡 화면으로 돌려보내고
-        // 안내 문구로 표시합니다.
-        setState(() {
-          _step = AppStep.keycapFill;
-          _keycapMessage = '주문 처리 중 오류가 발생했습니다. 다시 시도해 주세요.';
-        });
-=======
         if (!mounted) return;
 
         // 성공했으므로 이 "시도"는 끝. 다음 주문은 새 uuid를 씀.
@@ -1306,7 +1155,6 @@ class _AppRootState extends State<AppRoot> {
           });
         }
         return;
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       }
     }
   }
@@ -1458,11 +1306,8 @@ class _AppRootState extends State<AppRoot> {
       _receiptOrderNumber = null;
       _receiptTime = null;
       _receiptQrBytes = null;
-<<<<<<< HEAD
-=======
       _orderAttemptId = null;
       _submittingOrder = false;
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _resetLetters();
     });
   }
@@ -1575,14 +1420,9 @@ class _AppRootState extends State<AppRoot> {
           boardShape: _boardShape ?? '1x4',
           letters: _letters,
           colorAt: _colorAt,
-          axisLabel: _axisLabels[_axis] ?? '-',
-          axisColor: _axisColors[_axis] ?? AppColors.ink,
-<<<<<<< HEAD
-=======
           isSubmitting: _submittingOrder,
           onConfirm: () => _confirmAndSubmitOrder(),
           onCancel: _cancelDesignAndReset,
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         );
         break;
 
@@ -1591,8 +1431,6 @@ class _AppRootState extends State<AppRoot> {
           orderNumber: _receiptOrderNumber ?? '-',
           time: _receiptTime ?? _formatNowHHmm(),
           mbti: _mbtiResult ?? '----',
-          axisLabel: _axisLabels[_axis] ?? '-',
-          axisColor: _axisColors[_axis] ?? AppColors.ink,
           keycapColors: List.generate(_boardCount, (i) => _colorAt(i)),
           keycapLabels: List.generate(
             _boardCount,

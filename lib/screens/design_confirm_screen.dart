@@ -15,28 +15,18 @@ class DesignConfirmScreen extends StatefulWidget {
   final String boardShape; // '1x4' | '2x2'
   final List<String> letters;
   final Color Function(int index) colorAt;
-  final String axisLabel; // 예: 청축 / 갈축 / 적축 / 흑축
-  final Color axisColor;
-<<<<<<< HEAD
-=======
   final bool isSubmitting; // true면 주문 전송 중 — Enter/ESC 힌트를 비활성 표시로 바꿈
   final VoidCallback? onConfirm; // 터치 지원: ENTER(접수하기) 탭
   final VoidCallback? onCancel; // 터치 지원: ESC(다시 만들기) 탭
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
 
   const DesignConfirmScreen({
     super.key,
     required this.boardShape,
     required this.letters,
     required this.colorAt,
-    required this.axisLabel,
-    required this.axisColor,
-<<<<<<< HEAD
-=======
     this.isSubmitting = false,
     this.onConfirm,
     this.onCancel,
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
   });
 
   @override
@@ -55,8 +45,6 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
   late final Animation<double> _subtitleOpacity;
   late final Animation<double> _plateOpacity;
   late final Animation<double> _plateScale;
-  late final Animation<double> _axisOpacity;
-  late final Animation<double> _axisY;
   late final Animation<double> _hintOpacity;
   late final Animation<double> _hintY;
 
@@ -93,10 +81,10 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
     _subtitleOpacity = fadeIn(120, 420);
     _plateOpacity = fadeIn(160, 560);
     _plateScale = springScale(160, 560, 0.86);
-    _axisOpacity = fadeIn(360, 620);
-    _axisY = slideY(360, 620, 12);
-    _hintOpacity = fadeIn(420, 720);
-    _hintY = slideY(420, 720, 12);
+    // [수정] 축(스위치) 안내 박스를 제거하면서, 그 자리를 차지하던 딜레이만큼
+    // ENTER/ESC 힌트가 플레이트 애니메이션 직후 바로 이어지도록 당겼습니다.
+    _hintOpacity = fadeIn(380, 680);
+    _hintY = slideY(380, 680, 12);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _controller.forward();
@@ -132,11 +120,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
-<<<<<<< HEAD
-            '마음에 들면 Enter, 다시 고르려면 Esc',
-=======
             '마음에 들면 ENTER(탭), 다시 고르려면 ESC(탭)',
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
             style: AppTextStyles.body,
           ),
         ),
@@ -200,42 +184,10 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        _FadeSlideY(
-          opacity: _axisOpacity,
-          y: _axisY,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('축', style: TextStyle(fontSize: 14, color: AppColors.muted, fontWeight: FontWeight.w700)),
-                const SizedBox(width: 12),
-                Container(width: 20, height: 20, color: widget.axisColor),
-                const SizedBox(width: 10),
-                Text(
-                  widget.axisLabel,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.ink),
-                ),
-              ],
-            ),
-          ),
-        ),
         const SizedBox(height: 32),
         _FadeSlideY(
           opacity: _hintOpacity,
           y: _hintY,
-<<<<<<< HEAD
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _KeyHint(keyLabel: 'ENTER', text: '접수하기', accent: AppColors.green),
-              const SizedBox(width: 32),
-              _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
-            ],
-          ),
-=======
           child: widget.isSubmitting
               ? const _SubmittingIndicator()
               : Row(
@@ -254,7 +206,6 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                     ),
                   ],
                 ),
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         ),
       ],
     );
@@ -295,8 +246,6 @@ class _FadeSlideY extends StatelessWidget {
   }
 }
 
-<<<<<<< HEAD
-=======
 // 주문 전송 중일 때 ENTER/ESC 힌트 대신 보여주는 비활성 표시.
 // 이 상태에서는 main.dart가 Enter/Esc 입력을 아예 무시하도록 되어 있어서,
 // 같은 주문이 중복으로 전송되는 것을 막습니다.
@@ -327,7 +276,6 @@ class _SubmittingIndicator extends StatelessWidget {
   }
 }
 
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
 class _KeyHint extends StatelessWidget {
   final String keyLabel;
   final String text;

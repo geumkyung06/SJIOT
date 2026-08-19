@@ -119,11 +119,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
-<<<<<<< HEAD
-            '숫자 1~4 → 색상 선택(자동으로 다음 칸 이동)  ·  화살표 → 이동  ·  ENTER로 디자인 확인',
-=======
             '칸을 탭하거나 숫자 1~4로 색상 선택  ·  화살표 → 이동  ·  ENTER로 디자인 확인',
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
             style: AppTextStyles.body,
             textAlign: TextAlign.center,
           ),
@@ -227,27 +223,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         _FadeSlideY(
           opacity: _buttonOpacity,
           y: _buttonY,
-<<<<<<< HEAD
-          child: Container(
-            width: boardWidth,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            alignment: Alignment.center,
-            color: complete ? AppColors.ink : AppColors.muted,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  color: Colors.white,
-                  child: const Text('ENTER', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  complete ? '엔터로 디자인 확인' : '색을 모두 선택하세요',
-                  style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
-                ),
-              ],
-=======
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: widget.stockLoading ? null : widget.onSubmit,
@@ -271,7 +246,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                   ),
                 ],
               ),
->>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
             ),
           ),
         ),
