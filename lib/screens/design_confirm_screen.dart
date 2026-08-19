@@ -68,6 +68,12 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
   // 어떤 MBTI 키캡의 색상을 수정 중인지
   int? _editingKeycapIndex;
 
+  // 색상 선택창 Overlay
+  OverlayEntry? _colorOverlay;
+
+// 키캡마다 위치를 잡기 위한 LayerLink
+  late List<LayerLink> _keycapLinks;
+
   // 축 선택창이 열렸는지
   bool _axisSelectorOpen = false;
 
@@ -89,6 +95,10 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
   @override
   void initState() {
     super.initState();
+    _keycapLinks = List.generate(
+      widget.letters.length,
+      (_) => LayerLink(),
+    );
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: _durationMs),
@@ -134,8 +144,73 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
   @override
   void dispose() {
+    _colorOverlay?.remove();
+    _colorOverlay = null;
     _controller.dispose();
     super.dispose();
+  }
+
+  void _closeColorSelector() {
+    _colorOverlay?.remove();
+    _colorOverlay = null;
+
+    if (mounted) {
+      setState(() {
+        _editingKeycapIndex = null;
+      });
+    }
+  }
+
+  void _openColorSelector(int index) {
+    // 이미 같은 키캡 선택창이 열려 있으면 닫기
+    if (_editingKeycapIndex == index) {
+      _closeColorSelector();
+      return;
+    }
+
+    // 기존 Overlay 제거
+    _colorOverlay?.remove();
+    _colorOverlay = null;
+
+    setState(() {
+      _editingKeycapIndex = index;
+      _axisSelectorOpen = false;
+    });
+
+    _colorOverlay = OverlayEntry(
+      builder: (context) {
+        return Positioned.fill(
+          child: Stack(
+            children: [
+              // 바깥쪽 터치 영역
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _closeColorSelector,
+                child: const SizedBox.expand(),
+              ),
+
+              CompositedTransformFollower(
+                link: _keycapLinks[index],
+                showWhenUnlinked: false,
+
+                // 키캡 아래에 표시
+                targetAnchor: Alignment.bottomCenter,
+                followerAnchor: Alignment.topCenter,
+
+                offset: const Offset(0, 12),
+
+                child: Material(
+                  color: Colors.transparent,
+                  child: _buildColorSelector(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    Overlay.of(context).insert(_colorOverlay!);
   }
 
   Widget _buildColorSelector() {
@@ -194,11 +269,11 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
                       setState(() {
                         _changing = false;
-
-                        if (changed) {
-                          _editingKeycapIndex = null;
-                        }
                       });
+
+                      if (changed) {
+                        _closeColorSelector();
+                      }
                     },
               child: Opacity(
                 opacity: soldOut ? 0.25 : 1,
@@ -408,73 +483,39 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.topCenter,
-                              children: [
-                                // 기존 키캡
-                                GestureDetector(
-                                  onTap: widget.isSubmitting || _changing
-                                      ? null
-                                      : () {
-                                          setState(() {
-                                            if (_editingKeycapIndex == i) {
-                                              // 같은 키캡 다시 누르면 닫기
-                                              _editingKeycapIndex = null;
-                                            } else {
-                                              // 선택한 키캡 수정창 열기
-                                              _editingKeycapIndex = i;
+                            child: CompositedTransformTarget(
+                              link: _keycapLinks[i],
+                              child: GestureDetector(
+                                onTap: widget.isSubmitting || _changing
+                                    ? null
+                                    : () {
+                                        _openColorSelector(i);
+                                      },
+                                child: Container(
+                                  width: 84,
+                                  height: 84,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: widget.colorAt(i),
 
-                                              // 축 선택창 닫기
-                                              _axisSelectorOpen = false;
-                                            }
-                                          });
-                                        },
-                                  child: Container(
-                                    width: 84,
-                                    height: 84,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: widget.colorAt(i),
-
-                                      // 수정 중인 키캡 표시
-                                      border: _editingKeycapIndex == i
-                                          ? Border.all(
-                                              color: AppColors.ink,
-                                              width: 4,
-                                            )
-                                          : null,
-                                    ),
-                                    child: Text(
-                                      widget.letters[i],
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                                    // 현재 수정 중인 키캡 표시
+                                    border: _editingKeycapIndex == i
+                                        ? Border.all(
+                                            color: AppColors.ink,
+                                            width: 4,
+                                          )
+                                        : null,
+                                  ),
+                                  child: Text(
+                                    widget.letters[i],
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w900,
                                     ),
                                   ),
                                 ),
-
-                                // 선택한 키캡 바로 아래에 색상 수정창 표시
-                                if (_editingKeycapIndex == i)
-                                  Positioned(
-                                    top: 96,
-
-                                    // 맨 왼쪽/오른쪽 키캡에서 팝업이 너무 벗어나지 않도록 조정
-                                    child: Transform.translate(
-                                      offset: Offset(
-                                        c == 0
-                                            ? 40
-                                            : c == cols - 1
-                                                ? -40
-                                                : 0,
-                                        0,
-                                      ),
-                                      child: _buildColorSelector(),
-                                    ),
-                                  ),
-                              ],
+                              ),
                             ),
                           );
                         }),

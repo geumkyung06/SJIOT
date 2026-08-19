@@ -1511,7 +1511,7 @@ class _AppRootState extends State<AppRoot> {
           axis: _axis ?? kFixedAxis, // 현재 축
           axisLabels: _axisLabels,
           axisColors: _axisColors,
-          soldOutAxes: _soldOutAxes,
+          soldOutAxes: _soldOutSwitches,
           onKeycapColorChanged: _changeDesignKeycapColor,
           onAxisChanged: _changeDesignAxis,
           stockLoading: _stockLoading,
