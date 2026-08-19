@@ -460,17 +460,18 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
           opacity: _axisOpacity,
           y: _axisY,
           child: GestureDetector(
-            onTap: widget.isSubmitting || _changing
-                ? null
-                : () {
-                    setState(() {
-                      // 열려 있으면 닫고, 닫혀 있으면 열기
-                      _axisSelectorOpen = !_axisSelectorOpen;
+            // onTap: widget.isSubmitting || _changing
+            //     ? null
+            //     : () {
+            //         setState(() {
+            //           // 열려 있으면 닫고, 닫혀 있으면 열기
+            //           _axisSelectorOpen = !_axisSelectorOpen;
 
-                      // 키캡 색상 선택창은 닫기
-                      _editingKeycapIndex = null;
-                    });
-                  },
+            //           // 키캡 색상 선택창은 닫기
+            //           _editingKeycapIndex = null;
+            //         });
+            //       },
+            onTap: null, // 축 종류 변경 버튼 block 처리
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 24,
