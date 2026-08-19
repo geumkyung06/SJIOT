@@ -147,21 +147,27 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
     const order = ['g', 'y', 'b', 'r'];
 
     return Container(
-      width: 620,
       padding: const EdgeInsets.symmetric(
-        horizontal: 28,
-        vertical: 22,
+        horizontal: 10,
+        vertical: 8,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(
           color: AppColors.ink,
-          width: 3,
+          width: 2,
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: order.map((code) {
           final color = widget.keycapColorOptions[code]!;
 
@@ -169,58 +175,60 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
           final selected = currentColor == code;
 
-          return GestureDetector(
-            onTap: soldOut || _changing || widget.stockLoading
-                ? null
-                : () async {
-                    setState(() {
-                      _changing = true;
-                    });
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: GestureDetector(
+              onTap: soldOut || _changing || widget.stockLoading
+                  ? null
+                  : () async {
+                      setState(() {
+                        _changing = true;
+                      });
 
-                    final changed = await widget.onKeycapColorChanged(
-                      index,
-                      code,
-                    );
+                      final changed = await widget.onKeycapColorChanged(
+                        index,
+                        code,
+                      );
 
-                    if (!mounted) return;
+                      if (!mounted) return;
 
-                    setState(() {
-                      _changing = false;
+                      setState(() {
+                        _changing = false;
 
-                      if (changed) {
-                        // 색상 변경 성공 → 선택창 닫기
-                        _editingKeycapIndex = null;
-                      }
-                    });
-                  },
-            child: Opacity(
-              opacity: soldOut ? 0.25 : 1,
-              child: Container(
-                width: 105,
-                height: 105,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(20),
-                  border: selected
-                      ? Border.all(
-                          color: AppColors.ink,
-                          width: 4,
+                        if (changed) {
+                          _editingKeycapIndex = null;
+                        }
+                      });
+                    },
+              child: Opacity(
+                opacity: soldOut ? 0.25 : 1,
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(9),
+                    border: selected
+                        ? Border.all(
+                            color: AppColors.ink,
+                            width: 3,
+                          )
+                        : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.65),
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: selected
+                      ? const Icon(
+                          Icons.check,
+                          size: 18,
+                          color: Colors.white,
                         )
                       : null,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.75),
-                      offset: const Offset(0, 9),
-                    ),
-                  ],
                 ),
-                child: selected
-                    ? const Icon(
-                        Icons.check,
-                        size: 36,
-                        color: Colors.white,
-                      )
-                    : null,
               ),
             ),
           );
@@ -370,6 +378,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
             child: Transform.scale(scale: _plateScale.value, child: child),
           ),
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               Positioned(
                 left: -8,
@@ -399,47 +408,73 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: GestureDetector(
-                              onTap: widget.isSubmitting || _changing
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        if (_editingKeycapIndex == i) {
-                                          // 이미 열려 있는 키캡을 다시 누르면 닫기
-                                          _editingKeycapIndex = null;
-                                        } else {
-                                          // 누른 키캡의 색상 선택창 열기
-                                          _editingKeycapIndex = i;
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.topCenter,
+                              children: [
+                                // 기존 키캡
+                                GestureDetector(
+                                  onTap: widget.isSubmitting || _changing
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            if (_editingKeycapIndex == i) {
+                                              // 같은 키캡 다시 누르면 닫기
+                                              _editingKeycapIndex = null;
+                                            } else {
+                                              // 선택한 키캡 수정창 열기
+                                              _editingKeycapIndex = i;
 
-                                          // 축 선택창이 열려 있었다면 닫기
-                                          _axisSelectorOpen = false;
-                                        }
-                                      });
-                                    },
-                              child: Container(
-                                width: 84,
-                                height: 84,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: widget.colorAt(i),
+                                              // 축 선택창 닫기
+                                              _axisSelectorOpen = false;
+                                            }
+                                          });
+                                        },
+                                  child: Container(
+                                    width: 84,
+                                    height: 84,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: widget.colorAt(i),
 
-                                  // 현재 수정 중인 키캡이면 테두리 표시
-                                  border: _editingKeycapIndex == i
-                                      ? Border.all(
-                                          color: AppColors.ink,
-                                          width: 4,
-                                        )
-                                      : null,
-                                ),
-                                child: Text(
-                                  widget.letters[i],
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.w900,
+                                      // 수정 중인 키캡 표시
+                                      border: _editingKeycapIndex == i
+                                          ? Border.all(
+                                              color: AppColors.ink,
+                                              width: 4,
+                                            )
+                                          : null,
+                                    ),
+                                    child: Text(
+                                      widget.letters[i],
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+
+                                // 선택한 키캡 바로 아래에 색상 수정창 표시
+                                if (_editingKeycapIndex == i)
+                                  Positioned(
+                                    top: 96,
+
+                                    // 맨 왼쪽/오른쪽 키캡에서 팝업이 너무 벗어나지 않도록 조정
+                                    child: Transform.translate(
+                                      offset: Offset(
+                                        c == 0
+                                            ? 40
+                                            : c == cols - 1
+                                                ? -40
+                                                : 0,
+                                        0,
+                                      ),
+                                      child: _buildColorSelector(),
+                                    ),
+                                  ),
+                              ],
                             ),
                           );
                         }),
@@ -451,11 +486,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
             ],
           ),
         ),
-        if (_editingKeycapIndex != null) ...[
-          const SizedBox(height: 16),
-          _buildColorSelector(),
-        ],
-        const SizedBox(height: 24),
+        const SizedBox(height: 72),
         _FadeSlideY(
           opacity: _axisOpacity,
           y: _axisY,
