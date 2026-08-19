@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:animations/animations.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
@@ -165,6 +167,20 @@ class _AppRootState extends State<AppRoot> {
   bool _polling = false;
   Timer? _autoRestartTimer;
 
+<<<<<<< HEAD
+=======
+  // ---------------- 중복 주문 방지 ----------------
+  // "한 번의 주문 시도"마다 하나씩 갖는 idempotency 키.
+  // - [주문하기](Enter) 버튼을 누르는 순간 생성
+  // - 응답을 못 받아서(타임아웃/네트워크 오류) 자동 재시도할 때는 재사용
+  // - 사용자가 뒤로 가거나(Esc) 처음부터 다시 시작하면 다음 시도에서 새로 생성
+  String? _orderAttemptId;
+  // 주문 요청이 서버에 나가 있는 동안(응답 대기 중) true.
+  // true인 동안은 디자인 확인 화면에서 Enter/Esc 입력을 모두 무시해서
+  // 중복 클릭으로 같은 주문이 두 번 나가는 것을 막습니다.
+  bool _submittingOrder = false;
+
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
   // ---------------- 영수증 화면 표시용 값 ----------------
   String? _receiptOrderNumber;
   String? _receiptTime;
@@ -562,9 +578,9 @@ class _AppRootState extends State<AppRoot> {
         break;
       case AppStep.mbtiChoice:
         if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          await _moveToStep(AppStep.mbtiQuiz, beforeMove: _resetQuiz);
+          await _selectMbtiChoice(1);
         } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          await _moveToStep(AppStep.mbtiManual, beforeMove: _resetManual);
+          await _selectMbtiChoice(2);
         }
         break;
 
@@ -578,6 +594,7 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.mbtiResult:
         if (isEnter) {
+<<<<<<< HEAD
           if (kBoardSelectEnabled) {
             setState(() => _step = AppStep.boardSelect);
           } else {
@@ -590,6 +607,9 @@ class _AppRootState extends State<AppRoot> {
               await _goToKeycapFillWithAxis(kFixedAxis);
             }
           }
+=======
+          await _proceedFromMbtiResult();
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         }
         break;
 
@@ -622,6 +642,11 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.designConfirm:
+<<<<<<< HEAD
+=======
+        // 응답을 기다리는 동안에는 Enter/Esc 모두 무시 (중복 클릭 방지)
+        if (_submittingOrder) break;
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         if (isEnter) {
           await _confirmAndSubmitOrder();
         } else if (event.physicalKey == PhysicalKeyboardKey.escape) {
@@ -634,13 +659,45 @@ class _AppRootState extends State<AppRoot> {
 
       case AppStep.complete:
         break; // [보류] 현재 플로우에서 쓰지 않음
+<<<<<<< HEAD
+=======
+    }
+  }
+
+  // (터치/키보드 공용) MBTI 결과 화면에서 다음으로 진행
+  Future<void> _proceedFromMbtiResult() async {
+    if (kBoardSelectEnabled) {
+      setState(() => _step = AppStep.boardSelect);
+    } else {
+      _boardShape = '1x4';
+      _boardCount = 4;
+      if (kAxisSelectEnabled) {
+        setState(() => _step = AppStep.axisSelect);
+      } else {
+        // [임시] 축 선택 화면을 건너뛰고 고정 축(흑축)으로 바로 진행
+        await _goToKeycapFillWithAxis(kFixedAxis);
+      }
+    }
+  }
+
+  // (터치/키보드 공용) MBTI 아는지 선택: 1=몰라요(퀴즈), 2=알아요(직접입력)
+  Future<void> _selectMbtiChoice(int digit) async {
+    if (digit == 1) {
+      await _moveToStep(AppStep.mbtiQuiz, beforeMove: _resetQuiz);
+    } else if (digit == 2) {
+      await _moveToStep(AppStep.mbtiManual, beforeMove: _resetManual);
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
     }
   }
 
   Future<void> _handleQuizKey(KeyEvent event) async {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
+    await _selectQuizOption(digit);
+  }
 
+  // (터치/키보드 공용) 퀴즈 보기 선택
+  Future<void> _selectQuizOption(int digit) async {
     final options = _mbtiQuestions[_quizIndex]['options'] as List;
     final letter = options[digit - 1]['letter'] as String;
 
@@ -679,7 +736,11 @@ class _AppRootState extends State<AppRoot> {
   Future<void> _handleManualKey(KeyEvent event) async {
     final letter = _keyCharMap[event.physicalKey];
     if (letter == null) return;
+    await _selectManualLetter(letter);
+  }
 
+  // (터치/키보드 공용) 직접입력 화면에서 알파벳 하나 선택
+  Future<void> _selectManualLetter(String letter) async {
     final pair = _manualPairs[_manualIndex];
 
     // 현재 단계의 글자가 아니면 무시
@@ -708,7 +769,11 @@ class _AppRootState extends State<AppRoot> {
   Future<void> _handleAxisKey(KeyEvent event) async {
     final digit = _digitMap[event.physicalKey];
     if (digit == null) return;
+    await _selectAxis(digit);
+  }
 
+  // (터치/키보드 공용) 축 선택 (kAxisSelectEnabled=true일 때만 화면에 노출됨)
+  Future<void> _selectAxis(int digit) async {
     const axes = ['blue', 'brown', 'red', 'black'];
     final selectedAxis = axes[digit - 1];
 
@@ -749,54 +814,7 @@ class _AppRootState extends State<AppRoot> {
     // 1~4 숫자키: 키캡 색상 선택 또는 변경
     // --------------------------------------------------
     if (digit != null) {
-      final selectedColor = _pastelColorCycle[digit - 1];
-
-      // 선택 직전 최신 재고 조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      final selectedLetter = _letters[_cursor];
-      final stockCode = '${selectedLetter}_$selectedColor';
-
-      setState(() {
-        // 기존 선택 중 새로 품절된 색상이 있으면 해제
-        final invalidIndex = _removeInvalidColorSelections();
-
-        if (invalidIndex != null) {
-          _cursor = invalidIndex;
-          _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-          return;
-        }
-
-        // 현재 글자의 모든 색상이 품절
-        if (_isLetterSoldOut(selectedLetter)) {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-          return;
-        }
-
-        // 사용자가 누른 색상이 품절이면 기존 선택 유지
-        // 커서도 다음 칸으로 이동하지 않음
-        if (_soldOutKeycaps.contains(stockCode)) {
-          _keycapMessage = '$selectedLetter 키캡의 해당 색상은 재고가 없습니다.';
-          return;
-        }
-
-        // 선택 가능한 색상이므로 저장
-        _colorCodes[_cursor] = selectedColor;
-        _keycapMessage = null;
-
-        // 마지막 칸이 아닐 때만 다음 칸으로 자동 이동
-        if (_cursor < _boardCount - 1) {
-          _cursor++;
-        }
-
-        // 자동 이동한 글자의 모든 색상이 품절인지 검사
-        if (_isLetterSoldOut(_letters[_cursor])) {
-          _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
-        }
-      });
-
+      await _selectKeycapColorDigit(digit);
       return;
     }
 
@@ -818,14 +836,7 @@ class _AppRootState extends State<AppRoot> {
     }
 
     if (nextCursor != null) {
-      // 우선 커서를 이동
-      setState(() {
-        _cursor = nextCursor!;
-        _keycapMessage = null;
-      });
-
-      // 이동한 키캡 글자의 최신 재고 확인
-      await _refreshKeycapStockForCursor();
+      await _selectKeycapCell(nextCursor);
       return;
     }
 
@@ -848,6 +859,7 @@ class _AppRootState extends State<AppRoot> {
         physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     if (isEnter) {
+<<<<<<< HEAD
       // 색상을 선택하지 않은 첫 번째 칸 찾기
       final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
 
@@ -896,6 +908,133 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
+=======
+      await _trySubmitKeycapFill();
+    }
+  }
+
+  // (터치/키보드 공용) 커서 위치의 색을 digit(1~4)에 해당하는 색으로 선택.
+  Future<void> _selectKeycapColorDigit(int digit) async {
+    if (_stockLoading) return;
+
+    final selectedColor = _pastelColorCycle[digit - 1];
+
+    // 선택 직전 최신 재고 조회
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    final selectedLetter = _letters[_cursor];
+    final stockCode = '${selectedLetter}_$selectedColor';
+
+    setState(() {
+      // 기존 선택 중 새로 품절된 색상이 있으면 해제
+      final invalidIndex = _removeInvalidColorSelections();
+
+      if (invalidIndex != null) {
+        _cursor = invalidIndex;
+        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+        return;
+      }
+
+      // 현재 글자의 모든 색상이 품절
+      if (_isLetterSoldOut(selectedLetter)) {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+        return;
+      }
+
+      // 사용자가 누른 색상이 품절이면 기존 선택 유지
+      // 커서도 다음 칸으로 이동하지 않음
+      if (_soldOutKeycaps.contains(stockCode)) {
+        _keycapMessage = '$selectedLetter 키캡의 해당 색상은 재고가 없습니다.';
+        return;
+      }
+
+      // 선택 가능한 색상이므로 저장
+      _colorCodes[_cursor] = selectedColor;
+      _keycapMessage = null;
+
+      // 마지막 칸이 아닐 때만 다음 칸으로 자동 이동
+      if (_cursor < _boardCount - 1) {
+        _cursor++;
+      }
+
+      // 자동 이동한 글자의 모든 색상이 품절인지 검사
+      if (_isLetterSoldOut(_letters[_cursor])) {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+      }
+    });
+  }
+
+  // (터치 전용) 키캡 칸을 직접 탭했을 때 커서를 그 칸으로 바로 이동.
+  // 키보드의 화살표 이동과 달리 원하는 칸으로 한 번에 건너뜁니다.
+  Future<void> _selectKeycapCell(int index) async {
+    if (_stockLoading) return;
+
+    final clamped = index.clamp(0, _boardCount - 1);
+
+    setState(() {
+      _cursor = clamped;
+      _keycapMessage = null;
+    });
+
+    // 이동한 키캡 글자의 최신 재고 확인
+    await _refreshKeycapStockForCursor();
+  }
+
+  // (터치/키보드 공용) 키캡 채우기 완료(=ENTER) 시도.
+  // 다 채웠으면 디자인 확인 화면으로, 아니면 빈 칸으로 안내합니다.
+  Future<void> _trySubmitKeycapFill() async {
+    if (_stockLoading) return;
+
+    // 색상을 선택하지 않은 첫 번째 칸 찾기
+    final firstEmptyIndex = _colorCodes.indexWhere((color) => color == null);
+
+    if (firstEmptyIndex != -1) {
+      setState(() {
+        _cursor = firstEmptyIndex;
+        _keycapMessage = '색을 모두 선택하세요.';
+      });
+
+      await _refreshKeycapStockForCursor();
+      return;
+    }
+
+    // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) return;
+
+    int? firstInvalidIndex;
+
+    setState(() {
+      firstInvalidIndex = _removeInvalidColorSelections();
+
+      if (firstInvalidIndex != null) {
+        _cursor = firstInvalidIndex!;
+        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
+      }
+    });
+
+    // 품절된 선택이 하나라도 있었다면 주문하지 않음
+    if (firstInvalidIndex != null) {
+      return;
+    }
+
+    // 현재 커서의 글자가 모든 색상 품절인지 마지막으로 검사
+    if (_isLetterSoldOut(_letters[_cursor])) {
+      setState(() {
+        _keycapMessage = '선택 가능한 색상이 없습니다. 이전 단계로 돌아가 다른 MBTI를 선택해 주세요.';
+      });
+      return;
+    }
+
+    // [수정] 여기서 바로 주문을 보내지 않고, 먼저 디자인 확인 화면으로
+    // 이동합니다. 실제 주문 전송은 그 화면에서 Enter를 눌러야만 일어납니다.
+    _goToDesignConfirm();
+  }
+
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
   // 색 선택을 모두 마친 뒤 STEP 06(디자인 확인)으로 이동.
   // 이 시점에는 아직 어떤 정보도 서버로 전송하지 않습니다.
   void _goToDesignConfirm() {
@@ -922,6 +1061,11 @@ class _AppRootState extends State<AppRoot> {
       _receiptOrderNumber = null;
       _receiptTime = null;
       _receiptQrBytes = null;
+<<<<<<< HEAD
+=======
+      _orderAttemptId = null; // 뒤로 가는 경우 = 다음 시도는 새 uuid
+      _submittingOrder = false;
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _resetLetters();
     });
   }
@@ -929,6 +1073,13 @@ class _AppRootState extends State<AppRoot> {
   // STEP 06(디자인 확인)에서 Enter를 눌렀을 때 호출됩니다.
   // 이 시점에 비로소 실제 주문/제작 정보가 서버로 전송됩니다.
   Future<void> _confirmAndSubmitOrder() async {
+<<<<<<< HEAD
+=======
+    // 이미 응답을 기다리는 중이면 중복 실행 금지 (안전장치. 실제로는
+    // _handleKey에서 이미 걸러지지만, 혹시 모를 재진입에 대비)
+    if (_submittingOrder) return;
+
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
     // 접수 직전 마지막 재고 확인 (디자인 확인 화면에 머무는 동안 재고가
     // 바뀌었을 수 있으므로 다시 확인합니다)
     final success = await _loadSoldOutStock();
@@ -964,7 +1115,17 @@ class _AppRootState extends State<AppRoot> {
       return;
     }
 
+<<<<<<< HEAD
     setState(() {
+=======
+    // [주문하기(Enter)를 누른 순간] 이번 "한 번의 주문 시도"에 쓸 idempotency
+    // 키를 확보합니다. 이미 값이 있다면(=응답을 못 받아 자동 재시도하는 상황)
+    // 그 값을 그대로 재사용하고, 없으면(=새 시도) 새로 만듭니다.
+    final attemptId = _orderAttemptId ??= const Uuid().v4();
+
+    setState(() {
+      _submittingOrder = true; // Enter를 다시 눌러도 무시되도록 잠금
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _orderId = null;
       _orderStatus = null;
       _receiptOrderNumber = null;
@@ -975,22 +1136,30 @@ class _AppRootState extends State<AppRoot> {
     // [임시] API 연동이 꺼져있으면 실제 서버 대신 로컬에서 가짜 진행 상태를
     // 흘려보내서, 영수증 화면까지 백엔드 없이 확인할 수 있게 합니다.
     if (!kApiEnabled) {
+<<<<<<< HEAD
+=======
+      _orderAttemptId = null; // 이 시도는 여기서 끝남
+      setState(() => _submittingOrder = false);
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _mockSubmitAndGoToReceipt();
       return;
     }
 
-    try {
-      final colors = List.generate(_boardCount, _colorCode);
+    const maxAttempts = 3;
 
-      final result = await _api.createOrder(
-        board: _boardCount,
-        keycap: _letters.join(),
-        colors: colors,
-        axis: _axis,
-      );
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final colors = List.generate(_boardCount, _colorCode);
 
-      if (!mounted) return;
+        final result = await _api.createOrder(
+          board: _boardCount,
+          keycap: _letters.join(),
+          colors: colors,
+          axis: _axis,
+          idempotencyKey: attemptId,
+        );
 
+<<<<<<< HEAD
       setState(() {
         _orderId = result['order_id'] as String?;
         _orderStatus = result;
@@ -1043,6 +1212,101 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.keycapFill;
           _keycapMessage = '주문 처리 중 오류가 발생했습니다. 다시 시도해 주세요.';
         });
+=======
+        if (!mounted) return;
+
+        // 성공했으므로 이 "시도"는 끝. 다음 주문은 새 uuid를 씀.
+        _orderAttemptId = null;
+
+        setState(() {
+          _submittingOrder = false;
+          _orderId = result['order_id'] as String?;
+          _orderStatus = result;
+          _receiptOrderNumber = _formatOrderNumber(result);
+          _step = AppStep.receipt;
+        });
+
+        // 영수증 화면 진입 직후부터 8초 뒤 자동으로 처음 화면으로 복귀
+        _scheduleDoneRestart();
+
+        // 조립대 배정 상태를 계속 조회해서 "배정 조립대" 박스 문구를
+        // complete_screen.dart와 같은 방식(대기열 N번째 → N번 조립대로
+        // 이동해주세요 → 제작 중 → 완료)으로 실시간 갱신합니다.
+        _pollStatus();
+
+        // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
+        // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
+        final orderId = _orderId;
+        if (orderId != null) {
+          try {
+            final qrBytes = await _api.getOrderQr(orderId);
+            if (mounted) {
+              setState(() => _receiptQrBytes = qrBytes);
+            }
+          } catch (e) {
+            print('>>> QR 조회 실패: $e');
+          }
+        }
+
+        return; // 성공했으므로 재시도 루프 종료
+      } on TimeoutException {
+        // "응답을 못 받은" 경우 → 같은 idempotency 키로 자동 재시도
+        print('>>> [주문] 응답 없음(타임아웃) — 재시도 $attempt/$maxAttempts');
+        if (attempt == maxAttempts) {
+          if (!mounted) return;
+          setState(() {
+            _submittingOrder = false;
+            _step = AppStep.keycapFill;
+            _keycapMessage = '서버 응답이 없습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.';
+          });
+          return;
+        }
+        // 짧게 대기 후 같은 attemptId로 재시도 (루프의 다음 반복)
+        await Future.delayed(const Duration(seconds: 1));
+        continue;
+      } on http.ClientException {
+        // 이것도 "응답을 못 받은" 경우(연결 자체가 안 된 경우)이므로 동일하게 재시도
+        print('>>> [주문] 네트워크 연결 실패 — 재시도 $attempt/$maxAttempts');
+        if (attempt == maxAttempts) {
+          if (!mounted) return;
+          setState(() {
+            _submittingOrder = false;
+            _step = AppStep.keycapFill;
+            _keycapMessage = '네트워크 연결에 실패했습니다. 연결 상태를 확인하고 다시 시도해 주세요.';
+          });
+          return;
+        }
+        await Future.delayed(const Duration(seconds: 1));
+        continue;
+      } catch (e) {
+        // 서버가 실제로 응답을 준 경우(예: 4xx/5xx, "대기열이 가득 찼습니다" 등).
+        // 이건 "응답을 못 받은" 상황이 아니라 결과가 확정된 것이므로 재시도하지 않습니다.
+        if (!mounted) return;
+
+        final message = e.toString();
+        final isQueueFull = message.contains('대기열이 가득');
+
+        // 이 시도는 결과가 확정되며 끝났으므로 idempotency 키를 버립니다.
+        _orderAttemptId = null;
+
+        if (isQueueFull) {
+          setState(() {
+            _submittingOrder = false;
+            _receiptOrderNumber = null;
+            _receiptQrBytes = null; // 실제 주문이 생성되지 않았으므로 QR도 없음
+            _step = AppStep.receipt;
+          });
+          _scheduleDoneRestart();
+        } else {
+          // 그 외의 오류는 키캡 화면으로 돌려보내고 안내 문구로 표시합니다.
+          setState(() {
+            _submittingOrder = false;
+            _step = AppStep.keycapFill;
+            _keycapMessage = '주문 처리 중 오류가 발생했습니다. 다시 시도해 주세요.';
+          });
+        }
+        return;
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       }
     }
   }
@@ -1194,6 +1458,11 @@ class _AppRootState extends State<AppRoot> {
       _receiptOrderNumber = null;
       _receiptTime = null;
       _receiptQrBytes = null;
+<<<<<<< HEAD
+=======
+      _orderAttemptId = null;
+      _submittingOrder = false;
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
       _resetLetters();
     });
   }
@@ -1211,11 +1480,14 @@ class _AppRootState extends State<AppRoot> {
     Widget screen;
     switch (_step) {
       case AppStep.home:
-        screen = const HomeScreen();
+        screen = HomeScreen(
+          onEnter: () => _startOrder(),
+          enabled: !_stockLoading,
+        );
         break;
 
       case AppStep.mbtiChoice:
-        screen = const MbtiChoiceScreen();
+        screen = MbtiChoiceScreen(onSelect: (digit) => _selectMbtiChoice(digit));
         break;
 
       case AppStep.mbtiQuiz:
@@ -1227,6 +1499,7 @@ class _AppRootState extends State<AppRoot> {
           optionTexts: (q['options'] as List)
               .map((o) => o['text'] as String)
               .toList(),
+          onSelect: (digit) => _selectQuizOption(digit),
         );
         break;
 
@@ -1240,11 +1513,15 @@ class _AppRootState extends State<AppRoot> {
           letterB: pair[1],
           letterASoldOut: _isLetterSoldOut(pair[0]),
           letterBSoldOut: _isLetterSoldOut(pair[1]),
+          onSelect: (letter) => _selectManualLetter(letter),
         );
         break;
 
       case AppStep.mbtiResult:
-        screen = MbtiResultScreen(mbti: _mbtiResult ?? '----');
+        screen = MbtiResultScreen(
+          mbti: _mbtiResult ?? '----',
+          onNext: () => _proceedFromMbtiResult(),
+        );
         break;
 
       case AppStep.boardSelect:
@@ -1252,7 +1529,10 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.axisSelect:
-        screen = AxisSelectScreen(soldOutAxes: _soldOutSwitches);
+        screen = AxisSelectScreen(
+          soldOutAxes: _soldOutSwitches,
+          onSelect: (digit) => _selectAxis(digit),
+        );
         break;
 
       case AppStep.keycapFill:
@@ -1270,6 +1550,11 @@ class _AppRootState extends State<AppRoot> {
 
           // 재고 조회 중 표시용
           stockLoading: _stockLoading,
+
+          // 터치 지원
+          onCellTap: (index) => _selectKeycapCell(index),
+          onColorTap: (digit) => _selectKeycapColorDigit(digit),
+          onSubmit: () => _trySubmitKeycapFill(),
         );
         break;
 
@@ -1292,6 +1577,12 @@ class _AppRootState extends State<AppRoot> {
           colorAt: _colorAt,
           axisLabel: _axisLabels[_axis] ?? '-',
           axisColor: _axisColors[_axis] ?? AppColors.ink,
+<<<<<<< HEAD
+=======
+          isSubmitting: _submittingOrder,
+          onConfirm: () => _confirmAndSubmitOrder(),
+          onCancel: _cancelDesignAndReset,
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         );
         break;
 

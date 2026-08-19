@@ -11,6 +11,7 @@ class MbtiManualScreen extends StatefulWidget {
 
   final bool letterASoldOut;
   final bool letterBSoldOut;
+  final void Function(String letter)? onSelect; // 터치 지원: A/B 배지를 탭
 
   const MbtiManualScreen({
     super.key,
@@ -20,6 +21,7 @@ class MbtiManualScreen extends StatefulWidget {
     required this.letterB,
     required this.letterASoldOut,
     required this.letterBSoldOut,
+    this.onSelect,
   });
 
   @override
@@ -131,36 +133,48 @@ class _MbtiManualScreenState extends State<MbtiManualScreen>
             _FadeScale(
               opacity: _badgeOpacity[0],
               scale: _badgeScale[0],
-              child: Row(
-                children: [
-                  _LetterBadge(
-                    letter: widget.letterA,
-                    soldOut: widget.letterASoldOut,
-                  ),
-                  const SizedBox(width: 20),
-                  const Text(
-                    '입니까?',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-                  ),
-                ],
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (widget.onSelect == null || widget.letterASoldOut)
+                    ? null
+                    : () => widget.onSelect!(widget.letterA),
+                child: Row(
+                  children: [
+                    _LetterBadge(
+                      letter: widget.letterA,
+                      soldOut: widget.letterASoldOut,
+                    ),
+                    const SizedBox(width: 20),
+                    const Text(
+                      '입니까?',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 40),
             _FadeScale(
               opacity: _badgeOpacity[1],
               scale: _badgeScale[1],
-              child: Row(
-                children: [
-                  _LetterBadge(
-                    letter: widget.letterB,
-                    soldOut: widget.letterBSoldOut,
-                  ),
-                  const SizedBox(width: 20),
-                  const Text(
-                    '입니까?',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-                  ),
-                ],
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (widget.onSelect == null || widget.letterBSoldOut)
+                    ? null
+                    : () => widget.onSelect!(widget.letterB),
+                child: Row(
+                  children: [
+                    _LetterBadge(
+                      letter: widget.letterB,
+                      soldOut: widget.letterBSoldOut,
+                    ),
+                    const SizedBox(width: 20),
+                    const Text(
+                      '입니까?',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

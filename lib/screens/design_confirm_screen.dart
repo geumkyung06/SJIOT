@@ -17,6 +17,12 @@ class DesignConfirmScreen extends StatefulWidget {
   final Color Function(int index) colorAt;
   final String axisLabel; // 예: 청축 / 갈축 / 적축 / 흑축
   final Color axisColor;
+<<<<<<< HEAD
+=======
+  final bool isSubmitting; // true면 주문 전송 중 — Enter/ESC 힌트를 비활성 표시로 바꿈
+  final VoidCallback? onConfirm; // 터치 지원: ENTER(접수하기) 탭
+  final VoidCallback? onCancel; // 터치 지원: ESC(다시 만들기) 탭
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
 
   const DesignConfirmScreen({
     super.key,
@@ -25,6 +31,12 @@ class DesignConfirmScreen extends StatefulWidget {
     required this.colorAt,
     required this.axisLabel,
     required this.axisColor,
+<<<<<<< HEAD
+=======
+    this.isSubmitting = false,
+    this.onConfirm,
+    this.onCancel,
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
   });
 
   @override
@@ -120,7 +132,11 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
+<<<<<<< HEAD
             '마음에 들면 Enter, 다시 고르려면 Esc',
+=======
+            '마음에 들면 ENTER(탭), 다시 고르려면 ESC(탭)',
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
             style: AppTextStyles.body,
           ),
         ),
@@ -210,6 +226,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
         _FadeSlideY(
           opacity: _hintOpacity,
           y: _hintY,
+<<<<<<< HEAD
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -218,6 +235,26 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
               _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
             ],
           ),
+=======
+          child: widget.isSubmitting
+              ? const _SubmittingIndicator()
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onConfirm,
+                      child: _KeyHint(keyLabel: 'ENTER', text: '접수하기', accent: AppColors.green),
+                    ),
+                    const SizedBox(width: 32),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onCancel,
+                      child: _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
+                    ),
+                  ],
+                ),
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
         ),
       ],
     );
@@ -258,6 +295,39 @@ class _FadeSlideY extends StatelessWidget {
   }
 }
 
+<<<<<<< HEAD
+=======
+// 주문 전송 중일 때 ENTER/ESC 힌트 대신 보여주는 비활성 표시.
+// 이 상태에서는 main.dart가 Enter/Esc 입력을 아예 무시하도록 되어 있어서,
+// 같은 주문이 중복으로 전송되는 것을 막습니다.
+class _SubmittingIndicator extends StatelessWidget {
+  const _SubmittingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(border: Border.all(color: AppColors.muted, width: 2)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.muted),
+          ),
+          const SizedBox(width: 14),
+          Text(
+            '주문을 접수하고 있어요...',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+>>>>>>> c036478c523d31ee6592f7799b04cc6c28a33ea6
 class _KeyHint extends StatelessWidget {
   final String keyLabel;
   final String text;
