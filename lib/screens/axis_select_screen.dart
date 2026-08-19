@@ -5,10 +5,12 @@ import '../theme/app_theme.dart';
 /// 피그마 `App.tsx > SwitchSelectScreen` 모션 1:1 이식.
 class AxisSelectScreen extends StatefulWidget {
   final Set<String> soldOutAxes;
+  final void Function(int digit)? onSelect; // 터치 지원: 1~4번 축 선택
 
   const AxisSelectScreen({
     super.key,
     required this.soldOutAxes,
+    this.onSelect,
   });
 
   @override
@@ -84,7 +86,7 @@ class _AxisSelectScreenState extends State<AxisSelectScreen> with TickerProvider
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
+          child: const Text('키보드 1~4 를 눌러 선택하세요 (또는 탭)', style: AppTextStyles.body),
         ),
         const SizedBox(height: 40),
         Wrap(
@@ -93,14 +95,19 @@ class _AxisSelectScreenState extends State<AxisSelectScreen> with TickerProvider
           alignment: WrapAlignment.center,
           children: List.generate(options.length, (i) {
             final o = options[i];
+            final soldOut = widget.soldOutAxes.contains(o.key);
             return _FadeSlideY(
               opacity: _optOpacity[i],
               y: _optY[i],
-              child: _AxisOption(
-                keyLabel: o.keyLabel,
-                color: o.color,
-                title: o.title,
-                soldOut: widget.soldOutAxes.contains(o.key),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (widget.onSelect == null || soldOut) ? null : () => widget.onSelect!(i + 1),
+                child: _AxisOption(
+                  keyLabel: o.keyLabel,
+                  color: o.color,
+                  title: o.title,
+                  soldOut: soldOut,
+                ),
               ),
             );
           }),

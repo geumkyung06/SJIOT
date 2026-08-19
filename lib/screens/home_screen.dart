@@ -28,7 +28,10 @@ import '../theme/app_theme.dart';
 ///   ENTER 배지 그룹: delay 460ms,            y   8px→0,  duration 300ms
 ///                    (배지 자체의 무한 펄스는 별도 컨트롤러로 계속 유지)
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onEnter; // 터치 지원: ENTER 배지를 탭해도 시작되도록
+  final bool enabled; // 재고 조회 중일 때는 탭을 막기 위함
+
+  const HomeScreen({super.key, this.onEnter, this.enabled = true});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -223,20 +226,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: AnimatedBuilder(
             animation: _pulseOpacity,
             builder: (context, child) => Opacity(opacity: _pulseOpacity.value, child: child),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: AppColors.muted,
-                    child: const Text('ENTER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 16),
-                  const Text('시작하기', style: TextStyle(fontSize: 18)),
-                ],
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.enabled ? widget.onEnter : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: AppColors.muted,
+                      child: const Text('ENTER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text('시작하기', style: TextStyle(fontSize: 18)),
+                  ],
+                ),
               ),
             ),
           ),
