@@ -43,6 +43,9 @@ MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
 # 운영 전환 시 이 env var만 빼면(또는 0으로) 원래대로 영구 보존됨.
 TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
 
+# 디버그용 /debug/reset 엔드포인트 활성화 여부. 운영 배포 시 반드시 0/미설정으로 둘 것.
+DEBUG_ENDPOINTS_ENABLED = os.getenv("DEBUG_ENDPOINTS_ENABLED", "0") == "1"
+
 KST = ZoneInfo("Asia/Seoul")
 
 def _order_counter_key():
@@ -364,6 +367,33 @@ def queue_status():
         'max_queue_len': MAX_QUEUE_LEN,
         'full': qlen >= MAX_QUEUE_LEN,
     })
+
+@bp.route('/debug/reset', methods=['POST'])
+def debug_reset():
+    """
+    [디버그 전용] warehouse/station/대기열 상태를 초기값으로 리셋.
+    운영 배포 시에는 DEBUG_ENDPOINTS_ENABLED!=1 
+    ---
+    tags:
+      - Debug
+    responses:
+      200:
+        description: 초기화 완료
+      404:
+        description: 디버그 엔드포인트 비활성화 상태
+    """
+    if not DEBUG_ENDPOINTS_ENABLED:
+        return jsonify({'error': 'not found'}), 404
+
+    r.set(WAREHOUSE_KEY, "idle")
+    r.delete(WAREHOUSE_ORDER_KEY)
+    r.hset(STATION_KEY, mapping={"1": "idle", "2": "idle", "3": "idle"})
+    for sid in ("1", "2", "3"):
+        r.delete(f"{STATION_ORDER_PREFIX}{sid}")
+        r.delete(f"{STATION_STARTED_PREFIX}{sid}")
+    r.delete(QUEUE_KEY)
+
+    return jsonify({'ok': True}), 200
 
 @bp.route('/order', methods=['POST'])
 def post_order_list():
