@@ -41,6 +41,7 @@ def get_latest_con(cnt_rn):
         return None
     con = res.json()["m2m:cin"]["con"]
     return json.loads(con) if isinstance(con, str) else con
+
 # order
 def send_order_cin(order_id, board, switch, keycap, colors):
     con = {
@@ -52,17 +53,17 @@ def send_order_cin(order_id, board, switch, keycap, colors):
     }
     return create_cin("cnt_order", con)
 
-
 # stock
 def handle_stock_notification(con):
     """Mobius subscription 콜백에서 호출. cnt_stock의 최신 con으로 Redis 캐시 갱신."""
     r.set("warehouse:stock", json.dumps(con))
 
 def get_out_of_stock():
-    """cnt_stock 최신 con을 Mobius에서 직접 가져와 재고 0인 항목만 추림."""
-    stock = get_latest_con("cnt_stock")
-    if stock is None:
+    """캐시된 cnt_stock con에서 재고 0인 항목만 추림."""
+    raw = r.get("warehouse:stock")
+    if raw is None:
         return None
+    stock = json.loads(raw)
 
     out = {}
     for board, qty in stock.get("board", {}).items():
