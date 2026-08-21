@@ -10,7 +10,8 @@ from zoneinfo import ZoneInfo
 
 from services.extensions import r
 from services.mobius import (send_order_cin, 
-                             send_table_cin
+                             send_table_cin,
+                             handle_stock_notification
                              #mark_station_in_progress, 
                              # mark_station_empty
                             )
@@ -571,44 +572,88 @@ def get_order_status(order_id):
         "position_in_queue": position_in_queue
     }), 200
 
-@bp.route('/mobius/callback', methods=['POST'])
-def mobius_callback():
+def _extract_notification_con(data):
     """
-    창고/조립대 완료 알림 수신.
-    Mobius subscription notification이 이 엔드포인트로 들어온다고 가정.
-    실제 payload 포맷은 Mobius notification 구조에 맞춰 나중에 조정 필요.
+    Mobius subscription notification 봉투(m2m:sgn)에서 con(dict)을 꺼냄.
+
+    실제 notification 구조:
+    {
+      "m2m:sgn": {
+        "sur": "Mobius/AE명/cnt_stock/sub_xxx",
+        "nev": { "net": 3, "rep": { "m2m:cin": { "con": "<JSON 문자열>" } } }
+      }
+    }
+    - con은 create_cin에서 json.dumps로 넣기 때문에 대부분 '문자열'로 옴 → json.loads 필요
+    - 봉투가 아닌 flat body(포스트맨으로 콜백을 직접 두드리는 디버깅)면 body 자체를 con으로 취급
+    - 꺼낼 수 없으면 None
+    """
+    if not isinstance(data, dict):
+        return None
+
+    sgn = data.get("m2m:sgn")
+    if sgn is None:
+        return data or None  # 디버깅용 직접 호출: body 자체가 con
+
+    rep = (sgn.get("nev") or {}).get("rep") or {}
+    cin = rep.get("m2m:cin") or {}
+    con = cin.get("con")
+    if isinstance(con, str):
+        try:
+            con = json.loads(con)
+        except json.JSONDecodeError:
+            logger.warning(f"[callback] con 파싱 실패: {con[:200]}")
+            return None
+    return con
+
+@bp.route('/mobius/callback/<source>', methods=['POST'])
+def mobius_callback(source):
+    """
+    창고(cnt_dispense)/AGV(cnt_arrived_table)/재고(cnt_stock) 구독 알림 수신
     ---
     tags:
       - Order
     parameters:
+      - in: path
+        name: source
+        type: string
+        required: true
+        enum: [warehouse, agv, stock]
+        example: warehouse
       - in: body
         name: body
         required: true
         schema:
           type: object
-          properties:
-            source:
-              type: string
-              enum: [warehouse]
-              example: warehouse
     responses:
       200:
         description: 처리 완료
       400:
         description: 잘못된 payload
     """
-    data = request.get_json()
-    source = data.get("source")
+    data = request.get_json(silent=True) or {}
+
+    # 구독 생성 직후 Mobius가 보내는 검증 요청 → 200만 돌려주면 구독이 활성화됨
+    sgn = data.get("m2m:sgn") or {}
+    if sgn.get("vrq"):
+        return jsonify({'ok': True}), 200
+
+    con = _extract_notification_con(data)
+    logger.info(f"[callback:{source}] con={json.dumps(con, ensure_ascii=False)[:300] if con else con}")
 
     try:
         if source == "warehouse":
+            # cnt_dispense: {"order_id": "...", "status": "done"} - 창고 불출 완료
             r.set(WAREHOUSE_KEY, "idle")
             r.delete(WAREHOUSE_ORDER_KEY)
             # 주문 상태는 assigned 유지 - in_progress는 QR start에서만 전이
             _try_assign_next()
 
         elif source == "agv":
-            station_id = str(data.get("station_id"))
+            # cnt_arrived_table: {"order_id": "...", "station_id": "2", "status": "ARRIVED"}
+            if con is None:
+                return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
+
+            station_id = str(con.get("station_id"))
             if station_id not in ("1", "2", "3"):
                 return jsonify({'error': '잘못된 station_id'}), 400
 
@@ -625,8 +670,14 @@ def mobius_callback():
 
             _try_assign_next()  # 조립대가 풀렸으니 다음 대기 주문 배정 시도
 
+        elif source == "stock":
+            # cnt_stock: {"board": {...}, "keycap": {...}, "switch": {...}}
+            if con is None:
+                return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
+            handle_stock_notification(con)
+
         else:
-            return jsonify({'error': 'source는 warehouse 또는 agv 이어야 합니다'}), 400
+            return jsonify({'error': 'source는 warehouse, agv, stock 중 하나여야 합니다'}), 404
 
         return jsonify({'ok': True}), 200
 
@@ -677,7 +728,7 @@ def get_station_status(station_id):
         example: "1"
     responses:
       200:
-        description: 조회 성공. status가 "agv_arrived"일 때만 사용자를 호출해야 함 — "assigned"는 아직 부품 운송 중.
+        description: 조회 성공
         schema:
           type: object
           properties:
@@ -685,18 +736,10 @@ def get_station_status(station_id):
               type: string
               example: ord_a1b2c3d4
             order_seq:
-              type: string
-              example: "12"
-            status:
-              type: string
-              enum: [assigned, agv_arrived, in_progress]
-              description: >
-                assigned - 배정됨, 아직 부품 운송 중 (사용자 호출 금지) /
-                agv_arrived - AGV 도착, 사용자 호출 시점 /
-                in_progress - QR 인증 완료, 조립 중 (디스플레이 재연결 시 화면 복구용)
-              example: agv_arrived
+              type: integer
+              example: 12
       400:
-        description: 이 조립대에 배정된 주문이 없음 (미배정 또는 완료되어 정리됨)
+        description: 이 조립대에 배정된 주문이 없음
         schema:
           type: object
           properties:
@@ -716,5 +759,4 @@ def get_station_status(station_id):
     return jsonify({
         "order_id": order_id,
         "order_seq": order_data.get("order_seq"),
-        "status": order_data.get("status")
     }), 200
