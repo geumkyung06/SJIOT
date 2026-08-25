@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  body { margin:0; background:#04060c; font-family:'IBM Plex Sans KR',sans-serif; }
+  a { color:#5fd8ff; text-decoration:none; }
+  a:hover { color:#9beaff; }
+  @keyframes omScan { 0%{transform:translateY(-100%)} 100%{transform:translateY(1100%)} }
+  @keyframes omPulse { 0%,100%{opacity:.35} 50%{opacity:1} }
+  @keyframes omDash { to { stroke-dashoffset:-40 } }
+  @keyframes omRise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+  @keyframes omGlow { 0%,100%{opacity:.25} 50%{opacity:.6} }
+</style>
+</helmet>
+<div style="width:1920px;height:1080px;position:relative;overflow:hidden;background:
+  radial-gradient(1200px 700px at 18% -10%, rgba(30,120,190,.22), transparent 70%),
+  radial-gradient(900px 600px at 92% 108%, rgba(255,150,60,.10), transparent 70%),
+  linear-gradient(#05080f,#03050a);color:#e8f2ff;font-family:'IBM Plex Sans KR',sans-serif">
+
+  <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(120,200,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(120,200,255,.045) 1px,transparent 1px);background-size:60px 60px;pointer-events:none"></div>
+
+  <div style="position:relative;display:flex;flex-direction:column;height:100%;padding:34px 44px 30px;box-sizing:border-box;gap:22px">
+
+    <div style="display:flex;align-items:center;gap:28px">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="width:46px;height:46px;border:1.5px solid rgba(95,216,255,.55);border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(95,216,255,.08);font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:19px;letter-spacing:.02em;color:#7fe3ff">OM</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.32em;color:rgba(159,205,240,.65)">SMART SYSTEM · SEJONG IoT</div>
+          <div style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;letter-spacing:.01em">Order to Make <span style="color:rgba(159,205,240,.5);font-weight:400">|</span> 자동화 조립 시스템</div>
+        </div>
+      </div>
+
+      <div style="flex:1;display:flex;justify-content:center;gap:10px">
+        <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="4">
+          <div onClick="{{ tab.go }}" style="{{ tab.style }}">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:13px;opacity:.8">{{ tab.n }}</span>
+            <span style="font-size:17px;font-weight:500">{{ tab.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:18px">
+        <div style="text-align:right;line-height:1.25">
+          <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:600;letter-spacing:.02em">{{ clock }}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(159,205,240,.6)">{{ autoLabel }}</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div onClick="{{ prev }}" style="width:56px;height:56px;border-radius:14px;border:1px solid rgba(120,200,255,.28);background:rgba(120,200,255,.06);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;color:#bfe6ff" style-hover="background:rgba(120,200,255,.16);border-color:rgba(120,200,255,.5)">◀</div>
+          <div onClick="{{ next }}" style="width:56px;height:56px;border-radius:14px;border:1px solid rgba(120,200,255,.28);background:rgba(120,200,255,.06);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;color:#bfe6ff" style-hover="background:rgba(120,200,255,.16);border-color:rgba(120,200,255,.5)">▶</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:3px;background:rgba(120,200,255,.10);border-radius:3px;overflow:hidden">
+      <div style="{{ progressStyle }}"></div>
+    </div>
+
+    <div style="flex:1;position:relative;min-height:0">
+
+      <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;display:grid;grid-template-columns:400px 1fr;grid-template-rows:minmax(0,1fr);gap:22px;animation:omRise .5s ease-out">
+
+          <div style="border:1px solid rgba(120,200,255,.16);border-radius:20px;background:linear-gradient(180deg,rgba(12,24,42,.75),rgba(7,14,26,.75));padding:22px 24px;display:flex;flex-direction:column;gap:14px;min-height:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font-size:22px;font-weight:600">실시간 재고 현황</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(95,216,255,.75);border:1px solid rgba(95,216,255,.3);border-radius:6px;padding:3px 7px">5s</div>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(159,205,240,.55);letter-spacing:.06em">MBTI 키캡 부품 8종 · 자동화 창고 컨트롤러</div>
+            <div style="display:flex;flex-direction:column;gap:18px;flex:1;justify-content:space-evenly">
+              <sc-for list="{{ inventory }}" as="row" hint-placeholder-count="8">
+                <div style="display:flex;align-items:center;gap:14px">
+                  <div style="{{ row.chip }}">{{ row.key }}</div>
+                  <div style="flex:1;height:14px;border-radius:7px;background:rgba(120,200,255,.08);overflow:hidden">
+                    <div style="{{ row.bar }}"></div>
+                  </div>
+                  <div style="width:56px;text-align:right;font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:600">{{ row.qty }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:18px;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(159,205,240,.6)">
+              <span style="color:#6ee7a8">■ 충분</span>
+              <span style="color:#ffc861">■ 보충 권장</span>
+              <span style="color:#ff7b7b">■ 부족</span>
+            </div>
+          </div>
+
+          <div style="position:relative;border:1px solid rgba(120,200,255,.16);border-radius:20px;background:linear-gradient(180deg,rgba(10,18,32,.82),rgba(5,9,16,.86));overflow:hidden">
+
+            <div style="position:absolute;left:24px;top:24px;width:880px;height:392px;border:1px solid rgba(120,200,255,.2);border-radius:16px;overflow:hidden;background:#0a0f18">
+            <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,#1b2330 0 14px,#161d29 14px 28px)"></div>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.28em;color:rgba(180,215,245,.8)">WAREHOUSE CAM 01</div>
+              <div style="font-size:17px;color:rgba(180,215,245,.55)">창고 카메라 스트림 연동 영역 · 실시간</div>
+            </div>
+            <div style="position:absolute;left:0;right:0;top:0;height:110px;background:linear-gradient(rgba(95,216,255,.16),transparent);animation:omScan 4.5s linear infinite"></div>
+            <div style="position:absolute;top:20px;left:22px;width:30px;height:30px;border-left:2px solid rgba(95,216,255,.7);border-top:2px solid rgba(95,216,255,.7)"></div>
+            <div style="position:absolute;top:20px;right:22px;width:30px;height:30px;border-right:2px solid rgba(95,216,255,.7);border-top:2px solid rgba(95,216,255,.7)"></div>
+            <div style="position:absolute;bottom:20px;left:22px;width:30px;height:30px;border-left:2px solid rgba(95,216,255,.7);border-bottom:2px solid rgba(95,216,255,.7)"></div>
+            <div style="position:absolute;bottom:20px;right:22px;width:30px;height:30px;border-right:2px solid rgba(95,216,255,.7);border-bottom:2px solid rgba(95,216,255,.7)"></div>
+            <div style="position:absolute;top:22px;right:68px;display:flex;align-items:center;gap:8px;background:rgba(255,60,80,.16);border:1px solid rgba(255,90,110,.6);border-radius:999px;padding:6px 14px">
+              <span style="width:9px;height:9px;border-radius:50%;background:#ff5a6e;animation:omPulse 1.4s ease-in-out infinite"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ffd4d9">LIVE</span>
+            </div>
+            <div style="position:absolute;bottom:20px;left:68px;font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(180,215,245,.65)">03 · 스마트창고 &nbsp;|&nbsp; 1920×1080 · 30fps</div>
+            </div>
+
+            <div style="position:absolute;left:928px;top:24px;right:24px;height:392px;border:1.5px dashed rgba(255,180,84,.45);border-radius:16px;background:linear-gradient(160deg,rgba(255,180,84,.08),rgba(255,180,84,.01));display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px 20px;box-sizing:border-box;gap:8px">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.26em;color:rgba(255,205,145,.85)">AGV STANDBY BAY</div>
+              <div style="font-size:19px;font-weight:600;color:#ffd9a8">AGV 대기공간</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(255,215,170,.6)">{{ agvState }}</div>
+            </div>
+
+            <div style="position:absolute;left:24px;right:24px;bottom:24px;height:250px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px">
+              <sc-for list="{{ stations }}" as="st" hint-placeholder-count="3">
+                <div style="{{ st.box }}">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div style="display:flex;align-items:center;gap:11px">
+                      <span style="{{ st.dot }}"></span>
+                      <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:700">{{ st.name }}</span>
+                    </div>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(95,216,255,.75);border:1px solid rgba(95,216,255,.3);border-radius:6px;padding:3px 7px">1s</div>
+                  </div>
+                  <div style="font-size:20px;font-weight:600;color:{{ st.color }}">{{ st.status }}</div>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between">
+                    <span style="font-size:16px;color:rgba(180,210,240,.7)">호출번호</span>
+                    <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:600">{{ st.code }}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between">
+                    <span style="font-size:16px;color:rgba(180,210,240,.7)">잔여 시간</span>
+                    <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:600">{{ st.remain }}</span>
+                  </div>
+                  <div style="height:8px;border-radius:5px;background:rgba(120,200,255,.1);overflow:hidden">
+                    <div style="{{ st.bar }}"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="{{ agvWrap }}">
+              <div style="text-align:center;margin-bottom:8px;white-space:nowrap">
+                <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,180,84,.14);border:1px solid rgba(255,180,84,.45);border-radius:999px;padding:5px 13px">
+                  <span style="width:8px;height:8px;border-radius:50%;background:#ffb454;animation:omPulse 1.2s ease-in-out infinite"></span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#ffd9a8">02 · AGV — {{ agvTask }}</span>
+                </div>
+              </div>
+              <img src="assets/agv.png" alt="AGV" style="height:112px;display:block;margin:0 auto;filter:drop-shadow(0 14px 22px rgba(0,0,0,.65))" />
+              <div style="width:140px;height:16px;margin:-8px auto 0;border-radius:50%;background:radial-gradient(closest-side,rgba(95,216,255,.35),transparent);animation:omGlow 2s ease-in-out infinite"></div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isIntro }}">
+        <div style="position:absolute;inset:0;display:grid;grid-template-columns:1.15fr .85fr;gap:34px;animation:omRise .5s ease-out">
+          <div style="display:flex;flex-direction:column;justify-content:center;gap:34px;padding:0 10px 0 20px">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:rgba(95,216,255,.85)">SMART SYSTEM</div>
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:58px;font-weight:700;line-height:1.15;margin-top:14px">Order to Make:<br /><span style="font-family:'IBM Plex Sans KR',sans-serif;font-weight:600">자동화 조립 시스템</span></div>
+              <div style="width:120px;height:3px;background:linear-gradient(90deg,#5fd8ff,rgba(95,216,255,0));margin-top:22px"></div>
+            </div>
+            <div style="font-size:25px;line-height:1.75;color:rgba(226,240,255,.9);text-wrap:pretty">
+              주문부터 창고 출고, 배송, 그리고 조립까지<br />
+              전과정이 자동화된 <strong style="color:#7fe3ff;font-weight:600">사용자 맞춤형 시스템</strong>을 소개합니다.
+            </div>
+            <div style="font-size:20px;line-height:1.85;color:rgba(196,220,244,.78);max-width:900px;text-wrap:pretty">
+              플랫폼을 중심으로 스마트창고, AGV, 조립대가 IoT로 연결되어 주문부터 부품 출고, 운반, 조립까지의 과정을 하나의 흐름으로 관리하는 스마트 제조 시스템입니다.
+            </div>
+            <div style="font-size:20px;line-height:1.85;color:rgba(196,220,244,.78);max-width:900px;text-wrap:pretty">
+              사용자가 플랫폼에서 주문을 완료하면 스마트창고가 필요한 부품을 자동으로 출고하고, AGV가 이를 지정된 조립대로 운반합니다. 각 공정의 상태와 진행 상황은 플랫폼을 통해 실시간으로 확인할 수 있어 전체 제조 과정을 한눈에 모니터링할 수 있습니다.
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:18px;justify-content:center">
+            <sc-for list="{{ actors }}" as="a" hint-placeholder-count="4">
+              <div style="border:1px solid rgba(120,200,255,.16);border-radius:18px;background:linear-gradient(120deg,rgba(12,24,42,.8),rgba(6,11,20,.8));padding:24px 26px;display:flex;gap:22px;align-items:center">
+                <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:700;color:rgba(95,216,255,.55);min-width:52px">{{ a.n }}</div>
+                <div style="flex:1">
+                  <div style="font-size:23px;font-weight:600">{{ a.title }}</div>
+                  <div style="font-size:17px;color:rgba(180,210,240,.7);margin-top:5px">{{ a.desc }}</div>
+                </div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(95,216,255,.7);border:1px solid rgba(95,216,255,.25);border-radius:7px;padding:5px 9px;white-space:nowrap">{{ a.tag }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStats }}">
+        <div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 190px;gap:22px;animation:omRise .5s ease-out">
+
+          <div style="border:1px solid rgba(120,200,255,.16);border-radius:20px;background:linear-gradient(180deg,rgba(12,24,42,.72),rgba(6,11,20,.72));padding:26px 30px;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font-size:26px;font-weight:600">MBTI 분포도</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(95,216,255,.75);border:1px solid rgba(95,216,255,.3);border-radius:6px;padding:3px 7px">60s · 주문 DB</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;gap:38px">
+              <div style="position:relative;width:290px;height:290px;flex:none">
+                <div style="{{ donut }}"></div>
+                <div style="position:absolute;inset:52px;border-radius:50%;background:#070c15;border:1px solid rgba(120,200,255,.14);display:flex;flex-direction:column;align-items:center;justify-content:center">
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:rgba(159,205,240,.6)">TOTAL</div>
+                  <div style="font-family:'Chakra Petch',sans-serif;font-size:44px;font-weight:700;color:#7fe3ff">282</div>
+                  <div style="font-size:14px;color:rgba(159,205,240,.6)">누적 주문</div>
+                </div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:11px">
+                <sc-for list="{{ mbti }}" as="m" hint-placeholder-count="6">
+                  <div style="display:flex;align-items:center;gap:13px">
+                    <span style="{{ m.swatch }}"></span>
+                    <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:600;width:74px">{{ m.type }}</span>
+                    <span style="flex:1;height:9px;border-radius:5px;background:rgba(120,200,255,.08);overflow:hidden"><span style="{{ m.bar }}"></span></span>
+                    <span style="font-family:'Chakra Petch',sans-serif;font-size:20px;width:58px;text-align:right">{{ m.pct }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="border:1px solid rgba(120,200,255,.16);border-radius:20px;background:linear-gradient(180deg,rgba(12,24,42,.72),rgba(6,11,20,.72));padding:26px 30px;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font-size:26px;font-weight:600">색상별 주문수</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(95,216,255,.75);border:1px solid rgba(95,216,255,.3);border-radius:6px;padding:3px 7px">단위: 건 · 60s</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:flex-end;gap:40px;padding:0 26px 6px">
+              <sc-for list="{{ colorOrders }}" as="c" hint-placeholder-count="4">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:12px;height:100%;justify-content:flex-end">
+                  <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:600;color:{{ c.color }}">{{ c.value }}</div>
+                  <div style="{{ c.bar }}"></div>
+                  <div style="font-size:17px;color:rgba(196,220,244,.75)">{{ c.name }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="border:1px solid rgba(120,200,255,.16);border-radius:20px;background:linear-gradient(180deg,rgba(12,24,42,.72),rgba(6,11,20,.72));padding:22px 30px;display:flex;align-items:center;justify-content:space-between;gap:26px">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:rgba(95,216,255,.8)">TOP COMBINATION</div>
+              <div style="font-size:24px;font-weight:600;margin-top:7px">1위 MBTI의 최다 조합</div>
+              <div style="font-size:16px;color:rgba(159,205,240,.65);margin-top:5px">62건 · 전체의 22%</div>
+            </div>
+            <div style="display:flex;gap:14px">
+              <sc-for list="{{ topCombo }}" as="k" hint-placeholder-count="4">
+                <div style="{{ k.cap }}">{{ k.ch }}</div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="border:1px solid rgba(120,200,255,.16);border-radius:20px;background:linear-gradient(180deg,rgba(12,24,42,.72),rgba(6,11,20,.72));padding:22px 30px;display:flex;align-items:center;justify-content:space-between;gap:26px">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:rgba(95,216,255,.8)">ORDER COUNT · 10s</div>
+              <div style="font-size:24px;font-weight:600;margin-top:7px">주문 건수</div>
+              <div style="font-size:16px;color:rgba(159,205,240,.65);margin-top:5px">주문 API 실시간 집계</div>
+            </div>
+            <div style="display:flex;gap:14px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+                <div style="min-width:104px;padding:14px 18px;border-radius:16px;border:1px solid rgba(120,200,255,.16);background:rgba(10,20,36,.7);display:flex;flex-direction:column;gap:4px">
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:rgba(159,205,240,.6)">{{ k.label }}</div>
+                  <div style="font-family:'Chakra Petch',sans-serif;font-size:34px;font-weight:600;color:{{ k.color }}">{{ k.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isFlow }}">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;gap:26px;animation:omRise .5s ease-out">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.3em;color:rgba(95,216,255,.85)">PROCESS FLOW</div>
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:44px;font-weight:700;margin-top:8px">Flow Chart</div>
+            </div>
+            <div style="font-size:17px;color:rgba(180,210,240,.7);text-align:right;line-height:1.6">
+              주문 → 출고 → 운반 → 조립까지 3주체가 IoT로 연결된 단일 흐름<br />
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:rgba(159,205,240,.6)">짧은 주기(AGV·조립대)는 WebSocket, 통계·KPI는 주기적 REST 조회</span>
+            </div>
+          </div>
+
+          <div style="flex:1;display:flex;gap:0;padding-left:200px;position:relative">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:184px;display:flex;flex-direction:column">
+              <sc-for list="{{ lanes }}" as="ln" hint-placeholder-count="3">
+                <div style="flex:1;display:flex;align-items:center">
+                  <div style="{{ ln.chip }}">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;opacity:.7">{{ ln.tag }}</div>
+                    <div style="font-size:21px;font-weight:600;margin-top:4px">{{ ln.name }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="position:relative;flex:1">
+              <div style="position:absolute;inset:0">
+                <sc-for list="{{ laneRails }}" as="r" hint-placeholder-count="3">
+                  <div style="{{ r.style }}"></div>
+                </sc-for>
+              </div>
+              {{ flowLinks }}
+              <sc-for list="{{ flowSteps }}" as="s" hint-placeholder-count="6">
+                <div style="{{ s.box }}">
+                  <div style="font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:700;letter-spacing:.1em;color:rgba(95,216,255,.85)">{{ s.n }}</div>
+                  <div style="font-size:19px;font-weight:600;line-height:1.35;margin-top:6px">{{ s.title }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(159,205,240,.6);margin-top:8px">{{ s.meta }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;autoRotate&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;동작&quot;},&quot;rotateSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:15,&quot;min&quot;:5,&quot;max&quot;:60,&quot;step&quot;:1,&quot;unit&quot;:&quot;s&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;동작&quot;}}">
+const INV = [
+  { key: 'E', qty: 142 }, { key: 'I', qty: 96 }, { key: 'N', qty: 38 }, { key: 'S', qty: 156 },
+  { key: 'T', qty: 61 }, { key: 'F', qty: 138 }, { key: 'J', qty: 168 }, { key: 'P', qty: 34 }
+];
+const MBTI = [
+  { type: 'ENTJ', pct: 22, color: '#5fd8ff' },
+  { type: 'INFP', pct: 18, color: '#8fd3a0' },
+  { type: 'ISTJ', pct: 15, color: '#ffc861' },
+  { type: 'ENFP', pct: 13, color: '#f28b8b' },
+  { type: 'ESTP', pct: 11, color: '#b39cf0' },
+  { type: 'INTJ', pct: 9, color: '#7fb0ff' },
+  { type: '기타', pct: 12, color: 'rgba(159,205,240,.35)' }
+];
+const COLORS = [
+  { name: '레드', value: 89, color: '#f28b8b' },
+  { name: '옐로우', value: 26, color: '#f5d98b' },
+  { name: '그린', value: 114, color: '#8fd3a0' },
+  { name: '블루', value: 53, color: '#9dbdf0' }
+];
+const STEPS = [
+  { n: '01', lane: 0, col: 0, title: '주문 접수 · 결제 확인', meta: '주문 API · 10s' },
+  { n: '02', lane: 1, col: 1, title: '부품 조회 · 재고 할당', meta: '창고 컨트롤러 · 5s' },
+  { n: '03', lane: 1, col: 2, title: '자동 출고 · 트레이 적재', meta: '배정 스케줄러 이벤트' },
+  { n: '04', lane: 2, col: 3, title: '적재 확인 · 경로 생성', meta: 'AGV 상태 토픽 · 0.5s' },
+  { n: '05', lane: 2, col: 4, title: '조립대 운반 · 인계', meta: '조립대 컨트롤러 · 1s' },
+  { n: '06', lane: 0, col: 5, title: '진행 상태 갱신 · 완료', meta: '플랫폼 대시보드 · 실시간' }
+];
+const LANES = [
+  { tag: 'LANE 01', name: '플랫폼', color: '#5fd8ff' },
+  { tag: 'LANE 02', name: '스마트창고', color: '#8fd3a0' },
+  { tag: 'LANE 03', name: 'AGV', color: '#ffb454' }
+];
+const TABS = [
+  { n: '01', label: '실시간 현황' },
+  { n: '02', label: '시스템 소개' },
+  { n: '03', label: '주문 통계' },
+  { n: '04', label: '프로세스 흐름' }
+];
+const CAP_COLORS = { E: '#f28b8b', N: '#f5d98b', T: '#8fd3a0', J: '#9dbdf0' };
+
+class Component extends DCLogic {
+  state = {
+    page: 0, elapsed: 0, t: 0,
+    inv: INV.map(r => r.qty),
+    kpi: [282, 47, 6, 41],
+    remain: [47, 0, 132],
+    now: new Date()
+  };
+
+  componentDidMount() {
+    this.timer = setInterval(() => this.tick(), 500);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  get rotateSeconds() { return this.props.rotateSeconds ?? 15; }
+
+  tick() {
+    this.setState(s => {
+      const t = s.t + 0.5;
+      const next = { t, now: new Date() };
+      if ((this.props.autoRotate ?? true)) {
+        const el = s.elapsed + 0.5;
+        if (el >= this.rotateSeconds) { next.elapsed = 0; next.page = (s.page + 1) % 4; }
+        else next.elapsed = el;
+      }
+      if (t % 1 === 0) next.remain = s.remain.map((v, i) => (v > 0 ? v - 1 : i === 0 ? 96 : i === 2 ? 148 : 0));
+      if (t % 5 === 0) next.inv = s.inv.map((v, i) => Math.max(8, Math.min(199, v + (Math.random() < 0.45 ? -1 : 0) - (i % 3 === 0 && Math.random() < 0.2 ? 1 : 0))));
+      if (t % 10 === 0) next.kpi = [s.kpi[0] + (Math.random() < 0.6 ? 1 : 0), s.kpi[1] + (Math.random() < 0.6 ? 1 : 0), Math.max(0, Math.min(12, s.kpi[2] + (Math.random() < 0.5 ? 1 : -1))), s.kpi[3] + (Math.random() < 0.4 ? 1 : 0)];
+      return next;
+    });
+  }
+
+  goTo(i) { this.setState({ page: i, elapsed: 0 }); }
+
+  invStatus(q) {
+    if (q < 50) return '#ff7b7b';
+    if (q < 100) return '#ffc861';
+    return '#6ee7a8';
+  }
+
+  agv() {
+    const BAY = { x: 1157, y: 215 };
+    const CORRIDOR = 540, DOCK_Y = 562;
+    const DOCK_X = [243, 705, 1167];
+    const routeTo = i => [BAY, { x: BAY.x, y: CORRIDOR }, { x: DOCK_X[i], y: CORRIDOR }, { x: DOCK_X[i], y: DOCK_Y }];
+    const legs = [];
+    for (let i = 0; i < 3; i++) {
+      const r = routeTo(i);
+      legs.push({ path: r, dock: i });
+      legs.push({ path: r.slice().reverse(), dock: -1 });
+    }
+    const LEG = 6, cycle = LEG * legs.length;
+    const p = this.state.t % cycle;
+    const i = Math.floor(p / LEG), lp = p % LEG;
+    const leg = legs[i];
+    const f = Math.min(1, lp / 4);
+    const dwelling = lp >= 4;
+    const pts = leg.path;
+    const segLen = [];
+    let total = 0;
+    for (let k = 1; k < pts.length; k++) {
+      const d = Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+      segLen.push(d); total += d;
+    }
+    let want = total * f, x = pts[pts.length - 1].x, y = pts[pts.length - 1].y;
+    for (let k = 0; k < segLen.length; k++) {
+      if (want <= segLen[k] || k === segLen.length - 1) {
+        const g = segLen[k] === 0 ? 1 : Math.min(1, want / segLen[k]);
+        x = pts[k].x + (pts[k + 1].x - pts[k].x) * g;
+        y = pts[k].y + (pts[k + 1].y - pts[k].y) * g;
+        break;
+      }
+      want -= segLen[k];
+    }
+    const target = leg.dock >= 0 ? 'A-0' + (leg.dock + 1) : '대기공간';
+    return {
+      x, y, dock: dwelling && leg.dock >= 0 ? leg.dock : -1,
+      task: dwelling ? (leg.dock >= 0 ? target + ' 부품 인계 중' : '대기공간 정차 · 다음 호출 대기')
+        : target + ' 이동 중',
+      state: dwelling && leg.dock < 0 ? '대기 중 · 충전 88%' : '주행 중 · 1.2 m/s'
+    };
+  }
+
+  fmt(sec) {
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  flowLinks() {
+    const W = 1560, H = 640;
+    const laneY = [100, 320, 540];
+    const cx = c => 110 + c * 268;
+    const paths = STEPS.slice(0, -1).map((s, i) => {
+      const nx = STEPS[i + 1];
+      const x1 = cx(s.col) + 110, x2 = cx(nx.col) - 110;
+      const y1 = laneY[s.lane], y2 = laneY[nx.lane];
+      const mid = x1 + (x2 - x1) / 2;
+      const d = y1 === y2 ? `M${x1},${y1} L${x2},${y2}` : `M${x1},${y1} L${mid},${y1} L${mid},${y2} L${x2},${y2}`;
+      return React.createElement('path', {
+        key: i, d, fill: 'none', stroke: 'rgba(95,216,255,.5)', strokeWidth: 2,
+        strokeDasharray: '8 6', markerEnd: 'url(#omArrow)',
+        style: { animation: 'omDash 1.6s linear infinite' }
+      });
+    });
+    return React.createElement('svg', {
+      viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none',
+      style: { position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }
+    }, React.createElement('defs', null,
+      React.createElement('marker', { id: 'omArrow', viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' },
+        React.createElement('path', { d: 'M0,0 L10,5 L0,10 z', fill: 'rgba(95,216,255,.85)' }))
+    ), paths);
+  }
+
+  renderVals() {
+    const { page, elapsed, inv, kpi, remain, now } = this.state;
+    const agv = this.agv();
+    const sec = this.rotateSeconds;
+    const laneY = [100, 320, 540];
+    const pct = n => (n / 199 * 100).toFixed(0) + '%';
+
+    return {
+      isLive: page === 0, isIntro: page === 1, isStats: page === 2, isFlow: page === 3,
+      prev: () => this.goTo((page + 3) % 4),
+      next: () => this.goTo((page + 1) % 4),
+      clock: now.toTimeString().slice(0, 8),
+      autoLabel: (this.props.autoRotate ?? true) ? `AUTO ${Math.ceil(sec - elapsed)}s / ${sec}s` : 'AUTO OFF',
+      progressStyle: {
+        height: '100%', width: ((this.props.autoRotate ?? true) ? (elapsed / sec * 100) : 0) + '%',
+        background: 'linear-gradient(90deg,#5fd8ff,#7fe3ff)', transition: 'width .5s linear',
+        boxShadow: '0 0 12px rgba(95,216,255,.7)'
+      },
+      tabs: TABS.map((t, i) => ({
+        n: t.n, label: t.label, go: () => this.goTo(i),
+        style: {
+          display: 'flex', alignItems: 'center', gap: '10px', padding: '11px 20px', borderRadius: '12px', cursor: 'pointer',
+          border: '1px solid ' + (i === page ? 'rgba(95,216,255,.6)' : 'rgba(120,200,255,.14)'),
+          background: i === page ? 'rgba(95,216,255,.14)' : 'rgba(120,200,255,.03)',
+          color: i === page ? '#bff0ff' : 'rgba(190,215,240,.6)',
+          boxShadow: i === page ? '0 0 22px rgba(95,216,255,.18) inset' : 'none'
+        }
+      })),
+      inventory: inv.map((q, i) => {
+        const c = this.invStatus(q);
+        return {
+          key: INV[i].key, qty: q,
+          chip: {
+            width: '34px', height: '34px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: "'Chakra Petch',sans-serif", fontSize: '18px', fontWeight: 700, color: c,
+            border: '1px solid ' + c + '55', background: c + '18'
+          },
+          bar: { height: '100%', width: pct(q), background: 'linear-gradient(90deg,' + c + '66,' + c + ')', borderRadius: '7px', transition: 'width .6s ease' }
+        };
+      }),
+      agvState: agv.state, agvTask: agv.task,
+      agvWrap: {
+        position: 'absolute', left: agv.x + 'px', top: agv.y + 'px',
+        transform: 'translate(-50%,-50%)', transition: 'left .5s linear, top .5s linear'
+      },
+      stations: [0, 1, 2].map(i => {
+        const meta = [
+          { name: 'A-01', code: 'A-142', total: 180 },
+          { name: 'A-02', code: 'A-144', total: 150 },
+          { name: 'A-03', code: 'A-143', total: 200 }
+        ][i];
+        const docked = agv.dock === i;
+        const rem = remain[i];
+        const busy = rem > 0;
+        const color = docked ? '#ffc978' : busy ? '#6ee7a8' : 'rgba(190,215,240,.7)';
+        const prog = busy ? Math.max(0, Math.min(100, (1 - rem / meta.total) * 100)) : 100;
+        return {
+          name: meta.name, code: docked ? meta.code + ' · 인계' : meta.code,
+          status: docked ? '부품 인계 중' : busy ? '조립 진행 중' : '대기 · 호출 없음',
+          remain: busy ? this.fmt(rem) : '--:--',
+          color,
+          dot: { width: '11px', height: '11px', borderRadius: '50%', background: color, boxShadow: '0 0 12px ' + color },
+          box: {
+            display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'center',
+            padding: '20px 22px', borderRadius: '18px', boxSizing: 'border-box', height: '100%',
+            border: '1px solid ' + (docked ? 'rgba(255,180,84,.6)' : 'rgba(120,200,255,.18)'),
+            background: docked
+              ? 'linear-gradient(160deg,rgba(50,34,14,.9),rgba(12,10,8,.9))'
+              : 'linear-gradient(160deg,rgba(12,24,42,.85),rgba(6,11,20,.85))',
+            boxShadow: docked ? '0 0 34px rgba(255,180,84,.18)' : 'none',
+            transition: 'border-color .4s, background .4s'
+          },
+          bar: { height: '100%', width: prog.toFixed(0) + '%', borderRadius: '5px', background: 'linear-gradient(90deg,' + color + '66,' + color + ')', transition: 'width .9s linear' }
+        };
+      }),
+      actors: [
+        { n: '01', title: '주문 플랫폼', desc: '키오스크·웹에서 MBTI 키캡 키링 맞춤 주문', tag: 'KIOSK' },
+        { n: '02', title: '스마트창고', desc: '부품 재고 조회 후 필요한 키캡 자동 출고', tag: 'WAREHOUSE' },
+        { n: '03', title: 'AGV', desc: '출고된 부품을 지정 조립대까지 자율 운반', tag: 'AGV' },
+        { n: '04', title: '조립대', desc: '공정 상태·호출번호·잔여 시간 실시간 전송', tag: 'STATION' }
+      ],
+      donut: (() => {
+        let acc = 0;
+        const stops = MBTI.map(m => { const a = acc; acc += m.pct; return `${m.color} ${a}% ${acc}%`; }).join(',');
+        return { position: 'absolute', inset: 0, borderRadius: '50%', background: `conic-gradient(from -90deg,${stops})`, filter: 'saturate(1.05)' };
+      })(),
+      mbti: MBTI.map(m => ({
+        type: m.type, pct: m.pct + '%',
+        swatch: { width: '12px', height: '12px', borderRadius: '3px', background: m.color, display: 'inline-block' },
+        bar: { display: 'block', height: '100%', width: (m.pct / 22 * 100) + '%', background: m.color, borderRadius: '5px' }
+      })),
+      colorOrders: COLORS.map(c => ({
+        name: c.name, value: c.value, color: c.color,
+        bar: {
+          width: '100%', height: (c.value / 114 * 330) + 'px', borderRadius: '14px 14px 6px 6px',
+          background: 'linear-gradient(180deg,' + c.color + ',' + c.color + '55)',
+          boxShadow: '0 0 26px ' + c.color + '33'
+        }
+      })),
+      topCombo: 'ENTJ'.split('').map(ch => ({
+        ch,
+        cap: {
+          width: '86px', height: '86px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: "'Chakra Petch',sans-serif", fontSize: '38px', fontWeight: 700, color: '#1b2330',
+          background: 'linear-gradient(180deg,' + CAP_COLORS[ch] + ',' + CAP_COLORS[ch] + 'cc)',
+          boxShadow: 'inset 0 -5px 0 rgba(0,0,0,.18), 0 12px 22px rgba(0,0,0,.4)'
+        }
+      })),
+      kpis: [
+        { label: '총 주문', value: kpi[0], color: '#e8f2ff' },
+        { label: '오늘', value: kpi[1], color: '#7fe3ff' },
+        { label: '대기', value: kpi[2], color: '#ffc861' },
+        { label: '완료', value: kpi[3], color: '#6ee7a8' }
+      ],
+      lanes: LANES.map(l => ({
+        tag: l.tag, name: l.name,
+        chip: {
+          width: '100%', padding: '16px 18px', borderRadius: '14px',
+          border: '1px solid ' + l.color + '44', background: 'linear-gradient(120deg,' + l.color + '1f,transparent)', color: '#e8f2ff'
+        }
+      })),
+      laneRails: LANES.map((l, i) => ({
+        style: {
+          position: 'absolute', left: 0, right: 0, top: (laneY[i] / 640 * 100) + '%',
+          height: '1px', background: 'linear-gradient(90deg,' + l.color + '00,' + l.color + '3a,' + l.color + '00)'
+        }
+      })),
+      flowLinks: this.flowLinks(),
+      flowSteps: STEPS.map(s => ({
+        n: s.n, title: s.title, meta: s.meta,
+        box: {
+          position: 'absolute', left: ((110 + s.col * 268 - 110) / 1560 * 100) + '%', top: ((laneY[s.lane] - 54) / 640 * 100) + '%',
+          width: (220 / 1560 * 100) + '%', height: (108 / 640 * 100) + '%', boxSizing: 'border-box',
+          padding: '16px 18px', borderRadius: '16px',
+          border: '1px solid ' + LANES[s.lane].color + '55',
+          background: 'linear-gradient(150deg,rgba(12,24,42,.95),rgba(6,11,20,.95))',
+          boxShadow: '0 0 30px ' + LANES[s.lane].color + '1a'
+        }
+      }))
+    };
+  }
+}
+
+</script>
+</body>
+</html>

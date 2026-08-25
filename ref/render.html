@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#222">
+<div id="out"></div>
+<script type="module">
+import * as pdfjs from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.min.mjs';
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs';
+const doc = await pdfjs.getDocument('../uploads/dashboard.pdf').promise;
+for (let i=1;i<=doc.numPages;i++){
+  const page = await doc.getPage(i);
+  const vp = page.getViewport({scale:1});
+  const c = document.createElement('canvas');
+  c.width = vp.width; c.height = vp.height;
+  c.style.cssText='display:block;width:900px;margin:0 auto 8px';
+  document.getElementById('out').appendChild(c);
+  await page.render({canvasContext:c.getContext('2d'), viewport:vp}).promise;
+}
+document.title='done';
+</script>
+</body></html>
