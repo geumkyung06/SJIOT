@@ -85,32 +85,21 @@ def _get_free_station():
     return next((sid for sid in ("1", "2", "3") if station_status.get(sid, "idle") == "idle"), None)
 
 def _dispatch_order(order_id):
-    """배정된 주문을 창고에 불출 지시(cnt_order append). 실패 시 배정 롤백."""
+    """배정된 주문을 창고에 불출 지시(cnt_order append). 성공 여부만 반환."""
     od = r.hgetall(f"order:{order_id}")
-    if not od:
-        logger.error(f"[dispatch] order 해시 없음 (order_id={order_id})")
+    required = ("board", "keycap", "colors", "station_id", "order_seq")
+    if not od or any(k not in od for k in required):
+        logger.error(f"[dispatch] order 데이터 불완전 (order_id={order_id}) od={od}")
         return False
 
-    ok = send_order_cin(
+    return send_order_cin(
         order_id,
         od["board"],
-        od.get("keycap"),
-        od.get("colors", "").split(","),      # ← 리스트로
-        int(od["station_id"]),
+        od["keycap"],
+        od["colors"].split(","),
+        str(od["station_id"]),
         int(od["order_seq"]),
     )
-
-    if not ok:
-        logger.error(f"[dispatch] cnt_order append 실패 → 배정 롤백 ({order_id})")
-        sid = od["station_id"]
-        r.set(WAREHOUSE_KEY, "idle")
-        r.delete(WAREHOUSE_ORDER_KEY)
-        r.hset(STATION_KEY, sid, "idle")
-        r.delete(f"{STATION_ORDER_PREFIX}{sid}")
-        r.hset(f"order:{order_id}", "status", "waiting")
-        r.hdel(f"order:{order_id}", "station_id")
-        r.lpush(QUEUE_KEY, order_id)          # 큐 맨 앞으로 복구
-    return ok
 
 def _try_assign_next():
     """
@@ -148,8 +137,19 @@ def _try_assign_next():
         f"{STATION_ORDER_PREFIX}{free_station}", f"order:{next_order_id}"
     )
     if not _dispatch_order(next_order_id):
-        _push_table_snapshot()      # 롤백된 상태 반영
+        logger.error(f"[assign] 불출 지시 실패 → 배정 롤백 ({next_order_id})")
+        r.set(WAREHOUSE_KEY, "idle")
+        r.delete(WAREHOUSE_ORDER_KEY)
+        r.hset(STATION_KEY, free_station, "idle")
+        r.delete(f"{STATION_ORDER_PREFIX}{free_station}")
+        if r.exists(f"order:{next_order_id}"):          # 해시가 살아있을 때만 큐 복귀
+            r.hset(f"order:{next_order_id}", "status", "waiting")
+            r.hdel(f"order:{next_order_id}", "station_id")
+            r.lpush(QUEUE_KEY, next_order_id)           # 큐 맨 앞으로
+        _touch(WAREHOUSE_KEY, STATION_KEY, QUEUE_KEY)
+        _push_table_snapshot()
         return None
+
     _push_table_snapshot()
     return next_order_id
 
@@ -160,6 +160,7 @@ def check_station_timeouts():
 
     for key in started_keys:
         station_id = key.replace(STATION_STARTED_PREFIX, "")
+        station_id = str(station_id)
         started_at = datetime.fromisoformat(r.get(key))
 
         if (now - started_at).total_seconds() > STATION_TIMEOUT_SEC:
@@ -242,7 +243,7 @@ def station_start(order_id):
           type: object
           properties:
             station_id:
-              type: integer
+              type: string
               description: QR을 스캔한 현재 조립대 번호 (기기 자체 고정값)
               example: 1
     responses:
@@ -267,8 +268,9 @@ def station_start(order_id):
     assigned_station_id = order_data.get("station_id")
     if not assigned_station_id:
         return jsonify({'error': '아직 조립대에 배정되지 않은 주문입니다'}), 400
+    assigned_station_id = str(assigned_station_id)
     if req_station_id != assigned_station_id:
-        return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': int(assigned_station_id)}), 403
+        return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': (assigned_station_id)}), 403
     if order_data.get("status") == "in_progress":
         return jsonify({'error': '이미 조립이 진행 중입니다'}), 409
 
@@ -282,13 +284,13 @@ def station_start(order_id):
     return jsonify({
         'ok': True,
         'order_id': order_id,
-        'station_id': int(assigned_station_id),
+        'station_id': assigned_station_id,
         'board': order_data.get("board"),
         'keycap': order_data.get("keycap"),
         'colors': order_data.get("colors", "").split(",")
     }), 200
 
-@bp.route('/station/<int:station_id>/complete', methods=['POST'])
+@bp.route('/station/<station_id>/complete', methods=['POST'])
 def station_complete(station_id):
     """
     조립대 완료
@@ -298,7 +300,7 @@ def station_complete(station_id):
     parameters:
       - in: path
         name: station_id
-        type: integer
+        type: string
         required: true
         example: 1
       - in: body
@@ -540,7 +542,7 @@ def post_order_list():
 
         if status == "assigned":
             position_in_queue = None
-            station_id = int(order_data.get("station_id"))
+            station_id = order_data.get("station_id")
         else:
             queue = r.lrange(QUEUE_KEY, 0, -1)
             position_in_queue = queue.index(order_id) + 1 if order_id in queue else None
@@ -551,7 +553,7 @@ def post_order_list():
             "status": status,
             "position_in_queue": position_in_queue,
             "order_seq": order_seq,
-            "station_id": station_id
+            "station_id": str(station_id) if station_id else None
         }
 
         response_body = {'order_status': order_status}
@@ -591,7 +593,7 @@ def get_order_status(order_id):
               enum: [waiting, assigned, in_progress, done]
               example: assigned
             station_id:
-              type: integer
+              type: string
               example: 1
             position_in_queue:
               type: integer
@@ -621,7 +623,7 @@ def get_order_status(order_id):
     return jsonify({
         "order_id": order_id,
         "status": status,
-        "station_id": int(station_id) if station_id else None,
+        "station_id": station_id if station_id else None,
         'board': order_data.get("board"),
         'keycap': order_data.get("keycap"),
         'colors': order_data.get("colors", "").split(","),
@@ -800,7 +802,7 @@ def get_station_status(station_id):
         name: station_id
         type: string
         required: true
-        example: "1"
+        example: 1
     responses:
       200:
         description: 조회 성공
@@ -822,6 +824,7 @@ def get_station_status(station_id):
               type: string
               example: 이 조립대에 배정된 주문이 없습니다
     """
+    station_id = str(station_id)
     order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
     if not order_id:
         return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
