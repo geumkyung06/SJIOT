@@ -46,6 +46,19 @@ TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
 # 디버그용 /debug/reset 엔드포인트 활성화 여부. 운영 배포 시 반드시 0/미설정으로 둘 것.
 DEBUG_ENDPOINTS_ENABLED = os.getenv("DEBUG_ENDPOINTS_ENABLED", "0") == "1"
 
+COLOR_LIST = [c.strip() for c in os.getenv("COLOR_LIST", "r,y,g,b").split(",")]
+BOARD_LIST = [b.strip() for b in os.getenv("BOARD_LIST", "red,yellow,green,blue").split(",")]
+
+DETAIL_TO_STATUS = {
+    "assigned":     "occupied",   # 부품 아직 없음 → 오지 마
+    "dispensed":    "waiting",    # ← 여기서만 출동
+    "agv_arrived":  "occupied",
+    "agv_verified": "occupied",
+    "in_progress":  "occupied",
+    "timeout":      "cancelled",
+    "cancelled":    "cancelled",
+}
+
 KST = ZoneInfo("Asia/Seoul")
 
 def _order_counter_key():
@@ -71,6 +84,34 @@ def _get_free_station():
     station_status = r.hgetall(STATION_KEY)
     return next((sid for sid in ("1", "2", "3") if station_status.get(sid, "idle") == "idle"), None)
 
+def _dispatch_order(order_id):
+    """배정된 주문을 창고에 불출 지시(cnt_order append). 실패 시 배정 롤백."""
+    od = r.hgetall(f"order:{order_id}")
+    if not od:
+        logger.error(f"[dispatch] order 해시 없음 (order_id={order_id})")
+        return False
+
+    ok = send_order_cin(
+        order_id,
+        od["board"],
+        od.get("keycap"),
+        od.get("colors", "").split(","),      # ← 리스트로
+        int(od["station_id"]),
+        int(od["order_seq"]),
+    )
+
+    if not ok:
+        logger.error(f"[dispatch] cnt_order append 실패 → 배정 롤백 ({order_id})")
+        sid = od["station_id"]
+        r.set(WAREHOUSE_KEY, "idle")
+        r.delete(WAREHOUSE_ORDER_KEY)
+        r.hset(STATION_KEY, sid, "idle")
+        r.delete(f"{STATION_ORDER_PREFIX}{sid}")
+        r.hset(f"order:{order_id}", "status", "waiting")
+        r.hdel(f"order:{order_id}", "station_id")
+        r.lpush(QUEUE_KEY, order_id)          # 큐 맨 앞으로 복구
+    return ok
+
 def _try_assign_next():
     """
     warehouse가 idle이고 빈 조립대가 있으면 큐에서 다음 주문을 꺼내 배정.
@@ -83,9 +124,15 @@ def _try_assign_next():
     if not free_station:
         return None
 
-    next_order_id = r.lpop(QUEUE_KEY)
-    if not next_order_id:
-        return None
+    # 큐에서 '살아있는' 주문이 나올 때까지 꺼냄
+    while True:
+        next_order_id = r.lpop(QUEUE_KEY)
+        if not next_order_id:
+            return None                                  # 큐가 비었음 → 배정할 게 없음
+        if r.exists(f"order:{next_order_id}"):
+            break                                        # 정상 주문 찾음 → 루프 탈출
+        logger.warning(f"[assign] 만료된 주문 건너뜀 ({next_order_id})")
+        # exists가 False면 lpop으로 이미 큐에서 빠졌으니 그냥 버리고 다음 반복
 
     r.set(WAREHOUSE_KEY, "busy")
     r.set(WAREHOUSE_ORDER_KEY, next_order_id)  # 창고가 지금 이 주문의 부품을 꺼내는 중
@@ -95,11 +142,15 @@ def _try_assign_next():
         "status": "assigned",
         "station_id": free_station
     })
+
     _touch(
         WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY,
         f"{STATION_ORDER_PREFIX}{free_station}", f"order:{next_order_id}"
     )
-
+    if not _dispatch_order(next_order_id):
+        _push_table_snapshot()      # 롤백된 상태 반영
+        return None
+    _push_table_snapshot()
     return next_order_id
 
 def check_station_timeouts():
@@ -130,7 +181,8 @@ def _complete_station(station_id):
     r.hset(f"order:{order_id}", "status", "done")
     _touch(f"order:{order_id}")
 
-    _try_assign_next()
+    if _try_assign_next() is None:
+        _push_table_snapshot()
     return order_id
 
 def _build_station_snapshot():
@@ -231,8 +283,7 @@ def station_start(order_id):
         'ok': True,
         'order_id': order_id,
         'station_id': int(assigned_station_id),
-        'board': int(order_data.get("board")),
-        'switch': order_data.get("switch"),
+        'board': order_data.get("board"),
         'keycap': order_data.get("keycap"),
         'colors': order_data.get("colors", "").split(",")
     }), 200
@@ -308,9 +359,9 @@ def station_complete(station_id):
 
     r.hset(f"order:{order_id}", "status", "done")
     _touch(f"order:{order_id}")
-
-    _try_assign_next()
-    _push_table_snapshot()
+  
+    if _try_assign_next() is None:
+        _push_table_snapshot()
 
     return jsonify({'ok': True, 'order_id': order_id}), 200
 
@@ -410,11 +461,8 @@ def post_order_list():
           type: object
           properties:
             board:
-              type: integer
-              example: 4
-            switch:
               type: string
-              example: "black"
+              example: "blue"
             keycap:
               type: string
               example: "ESFJ"
@@ -438,33 +486,27 @@ def post_order_list():
         if not claimed:
             # 이미 처리 중이거나 처리 완료 → 잠깐 대기 후 재조회, 또는 409 반환
             cached = r.get(f"idempotency:{idem_key}")
-            if cached:
+            if cached and cached != "processing":
                 cached_response = json.loads(cached)
                 return jsonify(cached_response["body"]), cached_response["status"]
+            return jsonify({'error': '동일 요청 처리 중입니다. 잠시 후 재시도해주세요'}), 409
             
     data = request.get_json()
 
     board = data.get("board")
-    switch = data.get("switch")
     keycap = data.get("keycap")
     colors = data.get("colors")
 
     try:
-        color_list = os.getenv('COLOR_LIST').split(',')  # COLOR_LIST=r,y,g,b
-        board_list = [int(b) for b in os.getenv('BOARD_LIST').split(',')]
-        switch_list = os.getenv('SWITCH_LIST').split(',') # SWITCH_LIST=blue,brown,red,black
-
-        if board not in board_list:
-            return jsonify({'error': '지원하지 않는 본판'}), 400
-        if switch not in switch_list:
-            return jsonify({'error': '지원하지 않는 축'}), 400
-        if not len(keycap) == board:
-            return jsonify({'error': '본판과 키캡 수 불일치'}), 400
-        if not len(colors) == board:
-            return jsonify({'error': '색상 선택 부족'}), 400
+        if board not in BOARD_LIST:
+            return jsonify({'error': '지원하지 않는 본판 색상'}), 400
+        if not isinstance(keycap, str) or len(keycap) != 4:
+            return jsonify({'error': '키캡은 4글자여야 합니다'}), 400
+        if not isinstance(colors, list) or len(colors) != 4:
+            return jsonify({'error': '색상 4개를 선택해주세요'}), 400
         if not _is_valid_mbti(keycap):
             return jsonify({'error': '잘못된 알파벳 압력(MBTI 아님)'}), 400
-        if not all(c in color_list for c in colors):
+        if not all(c in COLOR_LIST for c in colors):
             return jsonify({'error': '잘못된 색상 선택'}), 400
 
         _ensure_initial_state()
@@ -480,7 +522,6 @@ def post_order_list():
         r.rpush(QUEUE_KEY, order_id)
         r.hset(f"order:{order_id}", mapping={
             "board": board,
-            "switch": switch,
             "keycap": keycap,
             "colors": ",".join(colors),
             "status": "waiting",
@@ -488,10 +529,11 @@ def post_order_list():
             "created_at": datetime.now().isoformat()
         })
         r.expire(f"order:{order_id}", 3600)  # TTL 1시간
-        _touch(QUEUE_KEY, ORDER_COUNTER_KEY)
+        _touch(QUEUE_KEY)
 
         # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
-        _try_assign_next()
+        assigned_order_id = _try_assign_next()
+        logger.debug(f"배정된 order_id: {assigned_order_id}")
 
         order_data = r.hgetall(f"order:{order_id}")
         status = order_data.get("status")
@@ -512,26 +554,12 @@ def post_order_list():
             "station_id": station_id
         }
 
-        order_saved = send_order_cin(order_id, board, switch, keycap, colors)  # cnt_order 저장
-
         response_body = {'order_status': order_status}
-        status_code = 200
 
         if idem_key:
-            r.set(
-                f"idempotency:{idem_key}",
-                json.dumps({"status": status_code, "body": response_body}),
-                ex=300  # 5분 TTL — 재전송이 도착할 만한 시간이면 충분
-            )
-        # cnt_order 저장 성공한 경우에만 cnt_table 갱신 (교차검증: 방금 만든 주문이
-        # 실제로 coss에 반영됐다는 게 확인된 뒤에만 table 스냅샷에 그 order_id를 실어 보냄)
-        if order_saved:
-            tables = _build_station_snapshot()
-            send_table_cin(tables)
-        else:
-            logger.warning(f"[order] cnt_order 저장 실패 - cnt_table 갱신 스킵 (order_id={order_id})")
+            r.set(f"idempotency:{idem_key}", json.dumps({"status": 200, "body": response_body}), ex=300)
 
-        return jsonify({'order_status': order_status}), 200
+        return jsonify(response_body), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -594,8 +622,7 @@ def get_order_status(order_id):
         "order_id": order_id,
         "status": status,
         "station_id": int(station_id) if station_id else None,
-        'board': int(order_data.get("board")),
-        'switch': order_data.get("switch"),
+        'board': order_data.get("board"),
         'keycap': order_data.get("keycap"),
         'colors': order_data.get("colors", "").split(","),
         'order_seq' : order_data.get("order_seq"),
@@ -672,10 +699,27 @@ def mobius_callback(source):
 
     try:
         if source == "warehouse":
-            # cnt_dispense: {"order_id": "...", "status": "done"} - 창고 불출 완료
+            if con is None:
+                return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
+            if con.get("status") != "done":
+                return jsonify({'ok': True}), 200
+
+            done_id = con.get("order_id")
+            current_order_id = r.get(WAREHOUSE_ORDER_KEY)
+            if current_order_id is None:
+                logger.warning(f"[callback:warehouse] 중복/유령 알림 무시 ({done_id})")
+                return jsonify({'ok': True}), 200
+            if done_id and done_id != current_order_id:
+                logger.warning(f"[callback:warehouse] order_id 불일치 recv={done_id} cur={current_order_id}")
+                return jsonify({'ok': True}), 200
+
+            r.hset(f"order:{current_order_id}", "status", "dispensed")
             r.set(WAREHOUSE_KEY, "idle")
             r.delete(WAREHOUSE_ORDER_KEY)
-            # 주문 상태는 assigned 유지 - in_progress는 QR start에서만 전이
+            _touch(WAREHOUSE_KEY, f"order:{current_order_id}")
+
+            # 출동 신호는 다음 주문 배정(HTTP 왕복)보다 먼저 나가야 해서 여기서 즉시 push
+            _push_table_snapshot()
             _try_assign_next()
 
         elif source == "agv":
@@ -698,10 +742,11 @@ def mobius_callback(source):
                 r.hset(f"order:{current_order_id}", "status", "done")
                 _touch(f"order:{current_order_id}")
 
-            _try_assign_next()  # 조립대가 풀렸으니 다음 대기 주문 배정 시도
+            assigned_order_id = _try_assign_next()  # 조립대가 풀렸으니 다음 대기 주문 배정 시도
+            logger.debug(f"배정된 order_id: {assigned_order_id}")
 
         elif source == "stock":
-            # cnt_stock: {"board": {...}, "keycap": {...}, "switch": {...}}
+            # cnt_stock: {"board": {...}, "keycap": {...}} | switch 제외
             if con is None:
                 return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
             handle_stock_notification(con)

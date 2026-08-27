@@ -20,11 +20,6 @@ def get_out_of_stock_status():
               type: array
               items:
                 type: string
-              example: ["4"]
-            switch:
-              type: array
-              items:
-                type: string
               example: ["blue"]
             keycap:
               type: array

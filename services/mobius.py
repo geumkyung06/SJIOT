@@ -27,29 +27,56 @@ def _headers(ty=None):
     return h
 
 def create_cin(cnt_rn, con_dict):
-    """지정한 cnt에 CIN 하나 추가. 성공 시 True, 실패 시 False."""
     url = f"{MP_URL}/{CB}/{AE_RN}/{cnt_rn}"
     body = {"m2m:cin": {"con": json.dumps(con_dict, ensure_ascii=False)}}
-    res = requests.post(url, headers=_headers(ty=4), json=body)
-    return res.status_code in (200, 201)
+    try:
+        res = requests.post(url, headers=_headers(ty=4), json=body, timeout=(3, 5))
+    except requests.RequestException as e:
+        logger.error(f"[create_cin] {cnt_rn} 요청 실패: {e}")
+        return False        # ← 예외를 여기서 흡수해야 _dispatch_order 롤백이 돌아감
+
+    ok = res.status_code in (200, 201)
+    if not ok:
+        logger.error(f"[create_cin] {cnt_rn} {res.status_code} {res.text[:200]}")
+    return ok
 
 def get_latest_con(cnt_rn):
+    """cnt의 최신 CIN con을 dict로 반환. 실패하면 None."""
     url = f"{MP_URL}/{CB}/{AE_RN}/{cnt_rn}/la"
-    res = requests.get(url, headers=_headers())
-    logger.info(f"[get_latest_con] url={url} status={res.status_code} body={res.text[:500]}")
-    if res.status_code != 200:
+
+    try:
+        res = requests.get(url, headers=_headers(), timeout=(3, 5))
+    except requests.RequestException as e:
+        logger.error(f"[get_latest_con] {cnt_rn} 요청 실패: {e}")
         return None
-    con = res.json()["m2m:cin"]["con"]
-    return json.loads(con) if isinstance(con, str) else con
+
+    if res.status_code != 200:
+        logger.error(f"[get_latest_con] {cnt_rn} {res.status_code} {res.text[:200]}")
+        return None
+
+    try:
+        con = res.json()["m2m:cin"]["con"]
+    except (ValueError, KeyError, TypeError) as e:
+        logger.error(f"[get_latest_con] {cnt_rn} 응답 구조 이상: {e} body={res.text[:200]}")
+        return None
+
+    if isinstance(con, str):
+        try:
+            return json.loads(con)
+        except json.JSONDecodeError:
+            logger.error(f"[get_latest_con] {cnt_rn} con 파싱 실패: {con[:200]}")
+            return None
+    return con
 
 # order
-def send_order_cin(order_id, board, switch, keycap, colors):
+def send_order_cin(order_id, board, keycap, colors, station_id, order_seq):
     con = {
         "order_id": order_id,
+        "station_id": station_id,
         "board": board,
         "colors": colors,
         "keycap": keycap,
-        "switch": switch,
+        "order_seq": order_seq,
     }
     return create_cin("cnt_order", con)
 
@@ -66,17 +93,13 @@ def get_out_of_stock():
     stock = json.loads(raw)
 
     out = {}
-    for board, qty in stock.get("board", {}).items():
-        if qty <= 0:
-            out.setdefault("board", []).append(board)
-
-    for switch, qty in stock.get("switch", {}).items():
-        if qty <= 0:
-            out.setdefault("switch", []).append(switch)
+    for color, qty in stock.get("board", {}).items():
+        if int(qty or 0) <= 0:
+            out.setdefault("board", []).append(color)
 
     for letter, colors in stock.get("keycap", {}).items():
         for color, qty in colors.items():
-            if qty <= 0:
+            if int(qty or 0) <= 0:
                 out.setdefault("keycap", []).append(f"{letter}_{color}")
 
     return out
