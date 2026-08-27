@@ -1,7 +1,7 @@
 
 #back
 .env
-env.yaml
+.env.yaml
 .vscode/
 services/__pycache__
 routes/__pycache__
