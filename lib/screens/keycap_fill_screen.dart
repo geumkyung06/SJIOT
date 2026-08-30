@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// STEP 05 — 키캡 색을 선택하세요 (보드 선택 단계 제외로 06→05)
+/// STEP 05 — 키캡 색을 선택하세요 (보드 색상 선택 단계가 STEP 04로 정식 편입되면서 05로 밀림)
 /// 피그마 `App.tsx > ColorSelectScreen` 모션 1:1 이식.
 class KeycapFillScreen extends StatefulWidget {
-  final String boardShape; // '1x4' | '2x2'
+  final String boardShape; // '1x4' 고정 (2x2 옵션은 팀 확정으로 제거됨. 파라미터는 하위 호환용으로 유지)
+  final Color boardColor; // [신규] STEP 04에서 고른 판(케이스) 색상. 판 미리보기 배경(그림자 사각형)에 사용
   final List<String> letters;
   final int cursor;
   final Color Function(int index) colorAt;
@@ -21,6 +22,7 @@ class KeycapFillScreen extends StatefulWidget {
   const KeycapFillScreen({
     super.key,
     required this.boardShape,
+    required this.boardColor,
     required this.letters,
     required this.cursor,
     required this.colorAt,
@@ -107,7 +109,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
       children: [
         _Fade(
           opacity: _labelOpacity,
-          child: const Text('STEP 04 / 06', style: AppTextStyles.label),
+          child: const Text('STEP 05 / 06', style: AppTextStyles.label),
         ),
         const SizedBox(height: 8),
         _FadeSlideY(
@@ -133,12 +135,16 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
               Positioned(
                 left: -8,
                 top: -8,
-                child: Container(width: boardWidth, height: rows == 2 ? boardWidth : 150, color: AppColors.yellow),
+                // [수정] 그림자 자리는 잉크색으로 바꾸고, 판 색상은 실제 판 표면(아래)에서
+                // 또렷하게 보이도록 함
+                child: Container(width: boardWidth, height: rows == 2 ? boardWidth : 150, color: AppColors.ink),
               ),
               Container(
                 width: boardWidth,
                 padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 2)),
+                // [수정] 판 표면을 흰색 고정이 아니라 선택한 판 색상으로 칠해서,
+                // 키캡을 끼워 넣는 동안에도 고른 판 색이 또렷하게 보이도록 함
+                decoration: BoxDecoration(color: widget.boardColor, border: Border.all(color: AppColors.ink, width: 2)),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: List.generate(rows, (r) {
@@ -188,7 +194,9 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                   _legendRow(1, 'g', KeycapColors.green, '초록'),
                   _legendRow(2, 'y', KeycapColors.yellow, '노랑'),
                   _legendRow(3, 'b', KeycapColors.blue, '파랑'),
-                  _legendRow(4, 'r', KeycapColors.red, '빨강'),
+                  // [수정] 색상 코드('r')는 그대로 유지하되, 실제 색상이 빨강→핑크로
+                  // 바뀌었으므로 화면에 보이는 한글 이름만 '핑크'로 변경
+                  _legendRow(4, 'r', KeycapColors.red, '핑크'),
                   const SizedBox(height: 8),
                   Text('$filled / ${widget.letters.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ],

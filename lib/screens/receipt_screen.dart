@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 
-/// [신규] 영수증 페이지 — STEP 06 / 06
+/// [신규] 영수증 페이지 — 6단계(STEP 01~06) 밖의 별도 화면
 ///
-/// 축(스위치) 선택 화면을 건너뛰게 되면서 비게 된 번호 자리를 이 화면이
-/// 대신 채웁니다. 전체 단계 수(06)는 그대로 유지됩니다.
+/// [수정] 예전에는 축(스위치) 선택 화면이 빠지면서 비게 된 "06" 자리를
+/// 영수증이 대신 채웠는데, 이제 보드 색상 선택이 정식 STEP 04로 편입되고
+/// 키캡 채우기(05)·디자인 확인(06)이 한 칸씩 밀리면서 06 자리가 다시
+/// 디자인 확인 화면 몫이 됐습니다. 그래서 영수증 화면은 STEP 표시를
+/// 아예 빼고 6단계 밖의 화면으로 둡니다.
 ///
 /// 순수하게 보여주기만 하는 화면입니다. 키보드 입력을 받지 않습니다.
 /// 화면 안의 "N초 후 처음 화면으로 돌아갑니다" 문구는 표시용 카운트다운일
@@ -112,13 +114,14 @@ class _ReceiptScreenState extends State<ReceiptScreen> with TickerProviderStateM
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // [수정] 영수증 화면은 더 이상 STEP 표시에 포함하지 않습니다
+          // (전체 6단계는 mbtiChoice~designConfirm까지이고, 영수증은 그 이후
+          // 별도 화면입니다). 카드 등장 애니메이션 타이밍은 그대로 유지하기
+          // 위해 라벨 대신 동일한 높이의 빈 여백만 둡니다.
           AnimatedBuilder(
             animation: _cardOpacity,
             builder: (context, child) => Opacity(opacity: _cardOpacity.value.clamp(0.0, 1.0), child: child),
-            child: const Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Text('STEP 06 / 06', style: AppTextStyles.label),
-            ),
+            child: const SizedBox(height: 30),
           ),
           AnimatedBuilder(
             animation: Listenable.merge([_cardOpacity, _cardY]),

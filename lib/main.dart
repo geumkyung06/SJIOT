@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:animations/animations.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
@@ -15,30 +16,60 @@ import 'screens/mbti_quiz_screen.dart';
 import 'screens/mbti_manual_screen.dart';
 import 'screens/mbti_result_screen.dart';
 import 'screens/board_select_screen.dart';
-import 'screens/axis_select_screen.dart';
 import 'screens/keycap_fill_screen.dart';
 import 'screens/complete_screen.dart';
 import 'screens/design_confirm_screen.dart';
 import 'screens/receipt_screen.dart';
 
-void main() {
+// [디버그/키오스크용] 개발 중(flutter run)에는 전체화면+최상단 고정이
+// VS Code/터미널을 가려서 오히려 불편하므로 기본은 꺼둡니다.
+// 실제 키오스크에 배포하는 release 빌드에서만 true로 바꿔서 쓰세요.
+// [항상 켜짐] 좌측 상단 구석 5회 터치로 종료할 수 있는 숨겨진 동작이
+// 마련되어 있으므로, 개발 중(flutter run)에도 실제 키오스크와 동일한
+// 전체화면 환경에서 테스트할 수 있도록 항상 true로 둡니다.
+const bool kKioskWindowMode = true;
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  // [디버그/키오스크용] 창을 항상 지정 해상도로 전체화면 표시하고,
+  // 뜨는 즉시 강제로 포커스를 줘서 마우스/터치 입력이 다른 창에
+  // 뺏기지 않게 합니다. 키오스크 터치 문제 원인 파악용 조치이며,
+  // 원인이 확인되면(오버레이 프로그램 등) 이 블록은 정리해도 됩니다.
+  final windowOptions = WindowOptions(
+    size: const Size(1920, 1080), // 키오스크 실제 해상도에 맞춰 조정하세요.
+    center: true,
+    backgroundColor: Colors.transparent,
+    titleBarStyle: kKioskWindowMode
+        ? TitleBarStyle.hidden
+        : TitleBarStyle.normal,
+    fullScreen: kKioskWindowMode,
+  );
+
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+    // 다른 창(사이니지 오버레이 등)이 위로 올라오지 못하게 최상단 고정.
+    // 개발 중엔 VS Code/터미널을 가리므로 kKioskWindowMode일 때만 켭니다.
+    if (kKioskWindowMode) {
+      await windowManager.setAlwaysOnTop(true);
+    }
+  });
+
   runApp(const ClickyKeyringApp());
 }
 
-// 팀장 확정 전 임시 조치: 4구 고정으로 보드 선택 화면을 건너뜁니다.
-// board_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
-// true로 되돌리면 원래 흐름(보드 선택 화면 노출)이 복원됩니다.
-const bool kBoardSelectEnabled = false;
+// [수정] 팀 확정: 판(케이스) "크기" 선택은 없어지고 1×4로 고정되지만,
+// 판 "색상"을 고르는 화면은 이제 항상 노출됩니다(더 이상 건너뛰지 않음).
+const bool kBoardSelectEnabled = true;
 
-// [임시] 팀 회의 결과로 축(스위치) 선택 단계를 건너뛰고 청축으로 고정합니다.
-// axis_select_screen.dart 파일과 관련 코드는 그대로 두었고, 이 값만
-// true로 되돌리면 원래 흐름(축 선택 화면 노출)이 복원됩니다.
+// [수정] 축(스위치)은 제품에서 완전히 제외되었습니다. 화면과 API 모두에서
+// 축 관련 처리를 뺐습니다. axis_select_screen.dart 파일 자체는 남겨뒀지만
+// 더 이상 이 흐름에서 진입하지 않습니다.
 const bool kAxisSelectEnabled = false;
-const String kFixedAxis = 'blue';
 
-// [임시] COSS 백엔드 서버 문제로 API 연동을 끊고 프론트 동작(화면 흐름/애니메이션)만
-// 확인하기 위한 플래그. 서버 복구되어 true로 되돌림 -> 실제 API
-// (재고 조회 / 주문 생성 / 상태 폴링)를 호출합니다.
+// [복구] UI/UX 확인이 끝나 다시 실제 서버(재고 조회/주문 생성/상태 폴링)에 연결합니다.
 const bool kApiEnabled = true;
 
 enum AppStep {
@@ -79,6 +110,26 @@ class AppRoot extends StatefulWidget {
 class _AppRootState extends State<AppRoot> {
   final FocusNode _focusNode = FocusNode();
   final ApiService _api = ApiService();
+
+  // [키오스크 종료용] 좌측 상단 구석을 짧은 시간 안에 5번 연속 터치하면
+  // 앱이 종료됩니다. 관람객은 우연히 찾기 어렵지만, 운영진은 알고 있으면
+  // 키보드 없이도 종료할 수 있는 숨겨진 동작입니다.
+  int _exitTapCount = 0;
+  DateTime? _firstExitTapTime;
+
+  void _handleExitCornerTap() {
+    final now = DateTime.now();
+    if (_firstExitTapTime == null ||
+        now.difference(_firstExitTapTime!) > const Duration(seconds: 3)) {
+      _firstExitTapTime = now;
+      _exitTapCount = 1;
+    } else {
+      _exitTapCount++;
+    }
+    if (_exitTapCount >= 5) {
+      windowManager.close();
+    }
+  }
 
   AppStep _step = AppStep.home;
 
@@ -141,15 +192,18 @@ class _AppRootState extends State<AppRoot> {
 
   String? _mbtiResult; // 예: 'ISTJ'
 
-  // ---------------- 본판 / 축 ----------------
-  String? _boardShape; // '1x4' | '2x2'
+  // ---------------- 본판 / 판 색상 ----------------
+  String? _boardShape; // '1x4' 고정 (2x2 옵션은 팀 확정으로 제거됨)
   int _boardCount = 4;
-  String? _axis; // 'blue' | 'brown' | 'red' | 'black'
+  // [신규] STEP 04에서 고른 판(케이스) 색상 코드: 'g'|'y'|'b'|'r'
+  // 'r'은 화면에는 핑크로 보이지만 코드/백엔드 전송 값은 그대로 'r'/'red'.
+  String? _boardColorCode;
+
+  // [삭제] 축(스위치)은 제품에서 완전히 제외됨
 
   // ---------------- 품절 재고 ----------------
   Set<String> _soldOutBoards = {};
   Set<String> _soldOutKeycaps = {};
-  Set<String> _soldOutSwitches = {};
 
   bool _stockLoading = false;
   String? _stockError;
@@ -188,12 +242,24 @@ class _AppRootState extends State<AppRoot> {
   // 여기서 _axisLabels/_axisColors로 디자인 확인·영수증 화면에 표시했음)
 
   // 영수증에 표시할 키캡 색상 이름 (keycap_fill_screen.dart의 범례와 동일)
+  // [수정] 'r' 코드는 그대로 유지, 표시 이름만 빨강→핑크로 변경
   static const Map<String, String> _keycapColorLabels = {
     'g': '초록',
     'y': '노랑',
     'b': '파랑',
-    'r': '빨강',
+    'r': '핑크',
   };
+
+  // [신규] 판(케이스) 색상 코드 -> 백엔드에 보낼 영문 색상 이름.
+  // Mobius cnt_order 스펙: board는 "red"|"yellow"|"green"|"blue" 중 하나.
+  // 'r' 코드는 화면상 핑크로 보이지만 백엔드에는 그대로 'red'로 보냅니다.
+  static const Map<String, String> _boardColorWords = {
+    'g': 'green',
+    'y': 'yellow',
+    'b': 'blue',
+    'r': 'red',
+  };
+  String _boardColorWord(String code) => _boardColorWords[code] ?? 'green';
 
   // Mobius/창고/조립대 콜백이 아직 실제로 연결 안 된 동안의 임시 안전장치.
   // 이 시간 안에 'done'이 안 되면 자동으로 홈 화면으로 돌아감.
@@ -238,7 +304,14 @@ class _AppRootState extends State<AppRoot> {
   }
 
   //------------ 재고 조회 함수 -------------
-  Future<bool> _loadSoldOutStock() async {
+  // [수정] scope로 화면 맥락을 넘기면, 실제 요청은 항상 전체(board+keycap)를
+  // 받아오지만 콘솔 로그는 그 화면에서 의미 있는 부분만 찍습니다.
+  // (서버 /stock/out 자체가 board/keycap을 한 번에 같이 주는 단일
+  // 엔드포인트라 요청을 나눠 보낼 수는 없습니다 — Mobius cnt_stock 참고)
+  //   'board'  : 판 색상 선택 화면에서 호출 -> board만 로그
+  //   'keycap' : 키캡(MBTI 글자) 관련 화면에서 호출 -> keycap만 로그
+  //   'all'    : 어느 한쪽으로 좁힐 수 없는 경우(첫 진입, 최종 제출 전) -> 전체 로그
+  Future<bool> _loadSoldOutStock({String scope = 'all'}) async {
     if (_stockLoading) return false;
 
     // [임시] API 연동이 꺼져있으면 실제 서버를 호출하지 않고
@@ -247,7 +320,6 @@ class _AppRootState extends State<AppRoot> {
       setState(() {
         _soldOutBoards = {};
         _soldOutKeycaps = {};
-        _soldOutSwitches = {};
         _stockLoading = false;
         _stockError = null;
       });
@@ -260,21 +332,25 @@ class _AppRootState extends State<AppRoot> {
     });
 
     try {
-      print('>>> 재고 조회 시작'); // 테스트 시 터미널 확인용
+      print('>>> 재고 조회 시작($scope)'); // 테스트 시 터미널 확인용
       final stock = await _api.getSoldOutStock();
-      print('>>> 재고 조회 성공: $stock'); // 테스트 시 터미널 확인용
+
+      switch (scope) {
+        case 'board':
+          print('>>> 재고 조회 성공(board): ${stock['board']}');
+          break;
+        case 'keycap':
+          print('>>> 재고 조회 성공(keycap): ${stock['keycap']}');
+          break;
+        default:
+          print('>>> 재고 조회 성공: $stock');
+      }
 
       if (!mounted) return false;
 
       setState(() {
-        _soldOutBoards = Set<String>.from(stock['board'] ?? const <String>[]);
-
-        _soldOutKeycaps = Set<String>.from(stock['keycap'] ?? const <String>[]);
-
-        _soldOutSwitches = Set<String>.from(
-          stock['switch'] ?? const <String>[],
-        );
-
+        _soldOutBoards = Set<String>.from(stock['board'] ?? const <String>{});
+        _soldOutKeycaps = Set<String>.from(stock['keycap'] ?? const <String>{});
         _stockLoading = false;
       });
 
@@ -389,7 +465,7 @@ class _AppRootState extends State<AppRoot> {
   }
 
   Future<bool> _refreshKeycapStockForCursor() async {
-    final success = await _loadSoldOutStock();
+    final success = await _loadSoldOutStock(scope: 'keycap');
 
     if (!mounted || !success) {
       return false;
@@ -416,10 +492,7 @@ class _AppRootState extends State<AppRoot> {
     return true;
   }
 
-  // ------------- 축 품절 판단 함수 -----------
-  bool _isAxisSoldOut(String axis) {
-    return _soldOutSwitches.contains(axis);
-  }
+  // [삭제] 축(스위치) 품절 판단 함수 — 축 자체가 제품에서 제외됨
 
   // 색이 아직 없는 슬롯은 빈 칸(회색)으로 표시
   Color _colorAt(int index) {
@@ -452,26 +525,18 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.mbtiResult;
           break;
         case AppStep.axisSelect:
-          // 보드 선택 비활성화 시, axisSelect의 이전 화면은 mbtiResult
-          if (kBoardSelectEnabled) {
-            _boardShape = null;
-            _step = AppStep.boardSelect;
-          } else {
-            _step = AppStep.mbtiResult;
-          }
+          // [삭제] 축(스위치) 화면은 더 이상 진입하지 않는 죽은 코드지만,
+          // 혹시 모를 재진입에 대비해 판 색상 선택으로 되돌림
+          _boardColorCode = null;
+          _boardShape = null;
+          _step = AppStep.boardSelect;
           break;
         case AppStep.keycapFill:
-          _axis = null;
+          _boardColorCode = null;
+          _boardShape = null;
           _resetLetters();
-          if (kAxisSelectEnabled) {
-            _step = AppStep.axisSelect;
-          } else if (kBoardSelectEnabled) {
-            _boardShape = null;
-            _step = AppStep.boardSelect;
-          } else {
-            // [임시] 축 선택 화면이 꺼져있으므로 바로 mbtiResult로 되돌아감
-            _step = AppStep.mbtiResult;
-          }
+          // [수정] 축 선택 화면은 더 이상 쓰지 않으므로 항상 판 색상 선택으로 되돌아감
+          _step = AppStep.boardSelect;
           break;
         default:
           break;
@@ -528,8 +593,25 @@ class _AppRootState extends State<AppRoot> {
     PhysicalKeyboardKey.digit4: 4,
   };
 
+  // [신규] 같은 물리 키를 아주 짧은 간격으로 다시 누르면(=OS의 키 반복/오토리핏,
+  // 또는 실수로 두 번 눌림) 무시합니다. 키오스크는 원래 키보드가 없어서 실제
+  // 운영 중엔 거의 영향 없지만, 개발 중 키보드로 테스트할 때 키를 살짝 오래
+  // 누르고 있으면 재고 조회가 짧은 시간에 여러 번 나가는 문제를 막아줍니다.
+  static const Duration _keyDebounce = Duration(milliseconds: 150);
+  PhysicalKeyboardKey? _lastKey;
+  DateTime? _lastKeyTime;
+
   void _handleKey(KeyEvent event) async {
     if (event is! KeyDownEvent) return;
+
+    final now = DateTime.now();
+    if (event.physicalKey == _lastKey &&
+        _lastKeyTime != null &&
+        now.difference(_lastKeyTime!) < _keyDebounce) {
+      return; // 같은 키의 짧은 간격 반복 입력은 무시
+    }
+    _lastKey = event.physicalKey;
+    _lastKeyTime = now;
 
     const backableSteps = {
       AppStep.mbtiChoice,
@@ -587,27 +669,14 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.boardSelect:
-        if (event.physicalKey == PhysicalKeyboardKey.digit1) {
-          _boardShape = '1x4';
-          _boardCount = 4;
-          if (kAxisSelectEnabled) {
-            setState(() => _step = AppStep.axisSelect);
-          } else {
-            await _goToKeycapFillWithAxis(kFixedAxis);
-          }
-        } else if (event.physicalKey == PhysicalKeyboardKey.digit2) {
-          _boardShape = '2x2';
-          _boardCount = 4;
-          if (kAxisSelectEnabled) {
-            setState(() => _step = AppStep.axisSelect);
-          } else {
-            await _goToKeycapFillWithAxis(kFixedAxis);
-          }
+        final boardDigit = _digitMap[event.physicalKey];
+        if (boardDigit != null) {
+          await _selectBoardColor(boardDigit);
         }
         break;
 
       case AppStep.axisSelect:
-        await _handleAxisKey(event);
+        // [삭제] 축(스위치)은 제품에서 제외되어 이 화면에는 더 이상 진입하지 않습니다.
         break;
 
       case AppStep.keycapFill:
@@ -632,20 +701,9 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
-  // (터치/키보드 공용) MBTI 결과 화면에서 다음으로 진행
+  // (터치/키보드 공용) MBTI 결과 화면에서 다음으로 진행 -> 판 색상 선택(STEP 04)
   Future<void> _proceedFromMbtiResult() async {
-    if (kBoardSelectEnabled) {
-      setState(() => _step = AppStep.boardSelect);
-    } else {
-      _boardShape = '1x4';
-      _boardCount = 4;
-      if (kAxisSelectEnabled) {
-        setState(() => _step = AppStep.axisSelect);
-      } else {
-        // [임시] 축 선택 화면을 건너뛰고 고정 축(흑축)으로 바로 진행
-        await _goToKeycapFillWithAxis(kFixedAxis);
-      }
-    }
+    setState(() => _step = AppStep.boardSelect);
   }
 
   // (터치/키보드 공용) MBTI 아는지 선택: 1=몰라요(퀴즈), 2=알아요(직접입력)
@@ -664,34 +722,27 @@ class _AppRootState extends State<AppRoot> {
   }
 
   // (터치/키보드 공용) 퀴즈 보기 선택
+  // [버그 수정] 예전에는 재고를 새로고침하기도 전에 메모리에 남아있는
+  // (오래됐을 수 있는) 재고로 먼저 품절 여부를 검사해서, 캐시가 낡은 경우
+  // 실제로는 품절이 아닌데도 계속 막히는 문제가 있었습니다. 이제 항상
+  // 최신 재고를 먼저 조회한 뒤에 품절 여부를 검사합니다.
   Future<void> _selectQuizOption(int digit) async {
     final options = _mbtiQuestions[_quizIndex]['options'] as List;
     final letter = options[digit - 1]['letter'] as String;
+
+    final success = await _loadSoldOutStock(scope: 'keycap');
+
+    if (!mounted || !success) return;
 
     // 선택한 E/I/N/S/F/T/J/P의 모든 색상이 품절이면 입력 무시
     if (_isLetterSoldOut(letter)) return;
 
     if (_quizIndex < _mbtiQuestions.length - 1) {
-      // 다음 질문으로 넘어가기 전 재고 재조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      // 조회 중 재고가 바뀌었을 수 있으므로 다시 검사
-      if (_isLetterSoldOut(letter)) return;
-
       setState(() {
         _quizAnswers[_quizIndex] = letter;
         _quizIndex++;
       });
     } else {
-      // 결과 화면으로 넘어가기 전 재고 재조회
-      final success = await _loadSoldOutStock();
-
-      if (!mounted || !success) return;
-
-      if (_isLetterSoldOut(letter)) return;
-
       setState(() {
         _quizAnswers[_quizIndex] = letter;
         _mbtiResult = _quizAnswers.map((e) => e!).join();
@@ -714,7 +765,7 @@ class _AppRootState extends State<AppRoot> {
     if (letter != pair[0] && letter != pair[1]) return;
 
     // 화면 전환 직전에 최신 재고 확인
-    final success = await _loadSoldOutStock();
+    final success = await _loadSoldOutStock(scope: 'keycap');
 
     if (!mounted || !success) return;
 
@@ -733,33 +784,30 @@ class _AppRootState extends State<AppRoot> {
     });
   }
 
-  Future<void> _handleAxisKey(KeyEvent event) async {
-    final digit = _digitMap[event.physicalKey];
-    if (digit == null) return;
-    await _selectAxis(digit);
-  }
-
-  // (터치/키보드 공용) 축 선택 (kAxisSelectEnabled=true일 때만 화면에 노출됨)
-  Future<void> _selectAxis(int digit) async {
-    const axes = ['blue', 'brown', 'red', 'black'];
-    final selectedAxis = axes[digit - 1];
+  // (터치/키보드 공용) 판(케이스) 색상 선택. digit 1~4 = g/y/b/r
+  // (keycap_fill_screen.dart의 색상 범례·숫자 배정과 동일한 순서)
+  Future<void> _selectBoardColor(int digit) async {
+    if (digit < 1 || digit > _pastelColorCycle.length) return;
+    final selectedColor = _pastelColorCycle[digit - 1];
 
     // 화면 이동 직전에 최신 재고 조회
-    final success = await _loadSoldOutStock();
+    final success = await _loadSoldOutStock(scope: 'board');
 
     if (!mounted || !success) return;
 
-    // 최신 재고에서 품절된 축이면 입력 무시
-    if (_isAxisSoldOut(selectedAxis)) return;
+    // 최신 재고에서 품절된 판 색상이면 입력 무시
+    if (_soldOutBoards.contains(selectedColor)) return;
 
-    await _goToKeycapFillWithAxis(selectedAxis);
+    await _goToKeycapFillWithBoardColor(selectedColor);
   }
 
-  // 축을 정하고(사용자가 고르거나, kAxisSelectEnabled=false일 때 고정값으로)
-  // 키캡 채우기 화면으로 넘어가는 공통 로직.
-  Future<void> _goToKeycapFillWithAxis(String axis) async {
+  // 판 색상을 정하고 키캡 채우기 화면으로 넘어가는 공통 로직.
+  // 판 크기는 1×4로 고정됩니다(2×2 옵션은 팀 확정으로 제거됨).
+  Future<void> _goToKeycapFillWithBoardColor(String colorCode) async {
     setState(() {
-      _axis = axis;
+      _boardColorCode = colorCode;
+      _boardShape = '1x4';
+      _boardCount = 4;
       _letters = (_mbtiResult ?? '----').split('');
       _colorCodes = List<String?>.filled(_boardCount, null);
       _cursor = 0;
@@ -837,7 +885,7 @@ class _AppRootState extends State<AppRoot> {
     final selectedColor = _pastelColorCycle[digit - 1];
 
     // 선택 직전 최신 재고 조회
-    final success = await _loadSoldOutStock();
+    final success = await _loadSoldOutStock(scope: 'keycap');
 
     if (!mounted || !success) return;
 
@@ -918,7 +966,7 @@ class _AppRootState extends State<AppRoot> {
     }
 
     // 네 칸을 모두 선택했더라도 주문 직전 최신 재고 재조회
-    final success = await _loadSoldOutStock();
+    final success = await _loadSoldOutStock(scope: 'keycap');
 
     if (!mounted || !success) return;
 
@@ -967,7 +1015,7 @@ class _AppRootState extends State<AppRoot> {
       _direction = -1;
       _step = AppStep.mbtiChoice;
       _boardShape = null;
-      _axis = null;
+      _boardColorCode = null;
       _mbtiResult = null;
       _keycapMessage = null;
       _resetQuiz();
@@ -1055,10 +1103,9 @@ class _AppRootState extends State<AppRoot> {
         final colors = List.generate(_boardCount, _colorCode);
 
         final result = await _api.createOrder(
-          board: _boardCount,
+          board: _boardColorWord(_boardColorCode ?? 'g'),
           keycap: _letters.join(),
           colors: colors,
-          axis: _axis,
           idempotencyKey: attemptId,
         );
 
@@ -1133,7 +1180,16 @@ class _AppRootState extends State<AppRoot> {
         if (!mounted) return;
 
         final message = e.toString();
+        // [수정] 예전에는 서버가 실제로 뭐라고 응답했는지 콘솔에 안 남아서
+        // 원인 파악이 어려웠습니다. 항상 원문을 출력합니다.
+        print('>>> [주문] 서버 응답 오류: $message');
+
         final isQueueFull = message.contains('대기열이 가득');
+        // [신규] 재고/품절 관련 오류인지 판별 — 우리 쪽 사전 점검(재고 조회)
+        // 시점과 실제 주문 생성 시점 사이에 재고가 바뀌었을 때 서버가
+        // 뒤늦게 거절하는 경우입니다. 창고/디바이스 쪽에서 재고를 만지고
+        // 있는 도중이라면 바로 이 케이스일 가능성이 높습니다.
+        final isStockIssue = message.contains('재고') || message.contains('품절');
 
         // 이 시도는 결과가 확정되며 끝났으므로 idempotency 키를 버립니다.
         _orderAttemptId = null;
@@ -1146,6 +1202,18 @@ class _AppRootState extends State<AppRoot> {
             _step = AppStep.receipt;
           });
           _scheduleDoneRestart();
+        } else if (isStockIssue) {
+          // 재고 문제로 서버가 거절한 경우: 최신 재고를 다시 반영해서
+          // 품절된 칸은 비워주고, 그 칸으로 커서를 옮겨 다시 고르게 함
+          final refreshed = await _loadSoldOutStock(scope: 'keycap');
+          if (!mounted) return;
+          setState(() {
+            final invalidIndex = refreshed ? _removeInvalidColorSelections() : null;
+            _cursor = invalidIndex ?? 0;
+            _submittingOrder = false;
+            _step = AppStep.keycapFill;
+            _keycapMessage = '선택하신 부품이 방금 품절되었습니다. 다른 색을 선택해 주세요.';
+          });
         } else {
           // 그 외의 오류는 키캡 화면으로 돌려보내고 안내 문구로 표시합니다.
           setState(() {
@@ -1176,9 +1244,9 @@ class _AppRootState extends State<AppRoot> {
     // 백엔드 없이 확인할 수 있게 합니다.
     final mockSteps = <Map<String, dynamic>>[
       {'status': 'waiting', 'position_in_queue': 1},
-      {'status': 'assigned', 'station_id': 1},
-      {'status': 'in_progress', 'station_id': 1},
-      {'status': 'done', 'station_id': 1},
+      {'status': 'assigned', 'station_id': '1'},
+      {'status': 'in_progress', 'station_id': '1'},
+      {'status': 'done', 'station_id': '1'},
     ];
     for (var i = 0; i < mockSteps.length; i++) {
       Future.delayed(Duration(seconds: 2 * (i + 1)), () {
@@ -1296,7 +1364,7 @@ class _AppRootState extends State<AppRoot> {
       _direction = -1;
       _step = AppStep.home;
       _boardShape = null;
-      _axis = null;
+      _boardColorCode = null;
       _mbtiResult = null;
       _keycapMessage = null;
       _resetQuiz();
@@ -1370,19 +1438,22 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.boardSelect:
-        screen = const BoardSelectScreen();
+        screen = BoardSelectScreen(
+          soldOutColors: _soldOutBoards,
+          onSelect: (digit) => _selectBoardColor(digit),
+        );
         break;
 
       case AppStep.axisSelect:
-        screen = AxisSelectScreen(
-          soldOutAxes: _soldOutSwitches,
-          onSelect: (digit) => _selectAxis(digit),
-        );
+        // [삭제] 축(스위치)은 제품에서 제외되어 이 단계에는 더 이상 진입하지 않습니다.
+        // (코드/파일은 보존하되 라우팅만 막아둠)
+        screen = const SizedBox.shrink();
         break;
 
       case AppStep.keycapFill:
         screen = KeycapFillScreen(
           boardShape: _boardShape ?? '1x4',
+          boardColor: BoardColors.of(_boardColorCode ?? 'g'),
           letters: _letters,
           cursor: _cursor,
           colorAt: _colorAt,
@@ -1418,6 +1489,7 @@ class _AppRootState extends State<AppRoot> {
       case AppStep.designConfirm:
         screen = DesignConfirmScreen(
           boardShape: _boardShape ?? '1x4',
+          boardColor: BoardColors.of(_boardColorCode ?? 'g'),
           letters: _letters,
           colorAt: _colorAt,
           isSubmitting: _submittingOrder,
@@ -1505,6 +1577,26 @@ class _AppRootState extends State<AppRoot> {
                   left: 16,
                   child: SafeArea(child: _BackButton(onTap: _goBack)),
                 ),
+              // [키오스크 종료용] 화면에 아무것도 안 보이는 투명한 영역.
+              // 이 구석을 3초 안에 5번 연속 터치하면 앱이 종료됩니다.
+              // 운영진 전용 숨겨진 동작이며, 관람객에게는 노출되지 않습니다.
+              // [버그 수정] 원래 top-left(0,0)~(60,60)에 있었는데, 바로 그
+              // 자리에 "이전(ESC)" 버튼(top:16,left:16)이 겹쳐 있었습니다.
+              // Stack에서 이 위젯이 버튼보다 나중에 그려져서(=위에 깔려서)
+              // 버튼의 왼쪽 절반(아이콘 쪽)을 탭하면 이 투명 레이어가 먼저
+              // 탭을 가로채 버튼이 눌리지 않는 문제가 있었습니다. 아무것도
+              // 없는 우측 하단 구석으로 옮겨서 겹침을 없앴습니다.
+              Positioned(
+                bottom: 0,
+                right: 0,
+                width: 60,
+                height: 60,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _handleExitCornerTap,
+                  child: const SizedBox.expand(),
+                ),
+              ),
             ],
           ),
         ),

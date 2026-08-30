@@ -12,7 +12,8 @@ import '../theme/app_theme.dart';
 /// (실제 Enter/Esc 키 처리는 main.dart의 KeyboardListener에서 담당합니다.
 ///  이 위젯은 화면 표시만 담당합니다.)
 class DesignConfirmScreen extends StatefulWidget {
-  final String boardShape; // '1x4' | '2x2'
+  final String boardShape; // '1x4' 고정 (2x2 옵션은 팀 확정으로 제거됨. 하위 호환용으로 유지)
+  final Color boardColor; // [신규] STEP 04에서 고른 판(케이스) 색상
   final List<String> letters;
   final Color Function(int index) colorAt;
   final bool isSubmitting; // true면 주문 전송 중 — Enter/ESC 힌트를 비활성 표시로 바꿈
@@ -22,6 +23,7 @@ class DesignConfirmScreen extends StatefulWidget {
   const DesignConfirmScreen({
     super.key,
     required this.boardShape,
+    required this.boardColor,
     required this.letters,
     required this.colorAt,
     this.isSubmitting = false,
@@ -108,7 +110,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
       children: [
         _Fade(
           opacity: _labelOpacity,
-          child: const Text('STEP 05 / 06', style: AppTextStyles.label),
+          child: const Text('STEP 06 / 06', style: AppTextStyles.label),
         ),
         const SizedBox(height: 8),
         _FadeSlideY(
@@ -136,17 +138,19 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
               Positioned(
                 left: -8,
                 top: -8,
+                // [수정] 그림자 자리는 잉크색으로, 판 색상은 실제 표면에서 또렷하게
                 child: Container(
                   width: plateWidth,
                   height: rows == 2 ? plateWidth : 150,
-                  color: AppColors.yellow,
+                  color: AppColors.ink,
                 ),
               ),
               Container(
                 width: plateWidth,
                 padding: const EdgeInsets.all(24),
+                // [수정] 판 표면을 흰색 고정이 아니라 선택한 판 색상으로 표시
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: widget.boardColor,
                   border: Border.all(color: AppColors.ink, width: 2),
                 ),
                 child: Column(
