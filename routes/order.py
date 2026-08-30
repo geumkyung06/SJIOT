@@ -11,9 +11,8 @@ from zoneinfo import ZoneInfo
 from services.extensions import r
 from services.mobius import (send_order_cin, 
                              send_table_cin,
-                             handle_stock_notification
-                             #mark_station_in_progress, 
-                             # mark_station_empty
+                             handle_stock_notification,
+                             send_agv_command_cin,
                             )
 
 import logging
@@ -24,6 +23,7 @@ bp = Blueprint('order', __name__)
 QUEUE_KEY = os.getenv("QUEUE_KEY", "order:queue")
 WAREHOUSE_KEY = os.getenv("WAREHOUSE_KEY", "warehouse:status")
 STATION_KEY = os.getenv("STATION_KEY", "station:status")
+AGV_KEY = os.getenv("AGV_KEY", "agv:status")
 # 창고/조립대가 "지금 어떤 주문을 처리 중인지" 역참조하기 위한 키
 # (완료 콜백이 station_id/warehouse만 알려줄 때 order_id를 찾기 위해 필요)
 WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")
@@ -31,6 +31,7 @@ STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order:
 MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 처리 못 함)
 
 STATION_STARTED_PREFIX = os.getenv("STATION_STARTED_PREFIX", "station:started_at:")
+STATION_ARRIVED_PREFIX = os.getenv("STATION_ARRIVED_PREFIX", "station:arrived_at:")
 STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
 
 ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
@@ -50,13 +51,14 @@ COLOR_LIST = [c.strip() for c in os.getenv("COLOR_LIST", "r,y,g,b").split(",")]
 BOARD_LIST = [b.strip() for b in os.getenv("BOARD_LIST", "red,yellow,green,blue").split(",")]
 
 DETAIL_TO_STATUS = {
-    "assigned":     "occupied",   # 부품 아직 없음 → 오지 마
-    "dispensed":    "waiting",    # ← 여기서만 출동
+    "assigned":     "occupied",
+    "agv_assigned":  "occupied",
+    "dispensed":    "waiting",
     "agv_arrived":  "occupied",
     "agv_verified": "occupied",
-    "in_progress":  "occupied",
     "timeout":      "cancelled",
     "cancelled":    "cancelled",
+    "empty":         "empty"
 }
 
 KST = ZoneInfo("Asia/Seoul")
@@ -78,7 +80,9 @@ def _ensure_initial_state():
         r.set(WAREHOUSE_KEY, "idle")
     if not r.exists(STATION_KEY):
         r.hset(STATION_KEY, mapping={"1": "idle", "2": "idle", "3": "idle"})
-    _touch(WAREHOUSE_KEY, STATION_KEY)
+    if not r.exists(AGV_KEY):
+        r.set(AGV_KEY, "idle")
+    _touch(WAREHOUSE_KEY, STATION_KEY, AGV_KEY)
 
 def _get_free_station():
     station_status = r.hgetall(STATION_KEY)
@@ -155,7 +159,7 @@ def _try_assign_next():
 
 def check_station_timeouts():
     """in_progress 상태로 STATION_TIMEOUT_SEC 넘은 조립대를 자동 완료 처리."""
-    now = datetime.now()
+    now = datetime.now(KST)
     started_keys = r.keys(f"{STATION_STARTED_PREFIX}*")
 
     for key in started_keys:
@@ -187,25 +191,26 @@ def _complete_station(station_id):
     return order_id
 
 def _build_station_snapshot():
-    station_status = r.hgetall(STATION_KEY)
-    tables = {}
+    stations = {}
+    now = datetime.now(KST).isoformat()
 
     for sid in ("1", "2", "3"):
-        redis_status = station_status.get(sid, "idle")
         order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
+        od = r.hgetall(f"order:{order_id}") if order_id else None
 
-        if order_id and not r.exists(f"order:{order_id}"):
-            order_id = None
-
-        if not order_id or redis_status == "idle":
-            tables[sid] = {"status": "empty", "order_id": None}
+        if not od:
+            stations[sid] = {"status": "empty", "detail": "empty",
+                             "order_id": None, "order_seq": None, "updated_at": now}
             continue
-
-        internal = r.hget(f"order:{order_id}", "status")  # assigned / in_progress
-        table_status = "in_progress" if internal == "in_progress" else "waiting"
-        tables[sid] = {"status": table_status, "order_id": order_id}
-
-    return tables
+        
+        detail = od.get("status")
+        status = DETAIL_TO_STATUS.get(detail)
+        if status is None:
+            logger.warning(f"[table] 매핑 없는 status={detail} (station={sid})")
+            status = "occupied"
+        stations[sid] = {"status": status, "detail": detail, "order_id": order_id,
+                         "order_seq": od.get("order_seq"), "updated_at": now}
+    return stations
 
 def _push_table_snapshot():
     """redis 기준 스냅샷을 cnt_table로 전송. 실패해도 로직은 계속."""
@@ -271,15 +276,20 @@ def station_start(order_id):
     assigned_station_id = str(assigned_station_id)
     if req_station_id != assigned_station_id:
         return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': (assigned_station_id)}), 403
-    if order_data.get("status") == "in_progress":
-        return jsonify({'error': '이미 조립이 진행 중입니다'}), 409
+    if r.get(f"{STATION_ORDER_PREFIX}{req_station_id}") != order_id:
+        return jsonify({'error': '이미 종료되었거나 이 조립대의 현재 주문이 아닙니다'}), 409
+    if order_data.get("status") in ("agv_verified", "done", "timeout", "cancelled"):
+        return jsonify({'error': '이미 처리된 주문입니다'}), 409
+
+    send_agv_command_cin(order_id, req_station_id, "verified")
 
     r.hset(STATION_KEY, assigned_station_id, "busy")
-    r.hset(f"order:{order_id}", "status", "in_progress")
-    r.set(f"{STATION_STARTED_PREFIX}{assigned_station_id}", datetime.now().isoformat())
+    r.hset(f"order:{order_id}", "status", "agv_verified")
+    r.set(f"{STATION_STARTED_PREFIX}{assigned_station_id}", datetime.now(KST).isoformat())
     _touch(STATION_KEY, f"order:{order_id}", f"{STATION_STARTED_PREFIX}{assigned_station_id}")
 
-    _push_table_snapshot()
+    if _try_assign_next() is None:
+        _push_table_snapshot()
 
     return jsonify({
         'ok': True,
@@ -354,18 +364,90 @@ def station_complete(station_id):
             'current_order_id': order_id
         }), 409
 
-    r.hset(STATION_KEY, station_id, "idle")
     r.delete(order_key)
     r.delete(f"{STATION_STARTED_PREFIX}{station_id}")
-    _touch(STATION_KEY)
-
+    r.hset(STATION_KEY, station_id, "idle")
     r.hset(f"order:{order_id}", "status", "done")
-    _touch(f"order:{order_id}")
-  
+    _touch(STATION_KEY, f"order:{order_id}")
+
     if _try_assign_next() is None:
         _push_table_snapshot()
 
     return jsonify({'ok': True, 'order_id': order_id}), 200
+
+@bp.route('/station/<station_id>/cancel', methods=['POST'])
+def station_cancel(station_id):
+    """
+    조립대 취소
+    ---
+    tags:
+      - Station
+    parameters:
+      - in: path
+        name: station_id
+        type: string
+        required: true
+        example: 1
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            order_id:
+              type: string
+              description: 디스플레이가 들고 있던 주문 ID (서버 기록과 교차검증용)
+              example: "ord_a1b2c3d4"           
+    responses:
+      200:
+        description: 시작 처리 성공
+      400:
+        description: 아직 조립대에 배정되지 않은 주문
+      403:
+        description: station_id 불일치 (다른 조립대에서 스캔함)
+      404:
+        description: 존재하지 않거나 만료된 주문
+      409:
+        description: 이미 진행 중
+    """
+    data = request.get_json(silent=True) or {}
+    order_id = data.get("order_id")
+
+    order_data = r.hgetall(f"order:{order_id}")
+    if not order_data:
+        return jsonify({'error': '존재하지 않거나 만료된 주문입니다'}), 404
+
+    assigned_station_id = order_data.get("station_id")
+    if not assigned_station_id:
+        return jsonify({'error': '아직 조립대에 배정되지 않은 주문입니다'}), 400
+    assigned_station_id = str(assigned_station_id)
+    if station_id != assigned_station_id:
+        return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': (assigned_station_id)}), 403
+    if r.get(f"{STATION_ORDER_PREFIX}{station_id}") != order_id:
+        return jsonify({'error': '이미 종료되었거나 이 조립대의 현재 주문이 아닙니다'}), 409
+    
+    prev_status = order_data.get("status")
+
+    r.hset(f"order:{order_id}", "status", "timeout")
+    _push_table_snapshot()
+
+    if prev_status != "agv_verified":
+        send_agv_command_cin(order_id, station_id, "timeout")
+
+    # 조립대 정리
+    r.hset(STATION_KEY, station_id, "idle")
+    r.set(AGV_KEY, "idle") # 부품 폐기 후 로직 추가하면 수정해야함. cancel에선 agv 제외 필요
+    r.delete(f"{STATION_ORDER_PREFIX}{station_id}")
+    r.delete(f"{STATION_STARTED_PREFIX}{station_id}")
+    r.delete(f"{STATION_ARRIVED_PREFIX}{station_id}")
+    _touch(STATION_KEY, AGV_KEY, f"order:{order_id}")
+
+    if _try_assign_next() is None:
+        _push_table_snapshot()
+
+    return jsonify({
+        'ok': True
+    }), 200
 
 
 @bp.route('/station/free', methods=['GET'])
@@ -441,9 +523,11 @@ def debug_reset():
     r.set(WAREHOUSE_KEY, "idle")
     r.delete(WAREHOUSE_ORDER_KEY)
     r.hset(STATION_KEY, mapping={"1": "idle", "2": "idle", "3": "idle"})
+    r.set(AGV_KEY, "idle")
     for sid in ("1", "2", "3"):
         r.delete(f"{STATION_ORDER_PREFIX}{sid}")
         r.delete(f"{STATION_STARTED_PREFIX}{sid}")
+        r.delete(f"{STATION_ARRIVED_PREFIX}{sid}")
     r.delete(QUEUE_KEY)
 
     return jsonify({'ok': True}), 200
@@ -528,7 +612,7 @@ def post_order_list():
             "colors": ",".join(colors),
             "status": "waiting",
             "order_seq": order_seq,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now(KST).isoformat()
         })
         r.expire(f"order:{order_id}", 3600)  # TTL 1시간
         _touch(QUEUE_KEY)
@@ -590,7 +674,7 @@ def get_order_status(order_id):
               example: ord_a1b2c3d4
             status:
               type: string
-              enum: [waiting, assigned, in_progress, done]
+              enum: [waiting, assigned, dispensed, agv_assigned, agv_arrived, agv_verified, timeout, cancelled, done]
               example: assigned
             station_id:
               type: string
@@ -724,35 +808,59 @@ def mobius_callback(source):
             _push_table_snapshot()
             _try_assign_next()
 
-        elif source == "agv":
-            # cnt_arrived_table: {"order_id": "...", "station_id": "2", "status": "ARRIVED"}
+        elif source == "agv": # agv_arrived 변경 필요
             if con is None:
                 return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
+            if str(con.get("status", "")).lower() != "arrived":
+                return jsonify({'ok': True}), 200
 
             station_id = str(con.get("station_id"))
             if station_id not in ("1", "2", "3"):
                 return jsonify({'error': '잘못된 station_id'}), 400
 
-            order_key = f"{STATION_ORDER_PREFIX}{station_id}"
-            current_order_id = r.get(order_key)
+            current_order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
+            recv_order_id = con.get("order_id")
+            if not current_order_id:
+                logger.warning(f"[callback:agv_arrived] 배정 없는 조립대 알림 무시 (station={station_id})")
+                return jsonify({'ok': True}), 200
+            if recv_order_id and recv_order_id != current_order_id:
+                logger.warning(f"[callback:agv_arrived] 불일치 recv={recv_order_id} cur={current_order_id}")
+                return jsonify({'ok': True}), 200
+            if r.hget(f"order:{current_order_id}", "status") == "agv_arrived":
+                return jsonify({'ok': True}), 200 # 재전송 방지
 
-            r.hset(STATION_KEY, station_id, "idle")
-            r.delete(order_key)
-            _touch(STATION_KEY)
+            r.hset(f"order:{current_order_id}", "status", "agv_arrived")
+            r.set(f"{STATION_ARRIVED_PREFIX}{station_id}", datetime.now(KST).isoformat())  # 노쇼 타이머 시작
+            _touch(f"order:{current_order_id}", f"{STATION_ARRIVED_PREFIX}{station_id}")
+            _push_table_snapshot()
 
-            if current_order_id:
-                r.hset(f"order:{current_order_id}", "status", "done")
-                _touch(f"order:{current_order_id}")
+        elif source == "agv_assigned": # agv 할당됨 - cnt_load
+            if con is None:
+                return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
+            
+            station_id = str(con.get("station_id"))
+            order_id = con.get("order_id") or r.get(f"{STATION_ORDER_PREFIX}{station_id}")
+            if not order_id:
+                return jsonify({'ok': True}), 200
+            if r.hget(f"order:{order_id}", "status") in ("agv_assigned", "agv_arrived", "agv_verified"):
+                return jsonify({'ok': True}), 200
+            
+            r.set(AGV_KEY, "busy")
+            r.hset(f"order:{order_id}", "status", "agv_assigned")
+            _touch(AGV_KEY, f"order:{order_id}")
+            _push_table_snapshot()
 
-            assigned_order_id = _try_assign_next()  # 조립대가 풀렸으니 다음 대기 주문 배정 시도
-            logger.debug(f"배정된 order_id: {assigned_order_id}")
+        elif source == "agv_shipping": # agv 부품 하차 완료 - 새로 연결 필요
+            if con is None:
+                return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
+            r.set(AGV_KEY, "idle")
+            _touch(AGV_KEY)
 
         elif source == "stock":
             # cnt_stock: {"board": {...}, "keycap": {...}} | switch 제외
             if con is None:
                 return jsonify({'error': 'notification에서 con을 읽지 못했습니다'}), 400
             handle_stock_notification(con)
-
         else:
             return jsonify({'error': 'source는 warehouse, agv, stock 중 하나여야 합니다'}), 404
 

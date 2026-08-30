@@ -105,22 +105,15 @@ def get_out_of_stock():
     return out
 
 # table
-def _update_station(station_id, status, order_id=None):
-    con = get_latest_con("cnt_table") or {"tables": {}}
-    con["tables"][str(station_id)] = {"status": status, "order_id": order_id}
-    return create_cin("cnt_table", con)
-
-def mark_station_in_progress(station_id, order_id):
-    return _update_station(station_id, "in_progress", order_id)
-
-def mark_station_empty(station_id):
-    return _update_station(station_id, "empty", None)
-
-# queue
 def send_table_cin(tables):
-    """
-    tables: {"1": {"status": "empty"|"in_progress"|"done", "order_id": str|None}, ...}
-    조립대 3개 전체 상태를 cnt_table 통짜로 업데이트 (AGV가 구독).
-    """
     con = {"tables": tables}
     return create_cin("cnt_table", con)
+
+# command
+def send_agv_command_cin(order_id, station_id, status):
+    con = {
+        "order_id": order_id,
+        "station_id": station_id,
+        "status": status
+    }
+    return create_cin("cnt_agv_command", con)
