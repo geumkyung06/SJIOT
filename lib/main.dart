@@ -29,6 +29,10 @@ import 'screens/receipt_screen.dart';
 // 전체화면 환경에서 테스트할 수 있도록 항상 true로 둡니다.
 const bool kKioskWindowMode = true;
 
+// [운영진 전용] 종료 확인창에서 입력해야 하는 비밀번호.
+// ⚠️ 실제 배포 전에 원하는 번호로 반드시 바꾸세요.
+const String kExitPin = '2026';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
@@ -112,10 +116,19 @@ class _AppRootState extends State<AppRoot> {
   final ApiService _api = ApiService();
 
   // [키오스크 종료용] 좌측 상단 구석을 짧은 시간 안에 5번 연속 터치하면
-  // 앱이 종료됩니다. 관람객은 우연히 찾기 어렵지만, 운영진은 알고 있으면
-  // 키보드 없이도 종료할 수 있는 숨겨진 동작입니다.
+  // 종료 확인창(비밀번호 입력)이 뜹니다. 관람객은 우연히 찾기 어렵지만,
+  // 운영진은 알고 있으면 키보드 없이도 종료할 수 있는 숨겨진 동작입니다.
   int _exitTapCount = 0;
   DateTime? _firstExitTapTime;
+
+  // [수정] 예전에는 5번 터치하면 확인 없이 바로 종료됐는데, 관람객이
+  // 우연히 여러 번 두드려서 전시 중에 앱이 갑자기 꺼지는 사고를 막기 위해
+  // "종료하시겠습니까?" 확인 + 비밀번호 입력 단계를 추가했습니다.
+  bool _showExitDialog = false;
+  String _exitPinInput = '';
+  String? _exitPinError;
+  Timer? _exitDialogTimeoutTimer;
+  static const Duration _exitDialogTimeout = Duration(seconds: 25);
 
   void _handleExitCornerTap() {
     final now = DateTime.now();
@@ -127,8 +140,67 @@ class _AppRootState extends State<AppRoot> {
       _exitTapCount++;
     }
     if (_exitTapCount >= 5) {
-      windowManager.close();
+      _exitTapCount = 0;
+      _firstExitTapTime = null;
+      _openExitDialog();
     }
+  }
+
+  void _openExitDialog() {
+    _exitDialogTimeoutTimer?.cancel();
+    setState(() {
+      _showExitDialog = true;
+      _exitPinInput = '';
+      _exitPinError = null;
+    });
+    // 안전장치: 아무도 "아니오"를 안 눌러도 일정 시간 뒤 자동으로 닫힘
+    _exitDialogTimeoutTimer = Timer(_exitDialogTimeout, () {
+      if (mounted) _closeExitDialog();
+    });
+  }
+
+  void _closeExitDialog() {
+    _exitDialogTimeoutTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _showExitDialog = false;
+      _exitPinInput = '';
+      _exitPinError = null;
+    });
+  }
+
+  // 키패드 입력 처리. '*' = 지우기, '#' = 확인, 그 외(0~9) = 숫자 입력.
+  void _onExitKeypadTap(String key) {
+    _exitDialogTimeoutTimer?.cancel();
+    _exitDialogTimeoutTimer = Timer(_exitDialogTimeout, () {
+      if (mounted) _closeExitDialog();
+    });
+
+    if (key == '*') {
+      setState(() {
+        _exitPinInput = '';
+        _exitPinError = null;
+      });
+      return;
+    }
+
+    if (key == '#') {
+      if (_exitPinInput == kExitPin) {
+        windowManager.close();
+      } else {
+        setState(() {
+          _exitPinInput = '';
+          _exitPinError = '비밀번호가 틀렸습니다';
+        });
+      }
+      return;
+    }
+
+    // 숫자 키
+    setState(() {
+      _exitPinError = null;
+      _exitPinInput += key;
+    });
   }
 
   AppStep _step = AppStep.home;
@@ -603,6 +675,10 @@ class _AppRootState extends State<AppRoot> {
 
   void _handleKey(KeyEvent event) async {
     if (event is! KeyDownEvent) return;
+
+    // 종료 확인창이 떠 있는 동안엔 아래쪽 화면(키오스크 진행 화면)으로
+    // 키 입력이 새어나가지 않게 막습니다. (개발 중 키보드 테스트 안전장치)
+    if (_showExitDialog) return;
 
     final now = DateTime.now();
     if (event.physicalKey == _lastKey &&
@@ -1384,6 +1460,7 @@ class _AppRootState extends State<AppRoot> {
   void dispose() {
     _autoRestartTimer?.cancel();
     _doneRestartTimer?.cancel();
+    _exitDialogTimeoutTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -1578,8 +1655,9 @@ class _AppRootState extends State<AppRoot> {
                   child: SafeArea(child: _BackButton(onTap: _goBack)),
                 ),
               // [키오스크 종료용] 화면에 아무것도 안 보이는 투명한 영역.
-              // 이 구석을 3초 안에 5번 연속 터치하면 앱이 종료됩니다.
-              // 운영진 전용 숨겨진 동작이며, 관람객에게는 노출되지 않습니다.
+              // 이 구석을 3초 안에 5번 연속 터치하면 종료 확인창(비밀번호
+              // 입력)이 뜹니다. 운영진 전용 숨겨진 동작이며, 관람객에게는
+              // 노출되지 않습니다.
               // [버그 수정] 원래 top-left(0,0)~(60,60)에 있었는데, 바로 그
               // 자리에 "이전(ESC)" 버튼(top:16,left:16)이 겹쳐 있었습니다.
               // Stack에서 이 위젯이 버튼보다 나중에 그려져서(=위에 깔려서)
@@ -1597,8 +1675,142 @@ class _AppRootState extends State<AppRoot> {
                   child: const SizedBox.expand(),
                 ),
               ),
+              // [신규] 종료 확인창. 5회 터치를 감지하면 이게 화면 전체를
+              // 덮으며 나타나서, 그 아래 키오스크 진행 화면으로는 터치가
+              // 전달되지 않습니다(전체를 덮는 GestureDetector가 가로챔).
+              if (_showExitDialog)
+                _ExitConfirmDialog(
+                  input: _exitPinInput,
+                  errorText: _exitPinError,
+                  onKeyTap: _onExitKeypadTap,
+                  onCancel: _closeExitDialog,
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// [신규] 종료 확인창. 화면 전체를 어둡게 덮고, 가운데 카드에
+// "종료하시겠습니까?" + 비밀번호 입력용 숫자 키패드 + "아니오" 버튼을 보여줌.
+// '*' = 입력 지우기, '#' = 확인(비밀번호 검증), 숫자 = 입력.
+class _ExitConfirmDialog extends StatelessWidget {
+  final String input;
+  final String? errorText;
+  final void Function(String key) onKeyTap;
+  final VoidCallback onCancel;
+
+  const _ExitConfirmDialog({
+    required this.input,
+    required this.errorText,
+    required this.onKeyTap,
+    required this.onCancel,
+  });
+
+  static const _keys = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['*', '0', '#'],
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: GestureDetector(
+        // 뒤 배경을 눌러도 아무 화면으로도 안 새어나가게 전부 흡수
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.6),
+          alignment: Alignment.center,
+          child: Container(
+            width: 340,
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: AppColors.ink, width: 2),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '종료하시겠습니까?',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.ink),
+                ),
+                const SizedBox(height: 16),
+                // 입력한 자리 수만큼 점(●)으로 마스킹해서 표시
+                Container(
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(border: Border.all(color: AppColors.muted)),
+                  child: Text(
+                    input.isEmpty ? ' ' : '●' * input.length,
+                    style: const TextStyle(fontSize: 20, letterSpacing: 6, color: AppColors.ink),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 18,
+                  child: Text(
+                    errorText ?? '',
+                    style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._keys.map(
+                  (row) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: row.map((k) => _ExitKeypadButton(label: k, onTap: () => onKeyTap(k))).toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: onCancel,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.ink, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text(
+                      '아니오',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExitKeypadButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _ExitKeypadButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 68,
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 1.4)),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.ink),
         ),
       ),
     );
