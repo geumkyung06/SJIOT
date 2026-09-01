@@ -124,7 +124,7 @@ class _MbtiManualScreenState extends State<MbtiManualScreen>
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드에서 해당하는 알파벳을 눌러주세요', style: AppTextStyles.body),
+          child: const Text('해당하는 알파벳을 눌러주세요', style: AppTextStyles.body),
         ),
         const SizedBox(height: 48),
         Row(

@@ -91,7 +91,7 @@ class _MbtiChoiceScreenState extends State<MbtiChoiceScreen> with TickerProvider
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드 1 또는 2 를 눌러 선택하세요', style: AppTextStyles.body),
+          child: const Text('1 또는 2 를 눌러 선택하세요', style: AppTextStyles.body),
         ),
         const SizedBox(height: 48),
         Row(

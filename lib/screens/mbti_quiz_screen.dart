@@ -99,7 +99,7 @@ class _MbtiQuizScreenState extends State<MbtiQuizScreen> with TickerProviderStat
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('숫자 1~4 를 눌러 선택하세요 (또는 탭)', style: AppTextStyles.body),
+          child: const Text('숫자 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
         ),
         const SizedBox(height: 32),
         Column(

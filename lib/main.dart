@@ -1837,7 +1837,7 @@ class _BackButton extends StatelessWidget {
             Icon(Icons.arrow_back, size: 16, color: AppColors.ink),
             SizedBox(width: 6),
             Text(
-              '이전 (ESC)',
+              '이전',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: AppColors.ink,

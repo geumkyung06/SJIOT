@@ -97,12 +97,12 @@ class _BoardSelectScreenState extends State<BoardSelectScreen> with TickerProvid
         _FadeSlide(
           opacity: _titleOpacity,
           y: _titleY,
-          child: const Text('판(케이스) 색상을 선택하세요', style: AppTextStyles.heading),
+          child: const Text('보드판 색상을 선택하세요', style: AppTextStyles.heading),
         ),
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드 1~4 를 눌러 선택하세요 (또는 탭)', style: AppTextStyles.body),
+          child: const Text('숫자 1~4를 눌러 선택하세요', style: AppTextStyles.body),
         ),
         const SizedBox(height: 48),
         Wrap(

@@ -51,8 +51,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
   late final Animation<double> _plateY;
   late final Animation<double> _colorListOpacity;
   late final Animation<double> _colorListX;
-  late final Animation<double> _arrowsOpacity;
-  late final Animation<double> _arrowsX;
   late final Animation<double> _buttonOpacity;
   late final Animation<double> _buttonY;
 
@@ -80,8 +78,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
     _plateY = slideY(160, 460, 12);
     _colorListOpacity = fadeIn(220, 520);
     _colorListX = slideX(220, 520, -10);
-    _arrowsOpacity = fadeIn(240, 540);
-    _arrowsX = slideX(240, 540, 10);
     _buttonOpacity = fadeIn(280, 580);
     _buttonY = slideY(280, 580, 10);
 
@@ -121,7 +117,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
-            '칸을 탭하거나 숫자 1~4로 색상 선택  ·  화살표 → 이동  ·  ENTER로 디자인 확인',
+            '칸을 탭하거나 숫자 1~4로 색상 선택',
             style: AppTextStyles.body,
             textAlign: TextAlign.center,
           ),
@@ -179,9 +175,13 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
           ),
         ),
         const SizedBox(height: 32),
+        // [버그 수정] 화살표 다이어그램을 통째로 없애면서, 그 옆에 있던
+        // Row가 잡아주던 "내용물만큼만 폭을 차지" 하는 효과까지 같이
+        // 사라져서 색상 선택 목록이 화면 전체 너비 기준으로 계산되며
+        // 왼쪽 끝으로 밀려나 보이는 문제가 있었습니다. Row(mainAxisSize:
+        // MainAxisSize.min)로 다시 감싸서 원래처럼 폭을 좁게 유지합니다.
         Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _FadeSlideX(
               opacity: _colorListOpacity,
@@ -201,12 +201,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                   Text('$filled / ${widget.letters.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ],
               ),
-            ),
-            const SizedBox(width: 48),
-            _FadeSlideX(
-              opacity: _arrowsOpacity,
-              x: _arrowsX,
-              child: const _ArrowKeys(),
             ),
           ],
         ),
@@ -239,20 +233,9 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
               padding: const EdgeInsets.symmetric(vertical: 16),
               alignment: Alignment.center,
               color: complete ? AppColors.ink : AppColors.muted,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    color: Colors.white,
-                    child: const Text('ENTER', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    complete ? '엔터로 디자인 확인' : '색을 모두 선택하세요',
-                    style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
-                  ),
-                ],
+              child: Text(
+                complete ? '디자인 확인' : '색을 모두 선택하세요',
+                style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -470,33 +453,6 @@ class _KeycapCellState extends State<_KeycapCell> with SingleTickerProviderState
           ),
         );
       },
-    );
-  }
-}
-
-class _ArrowKeys extends StatelessWidget {
-  const _ArrowKeys();
-
-  @override
-  Widget build(BuildContext context) {
-    Widget key(IconData icon) => Container(
-          width: 38,
-          height: 38,
-          alignment: Alignment.center,
-          margin: const EdgeInsets.all(2),
-          decoration:
-              BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-          child: Icon(icon, size: 18),
-        );
-    return Column(
-      children: [
-        key(Icons.arrow_upward),
-        Row(children: [
-          key(Icons.arrow_back),
-          key(Icons.arrow_downward),
-          key(Icons.arrow_forward)
-        ]),
-      ],
     );
   }
 }

@@ -5,12 +5,13 @@ import '../theme/app_theme.dart';
 ///
 /// 중요: 이 화면에서는 어떤 주문/제작 정보도 서버로 전송하지 않습니다.
 /// 순수하게 지금까지 고른 디자인을 보여주기만 합니다.
-///   - Enter: 이때 비로소 main.dart가 실제 주문 정보를 서버로 전송하고
+///   - 접수하기(터치): 이때 비로소 main.dart가 실제 주문 정보를 서버로 전송하고
 ///            영수증 화면으로 이동합니다.
-///   - Esc  : 아무 정보도 전송하지 않고, 선택했던 모든 값을 초기화한 뒤
+///   - 다시 만들기(터치): 아무 정보도 전송하지 않고, 선택했던 모든 값을 초기화한 뒤
 ///            STEP 01(MBTI를 아는지 선택하는 화면)로 돌아갑니다.
-/// (실제 Enter/Esc 키 처리는 main.dart의 KeyboardListener에서 담당합니다.
-///  이 위젯은 화면 표시만 담당합니다.)
+/// (키오스크는 터치 전용이라 화면엔 버튼만 노출하지만, 개발 중 키보드
+///  테스트용으로 main.dart의 KeyboardListener가 Enter/Esc 입력도 같이
+///  처리합니다. 이 위젯은 화면 표시만 담당합니다.)
 class DesignConfirmScreen extends StatefulWidget {
   final String boardShape; // '1x4' 고정 (2x2 옵션은 팀 확정으로 제거됨. 하위 호환용으로 유지)
   final Color boardColor; // [신규] STEP 04에서 고른 판(케이스) 색상
@@ -44,7 +45,6 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
   late final Animation<double> _labelOpacity;
   late final Animation<double> _titleOpacity;
   late final Animation<double> _titleY;
-  late final Animation<double> _subtitleOpacity;
   late final Animation<double> _plateOpacity;
   late final Animation<double> _plateScale;
   late final Animation<double> _hintOpacity;
@@ -80,7 +80,6 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
     _labelOpacity = fadeIn(40, 340);
     _titleOpacity = fadeIn(70, 370);
     _titleY = slideY(70, 370, 10);
-    _subtitleOpacity = fadeIn(120, 420);
     _plateOpacity = fadeIn(160, 560);
     _plateScale = springScale(160, 560, 0.86);
     // [수정] 축(스위치) 안내 박스를 제거하면서, 그 자리를 차지하던 딜레이만큼
@@ -117,14 +116,6 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('디자인이 완성되었어요', style: AppTextStyles.heading),
-        ),
-        const SizedBox(height: 8),
-        _Fade(
-          opacity: _subtitleOpacity,
-          child: const Text(
-            '마음에 들면 ENTER(탭), 다시 고르려면 ESC(탭)',
-            style: AppTextStyles.body,
-          ),
         ),
         const SizedBox(height: 40),
         AnimatedBuilder(
@@ -200,13 +191,13 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: widget.onConfirm,
-                      child: _KeyHint(keyLabel: 'ENTER', text: '접수하기', accent: AppColors.green),
+                      child: _TapButton(text: '접수하기', accent: AppColors.green),
                     ),
                     const SizedBox(width: 32),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: widget.onCancel,
-                      child: _KeyHint(keyLabel: 'ESC', text: '다시 만들기', accent: AppColors.coral),
+                      child: _TapButton(text: '다시 만들기', accent: AppColors.coral),
                     ),
                   ],
                 ),
@@ -280,32 +271,19 @@ class _SubmittingIndicator extends StatelessWidget {
   }
 }
 
-class _KeyHint extends StatelessWidget {
-  final String keyLabel;
+// [수정] 원래는 'ENTER'/'ESC' 키 라벨 박스 + 텍스트였는데, 터치 전용 키오스크라
+// 하드웨어 키 이름을 보여줄 이유가 없어서 그냥 색이 있는 버튼 텍스트로 단순화함.
+class _TapButton extends StatelessWidget {
   final String text;
   final Color accent;
-  const _KeyHint({required this.keyLabel, required this.text, required this.accent});
+  const _TapButton({required this.text, required this.accent});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            color: AppColors.muted,
-            child: Text(
-              keyLabel,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: accent)),
-        ],
-      ),
+      child: Text(text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: accent)),
     );
   }
 }
