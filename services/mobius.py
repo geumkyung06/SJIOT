@@ -104,8 +104,9 @@ def get_out_of_stock():
 
     return out
 
-# table
-def send_table_cin(tables):
+# station
+def send_station_cin(tables):
+    # 나중에 tables 도 변경 필요
     con = {"tables": tables}
     return create_cin("cnt_table", con)
 
