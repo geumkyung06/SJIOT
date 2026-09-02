@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'device_app.dart';
 import 'theme/app_colors.dart';
 import 'widgets/app_buttons.dart';
+import 'widgets/error_badge.dart';
 
 void main() {
   runApp(const DeviceApp());
@@ -32,56 +33,54 @@ class ErrorPageLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(40, 100, 40, 40),
+        padding: const EdgeInsets.fromLTRB(64, 110, 64, 60),
         child: SingleChildScrollView(
           child: Column(
             children: [
-              const Text(
-                '오류',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.red,
-                  letterSpacing: 3,
-                ),
-              ),
-              const SizedBox(height: 22),
+              const ErrorBadge(),
+
+              const SizedBox(height: 26),
+
               Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 60,
-                  height: 1.1,
+                  fontSize: 68,
+                  height: 1.12,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.black,
+                  color: AppColors.text,
                 ),
               ),
-              const SizedBox(height: 28),
+
+              const SizedBox(height: 24),
+
               Text(
                 description,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 20,
-                  height: 1.6,
-                  color: AppColors.gray,
+                  fontSize: 25,
+                  height: 1.65,
+                  color: AppColors.textSub,
                 ),
               ),
+
               const SizedBox(height: 48),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   SizedBox(
                     width: 330,
-                    height: 92,
+                    height: 96,
                     child: PrimaryButton(
                       text: leftButtonText,
                       onPressed: onLeftPressed,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 20),
                   SizedBox(
                     width: 330,
-                    height: 92,
+                    height: 96,
                     child: OutlineButton(
                       text: rightButtonText,
                       onPressed: onRightPressed,
@@ -89,15 +88,10 @@ class ErrorPageLayout extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 30),
-              Text(
-                errorCode,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: AppColors.gray,
-                  fontFamily: 'monospace',
-                ),
-              ),
+
+              const SizedBox(height: 32),
+
+              ErrorCodeChip(errorCode),
             ],
           ),
         ),

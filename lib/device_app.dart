@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import 'dev/demo_menu.dart';
@@ -10,13 +11,17 @@ import 'screens/assembling_screen.dart';
 import 'screens/authenticated_screen.dart';
 import 'screens/completed_screen.dart';
 import 'screens/invalid_qr_screen.dart';
+import 'screens/no_show_screen.dart';
 import 'screens/order_call_screen.dart';
 import 'screens/qr_scanner_screen.dart';
 import 'screens/waiting_screen.dart';
 import 'screens/workstation_setup_screen.dart';
 import 'screens/wrong_workstation_screen.dart';
 import 'services/api_service.dart';
+import 'services/kiosk_service.dart';
 import 'theme/app_colors.dart';
+import 'widgets/app_top_bar.dart';
+import 'widgets/exit_password_dialog.dart';
 import 'widgets/workstation_header.dart';
 
 class DeviceApp extends StatelessWidget {
@@ -31,7 +36,7 @@ class DeviceApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Pretendard',
         scaffoldBackgroundColor: AppColors.background,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.black),
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.text),
       ),
       home: const DeviceRoot(),
     );
@@ -45,7 +50,7 @@ class DeviceRoot extends StatefulWidget {
   State<DeviceRoot> createState() => _DeviceRootState();
 }
 
-class _DeviceRootState extends State<DeviceRoot> {
+class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
   // 서비스
   final ApiService _api = ApiService();
   final FlutterTts _tts = FlutterTts();
@@ -65,16 +70,55 @@ class _DeviceRootState extends State<DeviceRoot> {
   Timer? _stationStatusTimer;
   bool _isFetchingStationStatus = false;
 
+  // 주문 호출 재알림 / 노쇼 처리
+  //
+  // 호출된 뒤 30초마다 음성으로 다시 부르고,
+  // 3분 안에 QR 인증이 없으면 노쇼로 보고 주문을 취소한다.
+  static const Duration _orderRecallInterval = Duration(seconds: 30);
+  static const Duration _noShowTimeout = Duration(minutes: 3);
+
+  Timer? _orderRecallTimer;
+  Timer? _noShowTimer;
+
+  // QR 스캐너를 보고 있는 동안에는 음성 재호출을 하지 않는다.
+  bool _isQrScannerOpen = false;
+
+  // 노쇼 취소 요청이 중복 실행되는 것을 막는다.
+  bool _isHandlingNoShow = false;
+
+  // 관리자 종료 중에는 화면 고정을 다시 걸지 않는다.
+  bool _isExiting = false;
+
   // 주기
   @override
   void initState() {
     super.initState();
     _initTts();
+
+    WidgetsBinding.instance.addObserver(this);
+
+    // 화면이 올라온 뒤에 고정을 건다. (액티비티가 resumed 상태여야 함)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      KioskService.start();
+    });
+  }
+
+  /// 사용자가 고정을 풀고 나갔다가 돌아온 경우 다시 고정한다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed && !_isExiting) {
+      KioskService.start();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
     _stationStatusTimer?.cancel();
+    _stopCallTimers();
 
     // TTS 음성이 재생 중이면 종료
     _tts.stop();
@@ -85,6 +129,7 @@ class _DeviceRootState extends State<DeviceRoot> {
   // 1. 조립대 설정
   void _selectWorkstation(String number) {
     _stopStationStatusPolling();
+    _stopCallTimers();
 
     setState(() {
       _workstationNumber = number;
@@ -169,15 +214,18 @@ class _DeviceRootState extends State<DeviceRoot> {
       debugPrint('호출 주문 ID: $_calledOrderId');
       debugPrint('화면 표시 주문번호: $_orderCallNumber');
 
+      // 주문을 찾았으므로 더 이상 폴링하지 않음
+      _stopStationStatusPolling();
+
+      // 30초 재호출 · 3분 노쇼 타이머 시작
+      _startCallTimers();
+
       // 새로 배정된 주문일 때만 음성 호출
       if (shouldSpeak) {
         _lastSpokenOrderId = orderId;
 
         await _speakOrderCall(orderNumber: orderSeq, stationId: stationId);
       }
-
-      // 주문을 찾았으므로 더 이상 폴링하지 않음
-      _stopStationStatusPolling();
     } on ApiException catch (e) {
       if (!mounted) return;
 
@@ -230,6 +278,113 @@ class _DeviceRootState extends State<DeviceRoot> {
     await _tts.speak(message);
   }
 
+  // 3-1. 재호출 · 노쇼 타이머
+  void _startCallTimers() {
+    _stopCallTimers();
+
+    // 30초마다 대기번호 음성 재호출
+    _orderRecallTimer = Timer.periodic(_orderRecallInterval, (_) {
+      if (!mounted) return;
+
+      // 호출 화면이 아니거나 스캐너를 보고 있으면 재호출하지 않음
+      if (_currentStep != DeviceStep.orderCall) return;
+      if (_isQrScannerOpen) return;
+
+      final int? orderNumber = _orderCallNumber;
+      final String? workstationNumber = _workstationNumber;
+
+      if (orderNumber == null || workstationNumber == null) return;
+
+      debugPrint('30초 경과 → 주문번호 $orderNumber번 재호출');
+
+      _speakOrderCall(
+        orderNumber: orderNumber,
+        stationId: int.parse(workstationNumber),
+      );
+    });
+
+    // 3분 안에 QR 인증이 없으면 노쇼 처리
+    _noShowTimer = Timer(_noShowTimeout, _handleNoShow);
+  }
+
+  void _stopCallTimers() {
+    _orderRecallTimer?.cancel();
+    _orderRecallTimer = null;
+
+    _noShowTimer?.cancel();
+    _noShowTimer = null;
+  }
+
+  /// 호출 후 3분 동안 QR 인증이 없으면 주문을 취소하고 조립대를 비운다.
+  Future<void> _handleNoShow() async {
+    if (_isHandlingNoShow) return;
+
+    _stopCallTimers();
+
+    final String? orderId = _calledOrderId;
+    final String? workstationNumber = _workstationNumber;
+
+    if (orderId == null || workstationNumber == null) {
+      debugPrint('노쇼 타이머가 끝났지만 호출 중인 주문이 없음');
+      return;
+    }
+
+    _isHandlingNoShow = true;
+
+    await _tts.stop();
+
+    // 스캐너를 열어둔 채 시간이 지난 경우 스캐너를 먼저 닫는다.
+    if (_isQrScannerOpen) {
+      _isQrScannerOpen = false;
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    final int stationId = int.parse(workstationNumber);
+
+    debugPrint('========== 노쇼 처리 ==========');
+    debugPrint('order_id: $orderId');
+    debugPrint('station_id: $stationId');
+
+    try {
+      final result = await _api.cancelStation(
+        stationId: stationId,
+        orderId: orderId,
+      );
+
+      debugPrint('노쇼 취소 API 결과: $result');
+
+      if (!mounted) return;
+
+      _moveTo(DeviceStep.noShow);
+    } on ApiException catch (e) {
+      debugPrint('노쇼 취소 실패 (${e.statusCode}): ${e.body}');
+
+      if (!mounted) return;
+
+      if (e.statusCode == 404 || e.statusCode == 409) {
+        // 이미 다른 경로로 종료·재배정된 주문이므로 조용히 호출 대기로 복귀
+        _reset();
+      } else {
+        _showMessage('주문 취소 처리에 실패했습니다. (${e.statusCode})');
+
+        _moveTo(DeviceStep.noShow);
+      }
+    } catch (e) {
+      debugPrint('노쇼 취소 중 통신 오류: $e');
+
+      if (!mounted) return;
+
+      _showMessage('서버 통신 오류로 주문 취소를 확인하지 못했습니다.');
+
+      _moveTo(DeviceStep.noShow);
+    } finally {
+      _isHandlingNoShow = false;
+    }
+  }
+
   // 4. QR 인증
   Future<void> _openQrScanner() async {
     if (_orderCallNumber == null || _calledOrderId == null) {
@@ -237,9 +392,20 @@ class _DeviceRootState extends State<DeviceRoot> {
       return;
     }
 
+    _isQrScannerOpen = true;
+
     final String? qrValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (context) => const QrScannerScreen()),
     );
+
+    _isQrScannerOpen = false;
+
+    if (!mounted) return;
+
+    // 스캐너를 보는 사이 노쇼 처리 등으로 화면이 바뀐 경우
+    if (_currentStep != DeviceStep.orderCall) {
+      return;
+    }
 
     if (qrValue == null) {
       return;
@@ -313,6 +479,11 @@ class _DeviceRootState extends State<DeviceRoot> {
       debugPrint('응답 switch: ${startResult['switch']}');
 
       if (!mounted) return;
+
+      // QR 인증에 성공했으므로 재호출·노쇼 타이머 중지
+      _stopCallTimers();
+
+      await _tts.stop();
 
       setState(() {
         _order = OrderInfo(
@@ -497,6 +668,7 @@ class _DeviceRootState extends State<DeviceRoot> {
 
   void _reset() {
     _stopStationStatusPolling();
+    _stopCallTimers();
 
     setState(() {
       _assignedWorkstationNumber = null;
@@ -519,6 +691,30 @@ class _DeviceRootState extends State<DeviceRoot> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// 상단 왼쪽 로고를 2초 안에 7번 눌렀을 때.
+  /// 비밀번호가 맞으면 앱을 종료한다.
+  Future<void> _handleExitRequest() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      // 바깥을 눌러도 닫히지 않는다. [취소] 또는 비밀번호 통과로만 닫힘.
+      barrierDismissible: false,
+      builder: (_) => const ExitPasswordDialog(),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    debugPrint('관리자 비밀번호 확인 → 화면 고정 해제 후 앱 종료');
+
+    _isExiting = true;
+
+    // 고정을 먼저 풀어야 앱이 정상적으로 내려간다.
+    await KioskService.stop();
+
+    await SystemNavigator.pop();
+  }
+
   void _showStaffDialog() {
     showDialog(
       context: context,
@@ -536,6 +732,15 @@ class _DeviceRootState extends State<DeviceRoot> {
       },
     );
   }
+
+  Color _headerStatusColor(DeviceStep step) => switch (step) {
+    DeviceStep.assembling => AppColors.yellow,
+    DeviceStep.invalidQr ||
+    DeviceStep.wrongWorkstation ||
+    DeviceStep.noShow => AppColors.pink,
+    DeviceStep.workstationSetup => AppColors.border,
+    _ => AppColors.green,
+  };
 
   // 빌드
   @override
@@ -579,6 +784,7 @@ class _DeviceRootState extends State<DeviceRoot> {
         screen = AssemblingScreen(
           mbti: _order!.mbti,
           colors: _order!.colors,
+          orderNumber: _orderCallNumber?.toString().padLeft(2, '0'),
           onComplete: _finishAssembly,
         );
         break;
@@ -598,6 +804,14 @@ class _DeviceRootState extends State<DeviceRoot> {
         );
         break;
 
+      case DeviceStep.noShow:
+        screen = NoShowScreen(
+          orderNumber: _orderCallNumber?.toString().padLeft(2, '0'),
+          onAutoReturn: _reset,
+          onCallStaff: _showStaffDialog,
+        );
+        break;
+
       case DeviceStep.wrongWorkstation:
         screen = WrongWorkstationScreen(
           currentWorkstation: _workstationNumber ?? '--',
@@ -609,31 +823,44 @@ class _DeviceRootState extends State<DeviceRoot> {
 
     return Scaffold(
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            Positioned.fill(child: screen),
+            /// 모든 화면 위에 항상 표시되는 로고 바
+            /// 왼쪽 로고를 2초 안에 7번 누르면 관리자 종료 창이 뜬다.
+            AppTopBar(onSecretTap: _handleExitRequest),
 
-            if (_currentStep != DeviceStep.workstationSetup &&
-                _workstationNumber != null)
-              Positioned(
-                top: 28,
-                left: 48,
-                child: WorkstationHeader(
-                  workstationNumber: _workstationNumber!,
-                ),
-              ),
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(child: screen),
 
-            /// 화면 확인용 테스트 메뉴
-            Positioned(
-              right: 24,
-              bottom: 24,
-              child: DemoMenu(
-                onWaiting: () => _moveTo(DeviceStep.waiting),
-                onAuthenticated: () => _moveTo(DeviceStep.authenticated),
-                onAssembling: () => _moveTo(DeviceStep.assembling),
-                onCompleted: () => _moveTo(DeviceStep.completed),
-                onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
-                onWrongWorkstation: () => _moveTo(DeviceStep.wrongWorkstation),
+                  if (_currentStep != DeviceStep.workstationSetup &&
+                      _workstationNumber != null)
+                    Positioned(
+                      top: 20,
+                      left: 40,
+                      child: WorkstationHeader(
+                        workstationNumber: _workstationNumber!,
+                        statusColor: _headerStatusColor(_currentStep),
+                      ),
+                    ),
+
+                  /// 화면 확인용 테스트 메뉴
+                  Positioned(
+                    right: 24,
+                    bottom: 24,
+                    child: DemoMenu(
+                      onWaiting: () => _moveTo(DeviceStep.waiting),
+                      onAuthenticated: () => _moveTo(DeviceStep.authenticated),
+                      onAssembling: () => _moveTo(DeviceStep.assembling),
+                      onCompleted: () => _moveTo(DeviceStep.completed),
+                      onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
+                      onWrongWorkstation: () =>
+                          _moveTo(DeviceStep.wrongWorkstation),
+                      onNoShow: () => _moveTo(DeviceStep.noShow),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

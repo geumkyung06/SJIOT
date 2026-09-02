@@ -4,22 +4,26 @@ import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
 import '../widgets/error_badge.dart';
 
-class InvalidQrScreen extends StatefulWidget {
-  final VoidCallback onRetry;
+/// 호출 후 정해진 시간 안에 QR 인증이 없어 주문이 취소된 화면.
+/// 안내를 잠깐 보여준 뒤 자동으로 주문 호출 대기 화면으로 돌아간다.
+class NoShowScreen extends StatefulWidget {
+  final String? orderNumber;
+  final VoidCallback onAutoReturn;
   final VoidCallback onCallStaff;
 
-  const InvalidQrScreen({
+  const NoShowScreen({
     super.key,
-    required this.onRetry,
+    this.orderNumber,
+    required this.onAutoReturn,
     required this.onCallStaff,
   });
 
   @override
-  State<InvalidQrScreen> createState() => _InvalidQrScreenState();
+  State<NoShowScreen> createState() => _NoShowScreenState();
 }
 
-class _InvalidQrScreenState extends State<InvalidQrScreen> {
-  int secondsLeft = 7;
+class _NoShowScreenState extends State<NoShowScreen> {
+  int secondsLeft = 5;
 
   @override
   void initState() {
@@ -39,12 +43,14 @@ class _InvalidQrScreenState extends State<InvalidQrScreen> {
     }
 
     if (mounted) {
-      widget.onRetry();
+      widget.onAutoReturn();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final String? orderNumber = widget.orderNumber;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(64, 110, 64, 60),
@@ -56,7 +62,7 @@ class _InvalidQrScreenState extends State<InvalidQrScreen> {
               const SizedBox(height: 26),
 
               const Text(
-                '인식할 수 없는 QR 코드',
+                '호출 시간이 초과되었습니다',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 68,
@@ -68,11 +74,14 @@ class _InvalidQrScreenState extends State<InvalidQrScreen> {
 
               const SizedBox(height: 24),
 
-              const Text(
-                '스캔한 QR 코드를 인식하지 못했습니다.\n'
-                '영수증에 인쇄된 QR 코드를 사용하고 있는지 확인하세요.',
+              Text(
+                orderNumber == null
+                    ? '5분 동안 QR 인증이 없어 주문이 취소되었습니다.\n'
+                          '취소된 주문은 카운터에서 다시 확인해 주세요.'
+                    : '주문번호 $orderNumber번, 5분 동안 QR 인증이 없어 주문이 취소되었습니다.\n'
+                          '취소된 주문은 카운터에서 다시 확인해 주세요.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 25,
                   height: 1.65,
                   color: AppColors.textSub,
@@ -81,27 +90,13 @@ class _InvalidQrScreenState extends State<InvalidQrScreen> {
 
               const SizedBox(height: 48),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 330,
-                    height: 96,
-                    child: PrimaryButton(
-                      text: '다시 시도',
-                      onPressed: widget.onRetry,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  SizedBox(
-                    width: 330,
-                    height: 96,
-                    child: OutlineButton(
-                      text: '직원 호출',
-                      onPressed: widget.onCallStaff,
-                    ),
-                  ),
-                ],
+              SizedBox(
+                width: 330,
+                height: 96,
+                child: OutlineButton(
+                  text: '직원 호출',
+                  onPressed: widget.onCallStaff,
+                ),
               ),
 
               const SizedBox(height: 32),
@@ -117,7 +112,7 @@ class _InvalidQrScreenState extends State<InvalidQrScreen> {
 
               const SizedBox(height: 16),
 
-              const ErrorCodeChip('ERR_QR_INVALID'),
+              const ErrorCodeChip('ERR_NO_SHOW'),
             ],
           ),
         ),

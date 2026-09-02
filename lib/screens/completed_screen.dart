@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
-import '../widgets/keyring_preview.dart';
+import '../widgets/keycap_board_3d.dart';
 
 class CompletedScreen extends StatefulWidget {
   final String mbti;
@@ -21,7 +21,9 @@ class CompletedScreen extends StatefulWidget {
 
 class _CompletedScreenState extends State<CompletedScreen>
     with SingleTickerProviderStateMixin {
-  int secondsLeft = 10;
+  static const int _resetSeconds = 10;
+
+  int secondsLeft = _resetSeconds;
   late final AnimationController _previewController;
   late final Animation<double> _previewScale;
 
@@ -67,101 +69,194 @@ class _CompletedScreenState extends State<CompletedScreen>
 
   @override
   Widget build(BuildContext context) {
+    final double progress = (_resetSeconds - secondsLeft) / _resetSeconds;
+
+    // 샘플 기준 1440x900 좌표계를 그대로 두고 화면 크기에 맞춰 축소합니다.
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(40, 100, 40, 40),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const Text(
-                '완료',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.gray,
-                  letterSpacing: 3,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              const Text(
-                '조립 완료!',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 72,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.black,
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              const Text(
-                'MBTI 키캡 키링이 완성되었습니다.',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.black,
-                ),
-              ),
-
-              const SizedBox(height: 44),
-
-              ScaleTransition(
-                scale: _previewScale,
-                child: KeyringPreview(
-                  mbti: widget.mbti,
-                  colors: widget.colors,
-                  large: true,
-                ),
-              ),
-
-              const SizedBox(height: 48),
-
-              Container(
-                width: 590,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 24,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.black, width: 2),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.warning_amber_rounded, size: 25),
-                    SizedBox(width: 14),
-                    Flexible(
-                      child: Text(
-                        '소지품을 꼭 챙겨가세요.',
-                        textAlign: TextAlign.center,
+        padding: const EdgeInsets.fromLTRB(90, 130, 90, 70),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: 1260,
+            height: 700,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 470,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '완료',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 21,
                           fontWeight: FontWeight.w900,
+                          color: AppColors.textSub,
+                          letterSpacing: 5,
                         ),
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: 16),
+
+                      const Text(
+                        '조립 완료!',
+                        style: TextStyle(
+                          fontSize: 80,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.text,
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      const Text(
+                        'MBTI 키캡 키링이 완성되었습니다.',
+                        style: TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.text,
+                        ),
+                      ),
+
+                      const SizedBox(height: 36),
+
+                      const _BelongingsNotice(),
+
+                      const SizedBox(height: 36),
+
+                      Text(
+                        '조립대를 다음 사용자를 위해 초기화하는 중 · $secondsLeft초',
+                        style: const TextStyle(fontSize: 22, color: AppColors.textSub),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: SizedBox(
+                          width: 300,
+                          height: 6,
+                          child: LinearProgressIndicator(
+                            value: progress.clamp(0.0, 1.0),
+                            backgroundColor: AppColors.border,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppColors.textSub,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 22),
+
+                      TextButton(
+                        onPressed: widget.onRestart,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.text,
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          '지금 초기화',
+                          style: TextStyle(
+                            fontSize: 23,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppColors.border,
+                            decorationThickness: 2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 42),
+                const SizedBox(width: 72),
 
-              Text(
-                '●  조립대를 다음 사용자를 위해 초기화하는 중... '
-                '$secondsLeft초',
-                style: const TextStyle(fontSize: 16, color: AppColors.gray),
-              ),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: ScaleTransition(
+                      scale: _previewScale,
+                      child: KeycapBoard3D(
+                        mbti: widget.mbti,
+                        colors: widget.colors,
+                        viewScale: 1.12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-              const SizedBox(height: 20),
+/// 소지품 안내 — 왼쪽 8px 노란 액센트
+class _BelongingsNotice extends StatelessWidget {
+  const _BelongingsNotice({super.key});
 
-              TextButton(
-                onPressed: widget.onRestart,
-                child: const Text('지금 초기화'),
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.border),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 8, color: AppColors.yellow),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 26, 30, 26),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: AppColors.yellow,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text(
+                          '!',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.text,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Text(
+                          '소지품을 꼭 챙겨가세요.',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.text,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../widgets/conveyor_belt.dart';
 
 // 대기 중 화면
 class WaitingScreen extends StatefulWidget {
@@ -55,156 +56,70 @@ class _WaitingScreenState extends State<WaitingScreen> {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const StatusCircle(),
-
-            const SizedBox(height: 28),
-
-            Text(
-              '조립대 ${widget.workstationNumber}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 72,
-                height: 1,
-                fontWeight: FontWeight.w900,
-                color: AppColors.black,
+        padding: const EdgeInsets.symmetric(horizontal: 64),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 620,
+                padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 30),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const ConveyorBelt(),
               ),
-            ),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 34),
 
-            const Text(
-              '인증이 완료되었습니다.\n'
-              '로봇이 부품을 내려놓기 전까지 기다려 주세요.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 22,
-                height: 1.5,
-                color: AppColors.gray,
+              Text(
+                '조립대 ${widget.workstationNumber}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 76,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.text,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 32),
+              const SizedBox(height: 24),
 
-            Text(
-              '$_secondsLeft초 후 조립 화면으로 이동합니다.',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.gray,
+              const Text(
+                '인증이 완료되었습니다.\n'
+                '로봇이 부품을 내려놓기 전까지 기다려 주세요.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 23,
+                  height: 1.6,
+                  color: AppColors.textSub,
+                ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 36),
+
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$_secondsLeft초 후 조립 화면으로 이동합니다.',
+                  style: const TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                    color: AppColors.textSub,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
-}
-
-/// 대기 중 원형 표시
-/// 대기 중 원형 애니메이션
-class StatusCircle extends StatefulWidget {
-  const StatusCircle({super.key});
-
-  @override
-  State<StatusCircle> createState() => _StatusCircleState();
-}
-
-class _StatusCircleState extends State<StatusCircle>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _outerScale;
-  late final Animation<double> _middleScale;
-  late final Animation<double> _centerScale;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-
-    // 바깥 원
-    _outerScale = Tween<double>(
-      begin: 0.92,
-      end: 1.05,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-
-    // 가운데 원
-    _middleScale = Tween<double>(begin: 0.94, end: 1.03).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.15, 1.0, curve: Curves.easeInOut),
-      ),
-    );
-
-    // 중앙 점
-    _centerScale = Tween<double>(begin: 0.88, end: 1.12).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.3, 1.0, curve: Curves.easeInOut),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 160,
-      height: 160,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 바깥 원
-          ScaleTransition(
-            scale: _outerScale,
-            child: Container(
-              width: 145,
-              height: 145,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.lightGray, width: 3),
-              ),
-            ),
-          ),
-
-          // 가운데 원
-          ScaleTransition(
-            scale: _middleScale,
-            child: Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.lightGray, width: 3),
-              ),
-            ),
-          ),
-
-          // 중앙 점
-          ScaleTransition(
-            scale: _centerScale,
-            child: Container(
-              width: 34,
-              height: 34,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF444444),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

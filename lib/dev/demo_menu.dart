@@ -13,6 +13,7 @@ class DemoMenu extends StatelessWidget {
   final VoidCallback onCompleted;
   final VoidCallback onInvalidQr;
   final VoidCallback onWrongWorkstation;
+  final VoidCallback onNoShow;
 
   const DemoMenu({
     super.key,
@@ -22,13 +23,14 @@ class DemoMenu extends StatelessWidget {
     required this.onCompleted,
     required this.onInvalidQr,
     required this.onWrongWorkstation,
+    required this.onNoShow,
   });
 
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<DeviceStep>(
       tooltip: '화면 테스트',
-      icon: const Icon(Icons.developer_mode, color: AppColors.gray),
+      icon: const Icon(Icons.developer_mode, color: AppColors.textSub),
       onSelected: (step) {
         switch (step) {
           case DeviceStep.workstationSetup:
@@ -60,6 +62,10 @@ class DemoMenu extends StatelessWidget {
           case DeviceStep.wrongWorkstation:
             onWrongWorkstation();
             break;
+
+          case DeviceStep.noShow:
+            onNoShow();
+            break;
         }
       },
       itemBuilder: (context) {
@@ -76,6 +82,10 @@ class DemoMenu extends StatelessWidget {
           PopupMenuItem(
             value: DeviceStep.wrongWorkstation,
             child: Text('오류: 잘못된 조립대'),
+          ),
+          PopupMenuItem(
+            value: DeviceStep.noShow,
+            child: Text('오류: 노쇼(호출 시간 초과)'),
           ),
         ];
       },

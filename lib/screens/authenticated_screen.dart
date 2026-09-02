@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
 import '../widgets/device_page_layout.dart';
-import '../widgets/keyring_preview.dart';
+import '../widgets/keycap_board_3d.dart';
 
 class AuthenticatedScreen extends StatefulWidget {
   final String mbti;
@@ -50,17 +50,31 @@ class _AuthenticatedScreenState extends State<AuthenticatedScreen> {
       label: '인증 완료',
       title: 'MBTI 키캡 키링',
       children: [
-        KeyringPreview(mbti: widget.mbti, colors: widget.colors),
-        const SizedBox(height: 52),
+        Container(
+          width: 640,
+          height: 260,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: KeycapBoard3D(
+            mbti: widget.mbti,
+            colors: widget.colors,
+            viewScale: 0.85,
+          ),
+        ),
+        const SizedBox(height: 44),
         SizedBox(
-          width: 330,
+          width: 380,
           height: 96,
           child: PrimaryButton(text: '조립 시작', onPressed: _startAssembly),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 22),
         const Text(
           '5초 후 자동으로 조립을 시작합니다.',
-          style: TextStyle(fontSize: 17, color: AppColors.gray),
+          style: TextStyle(fontSize: 23, color: AppColors.textSub),
         ),
       ],
     );

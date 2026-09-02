@@ -64,6 +64,8 @@ flutter:
 
   assets:
     - assets/sounds/assembly_warning.mp3
+    - assets/images/logo_iotcoss.png
+    - assets/images/logo_sejong.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

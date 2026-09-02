@@ -34,7 +34,7 @@ class KeyringPreview extends StatelessWidget {
         return AppColors.pink;
 
       default:
-        return AppColors.lightGray;
+        return AppColors.border;
     }
   }
 
@@ -122,7 +122,7 @@ class _AnimatedKeyringPreviewState extends State<AnimatedKeyringPreview>
         return AppColors.pink;
 
       default:
-        return AppColors.lightGray;
+        return AppColors.border;
     }
   }
 
@@ -196,7 +196,7 @@ class Keycap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomColor = Color.lerp(color, AppColors.black, 0.14)!;
+    final bottomColor = Color.lerp(color, AppColors.text, 0.14)!;
 
     return Container(
       width: size,
@@ -221,7 +221,7 @@ class Keycap extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.42,
             fontWeight: FontWeight.w900,
-            color: AppColors.black,
+            color: AppColors.text,
           ),
         ),
       ),

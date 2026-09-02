@@ -7,4 +7,5 @@ enum DeviceStep {
   completed, // STEP 04: 조립 완료
   invalidQr, // ERROR 1: 잘못된 QR
   wrongWorkstation, // ERROR 2: 조립대 불일치
+  noShow, // ERROR 3: 호출 시간 초과(노쇼)
 }

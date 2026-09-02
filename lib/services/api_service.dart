@@ -191,6 +191,62 @@ class ApiService {
     );
   }
 
+  /// 노쇼(호출 시간 초과) 처리
+  ///
+  /// POST /station/{station_id}/cancel
+  /// 서버에서 주문 stage를 expired로 바꾸고 조립대를 비운 뒤
+  /// 대기열의 다음 주문을 재배정한다.
+  Future<Map<String, dynamic>> cancelStation({
+    required int stationId,
+    required String orderId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/station/$stationId/cancel');
+
+    final requestBody = {'order_id': orderId};
+
+    debugPrint('========== 조립대 취소(노쇼) API ==========');
+    debugPrint('POST $uri');
+    debugPrint('보내는 station_id: $stationId');
+    debugPrint('보내는 order_id: $orderId');
+    debugPrint('body: ${jsonEncode(requestBody)}');
+
+    final res = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    debugPrint('statusCode: ${res.statusCode}');
+    debugPrint('response body: ${res.body}');
+    debugPrint('=========================================');
+
+    Map<String, dynamic>? data;
+
+    try {
+      final decoded = jsonDecode(res.body);
+
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      }
+    } catch (_) {
+      data = null;
+    }
+
+    if (res.statusCode == 200) {
+      return data ?? <String, dynamic>{};
+    }
+
+    throw ApiException(
+      action: 'CANCEL',
+      statusCode: res.statusCode,
+      body: res.body,
+      data: data,
+    );
+  }
+
   Future<Map<String, dynamic>> completeStation({
     required int stationId,
     required String orderId,

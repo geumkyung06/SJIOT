@@ -10,111 +10,159 @@ class WorkstationSetupScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              '초기 설정',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                color: AppColors.gray,
-                letterSpacing: 4,
+        padding: const EdgeInsets.symmetric(horizontal: 64),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '초기 설정',
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textSub,
+                  letterSpacing: 5,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 18),
+              const SizedBox(height: 18),
 
-            const Text(
-              '조립대 번호',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 64,
-                height: 1.15,
-                fontWeight: FontWeight.w900,
-                color: AppColors.black,
+              const Text(
+                '조립대 번호',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 68,
+                  height: 1.1,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.text,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-            const Text(
-              '선택한 번호는 앱을 종료하기 전까지 유지됩니다.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 19, color: AppColors.gray),
-            ),
-
-            const SizedBox(height: 52),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                WorkstationSelectButton(
-                  number: '01',
-                  onPressed: () => onSelected('01'),
+              const Text(
+                '선택한 번호는 앱을 종료하기 전까지 유지됩니다.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  height: 1.6,
+                  color: AppColors.textSub,
                 ),
-                const SizedBox(width: 20),
-                WorkstationSelectButton(
-                  number: '02',
-                  onPressed: () => onSelected('02'),
-                ),
-                const SizedBox(width: 20),
-                WorkstationSelectButton(
-                  number: '03',
-                  onPressed: () => onSelected('03'),
-                ),
-              ],
-            ),
-          ],
+              ),
+
+              const SizedBox(height: 56),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  WorkstationSelectCard(
+                    number: '01',
+                    onPressed: () => onSelected('01'),
+                  ),
+                  const SizedBox(width: 24),
+                  WorkstationSelectCard(
+                    number: '02',
+                    onPressed: () => onSelected('02'),
+                  ),
+                  const SizedBox(width: 24),
+                  WorkstationSelectCard(
+                    number: '03',
+                    onPressed: () => onSelected('03'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class WorkstationSelectButton extends StatelessWidget {
+/// 조립대 선택 카드 — 누르는 동안 2px 테두리 + 우상단 파란 점
+class WorkstationSelectCard extends StatefulWidget {
   final String number;
   final VoidCallback onPressed;
 
-  const WorkstationSelectButton({
+  const WorkstationSelectCard({
     super.key,
     required this.number,
     required this.onPressed,
   });
 
   @override
+  State<WorkstationSelectCard> createState() => _WorkstationSelectCardState();
+}
+
+class _WorkstationSelectCardState extends State<WorkstationSelectCard> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 170,
-      height: 150,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.black,
-          backgroundColor: Colors.transparent,
-          side: const BorderSide(color: AppColors.black, width: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapCancel: () => _setPressed(false),
+      onTapUp: (_) {
+        _setPressed(false);
+        widget.onPressed();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 240,
+        height: 190,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border.all(
+            color: _pressed ? AppColors.text : AppColors.border,
+            width: _pressed ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(22),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            const Text(
-              '조립대',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: AppColors.gray,
+            if (_pressed)
+              Positioned(
+                top: 18,
+                right: 18,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: const BoxDecoration(
+                    color: AppColors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              number,
-              style: const TextStyle(
-                fontSize: 52,
-                height: 1,
-                fontWeight: FontWeight.w900,
-                color: AppColors.black,
+
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '조립대',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSub,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    widget.number,
+                    style: const TextStyle(
+                      fontSize: 60,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.text,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

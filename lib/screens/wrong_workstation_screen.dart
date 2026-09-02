@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/error_badge.dart';
 
 class WrongWorkstationScreen extends StatefulWidget {
   final String currentWorkstation;
@@ -47,47 +48,39 @@ class _WrongWorkstationScreenState extends State<WrongWorkstationScreen> {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(40, 100, 40, 40),
+        padding: const EdgeInsets.fromLTRB(64, 110, 64, 60),
         child: SingleChildScrollView(
           child: Column(
             children: [
-              const Text(
-                '오류',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.red,
-                  letterSpacing: 3,
-                ),
-              ),
+              const ErrorBadge(),
 
-              const SizedBox(height: 22),
+              const SizedBox(height: 26),
 
               const Text(
                 '잘못된 조립대입니다',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 60,
-                  height: 1.1,
+                  fontSize: 68,
+                  height: 1.12,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.black,
+                  color: AppColors.text,
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
 
               const Text(
                 '이 QR 코드는 다른 조립대에 배정되어 있습니다.\n'
                 '배정된 조립대로 이동한 후 다시 스캔하세요.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 20,
-                  height: 1.6,
-                  color: AppColors.gray,
+                  fontSize: 25,
+                  height: 1.65,
+                  color: AppColors.textSub,
                 ),
               ),
 
-              const SizedBox(height: 58),
+              const SizedBox(height: 52),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -95,54 +88,43 @@ class _WrongWorkstationScreenState extends State<WrongWorkstationScreen> {
                   WorkstationBox(
                     label: '현재 위치',
                     number: widget.currentWorkstation,
-                    backgroundColor: const Color(0xFFF5D7D3),
-                    numberColor: AppColors.red,
+                    accentColor: AppColors.pink,
                   ),
 
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 35),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.arrow_forward,
-                          size: 34,
-                          color: AppColors.gray,
-                        ),
-                        SizedBox(height: 32),
-                      ],
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 30),
+                      child: Icon(
+                        Icons.arrow_forward,
+                        size: 34,
+                        color: AppColors.textSub,
+                      ),
                     ),
                   ),
 
                   WorkstationBox(
                     label: '배정된 조립대',
                     number: widget.assignedWorkstation,
-                    backgroundColor: const Color(0xFFD9EFD7),
-                    numberColor: Color(0xFF389544),
+                    accentColor: AppColors.green,
                   ),
                 ],
               ),
 
-              const SizedBox(height: 52),
+              const SizedBox(height: 48),
 
               Text(
                 '$secondsLeft초 후 대기 화면으로 돌아갑니다.',
                 style: const TextStyle(
-                  fontSize: 17,
+                  fontSize: 22,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.gray,
+                  color: AppColors.textSub,
                 ),
               ),
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 16),
 
-              const Text(
-                'ERR_WS_MISMATCH',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.gray,
-                  fontFamily: 'monospace',
-                ),
-              ),
+              const ErrorCodeChip('ERR_WS_MISMATCH'),
             ],
           ),
         ),
@@ -154,15 +136,13 @@ class _WrongWorkstationScreenState extends State<WrongWorkstationScreen> {
 class WorkstationBox extends StatelessWidget {
   final String label;
   final String number;
-  final Color backgroundColor;
-  final Color numberColor;
+  final Color accentColor;
 
   const WorkstationBox({
     super.key,
     required this.label,
     required this.number,
-    required this.backgroundColor,
-    required this.numberColor,
+    required this.accentColor,
   });
 
   @override
@@ -172,27 +152,26 @@ class WorkstationBox extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w900,
-            color: AppColors.gray,
+            fontSize: 21,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textSub,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Container(
-          width: 120,
-          height: 120,
+          width: 140,
+          height: 140,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: backgroundColor,
-            border: Border.all(color: AppColors.black, width: 2),
-            borderRadius: BorderRadius.circular(5),
+            color: accentColor,
+            borderRadius: BorderRadius.circular(22),
           ),
           child: Text(
             number,
-            style: TextStyle(
-              fontSize: 48,
+            style: const TextStyle(
+              fontSize: 56,
               fontWeight: FontWeight.w900,
-              color: numberColor,
+              color: AppColors.text,
             ),
           ),
         ),
