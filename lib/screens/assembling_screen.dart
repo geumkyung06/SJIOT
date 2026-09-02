@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
 import '../widgets/keycap_board_3d.dart';
+import '../widgets/screen_canvas.dart';
 
 class AssemblingScreen extends StatefulWidget {
   final String mbti;
@@ -115,119 +116,111 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
         ? widget.mbti
         : '${widget.orderNumber} · ${widget.mbti}';
 
-    // 샘플 기준 1440x900 좌표계를 그대로 두고 화면 크기에 맞춰 축소합니다.
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(90, 130, 90, 70),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: SizedBox(
-            width: 1260,
-            height: 700,
-            child: Row(
+    // 화면 전체를 공통 캔버스(1340 x 725) 좌표계 위에 그립니다.
+    return ScreenCanvas(
+      padding: const EdgeInsets.fromLTRB(72, 80, 72, 56),
+      shrinkContent: false,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 480,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '진행 중',
-                        style: TextStyle(
-                          fontSize: 21,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textSub,
-                          letterSpacing: 5,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      const Text(
-                        '조립 중',
-                        style: TextStyle(
-                          fontSize: 76,
-                          height: 1,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.text,
-                        ),
-                      ),
-
-                      const SizedBox(height: 22),
-
-                      const Text(
-                        '부품을 순서대로 끼워 주세요.\n'
-                        '완료되면 아래 버튼을 눌러 주세요.',
-                        style: TextStyle(
-                          fontSize: 25,
-                          height: 1.6,
-                          color: AppColors.textSub,
-                        ),
-                      ),
-
-                      const SizedBox(height: 44),
-
-                      SizedBox(
-                        width: 380,
-                        height: 96,
-                        child: PrimaryButton(
-                          text: '조립 완료',
-                          onPressed: _completeAssembly,
-                        ),
-                      ),
-                    ],
+                const Text(
+                  '진행 중',
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textSub,
+                    letterSpacing: 5,
                   ),
                 ),
 
-                const SizedBox(width: 72),
+                const SizedBox(height: 16),
 
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(40),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: KeycapBoard3D(
-                            mbti: widget.mbti,
-                            colors: widget.colors,
-                            mountedCount: 3,
-                            animateDrop: true,
-                          ),
-                        ),
+                const Text(
+                  '조립 중',
+                  style: TextStyle(
+                    fontSize: 76,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.text,
+                  ),
+                ),
 
-                        const SizedBox(height: 28),
+                const SizedBox(height: 22),
 
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              '주문번호',
-                              style: TextStyle(fontSize: 23, color: AppColors.textSub),
-                            ),
-                            Text(
-                              caption,
-                              style: const TextStyle(
-                                fontSize: 23,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.text,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                const Text(
+                  '부품을 순서대로 끼워 주세요.\n'
+                  '완료되면 아래 버튼을 눌러 주세요.',
+                  style: TextStyle(
+                    fontSize: 25,
+                    height: 1.6,
+                    color: AppColors.textSub,
+                  ),
+                ),
+
+                const SizedBox(height: 44),
+
+                SizedBox(
+                  width: 380,
+                  height: 96,
+                  child: PrimaryButton(
+                    text: '조립 완료',
+                    onPressed: _completeAssembly,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+
+          const SizedBox(width: 72),
+
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(40),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: KeycapBoard3D(
+                      mbti: widget.mbti,
+                      colors: widget.colors,
+                      mountedCount: 3,
+                      animateDrop: true,
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '주문번호',
+                        style: TextStyle(fontSize: 23, color: AppColors.textSub),
+                      ),
+                      Text(
+                        caption,
+                        style: const TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.text,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

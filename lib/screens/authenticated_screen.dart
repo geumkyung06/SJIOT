@@ -52,7 +52,7 @@ class _AuthenticatedScreenState extends State<AuthenticatedScreen> {
       children: [
         Container(
           width: 640,
-          height: 260,
+          height: 250,
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: AppColors.surface,
@@ -65,7 +65,7 @@ class _AuthenticatedScreenState extends State<AuthenticatedScreen> {
             viewScale: 0.85,
           ),
         ),
-        const SizedBox(height: 44),
+        const SizedBox(height: 34),
         SizedBox(
           width: 380,
           height: 96,

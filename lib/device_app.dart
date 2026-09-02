@@ -22,6 +22,7 @@ import 'services/kiosk_service.dart';
 import 'theme/app_colors.dart';
 import 'widgets/app_top_bar.dart';
 import 'widgets/exit_password_dialog.dart';
+import 'widgets/screen_canvas.dart';
 import 'widgets/workstation_header.dart';
 
 class DeviceApp extends StatelessWidget {
@@ -29,18 +30,55 @@ class DeviceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData base = ThemeData(
+      useMaterial3: true,
+      fontFamily: 'Pretendard',
+      scaffoldBackgroundColor: AppColors.background,
+      colorScheme: ColorScheme.fromSeed(seedColor: AppColors.text),
+    );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '조립대 디바이스 앱',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Pretendard',
-        scaffoldBackgroundColor: AppColors.background,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.text),
-      ),
+      // 스타일을 따로 주지 않은 글씨(스낵바 · 팝업 · 기본 버튼)도
+      // ScreenCanvas.minFontSize보다 작아지지 않게 한다.
+      theme: base.copyWith(textTheme: _minSizedTextTheme(base.textTheme)),
       home: const DeviceRoot(),
     );
   }
+}
+
+/// 글씨 크기가 [ScreenCanvas.minFontSize]보다 작은 스타일을 끌어올린다.
+TextStyle? _atLeastMinFont(TextStyle? style) {
+  if (style == null) return null;
+
+  final double? size = style.fontSize;
+
+  if (size == null || size >= ScreenCanvas.minFontSize) {
+    return style;
+  }
+
+  return style.copyWith(fontSize: ScreenCanvas.minFontSize);
+}
+
+TextTheme _minSizedTextTheme(TextTheme theme) {
+  return TextTheme(
+    displayLarge: _atLeastMinFont(theme.displayLarge),
+    displayMedium: _atLeastMinFont(theme.displayMedium),
+    displaySmall: _atLeastMinFont(theme.displaySmall),
+    headlineLarge: _atLeastMinFont(theme.headlineLarge),
+    headlineMedium: _atLeastMinFont(theme.headlineMedium),
+    headlineSmall: _atLeastMinFont(theme.headlineSmall),
+    titleLarge: _atLeastMinFont(theme.titleLarge),
+    titleMedium: _atLeastMinFont(theme.titleMedium),
+    titleSmall: _atLeastMinFont(theme.titleSmall),
+    bodyLarge: _atLeastMinFont(theme.bodyLarge),
+    bodyMedium: _atLeastMinFont(theme.bodyMedium),
+    bodySmall: _atLeastMinFont(theme.bodySmall),
+    labelLarge: _atLeastMinFont(theme.labelLarge),
+    labelMedium: _atLeastMinFont(theme.labelMedium),
+    labelSmall: _atLeastMinFont(theme.labelSmall),
+  );
 }
 
 class DeviceRoot extends StatefulWidget {

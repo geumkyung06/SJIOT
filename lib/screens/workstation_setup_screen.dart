@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../widgets/screen_canvas.dart';
 
 class WorkstationSetupScreen extends StatelessWidget {
   final ValueChanged<String> onSelected;
@@ -8,73 +9,65 @@ class WorkstationSetupScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 64),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                '초기 설정',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textSub,
-                  letterSpacing: 5,
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
-              const Text(
-                '조립대 번호',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 68,
-                  height: 1.1,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.text,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              const Text(
-                '선택한 번호는 앱을 종료하기 전까지 유지됩니다.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  height: 1.6,
-                  color: AppColors.textSub,
-                ),
-              ),
-
-              const SizedBox(height: 56),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  WorkstationSelectCard(
-                    number: '01',
-                    onPressed: () => onSelected('01'),
-                  ),
-                  const SizedBox(width: 24),
-                  WorkstationSelectCard(
-                    number: '02',
-                    onPressed: () => onSelected('02'),
-                  ),
-                  const SizedBox(width: 24),
-                  WorkstationSelectCard(
-                    number: '03',
-                    onPressed: () => onSelected('03'),
-                  ),
-                ],
-              ),
-            ],
+    return ScreenCanvas.column(
+      children: [
+        const Text(
+          '초기 설정',
+          style: TextStyle(
+            fontSize: 21,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textSub,
+            letterSpacing: 5,
           ),
         ),
-      ),
+
+        const SizedBox(height: 18),
+
+        const Text(
+          '조립대 번호',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 68,
+            height: 1.1,
+            fontWeight: FontWeight.w900,
+            color: AppColors.text,
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        const Text(
+          '선택한 번호는 앱을 종료하기 전까지 유지됩니다.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 24,
+            height: 1.6,
+            color: AppColors.textSub,
+          ),
+        ),
+
+        const SizedBox(height: 56),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            WorkstationSelectCard(
+              number: '01',
+              onPressed: () => onSelected('01'),
+            ),
+            const SizedBox(width: 24),
+            WorkstationSelectCard(
+              number: '02',
+              onPressed: () => onSelected('02'),
+            ),
+            const SizedBox(width: 24),
+            WorkstationSelectCard(
+              number: '03',
+              onPressed: () => onSelected('03'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
+import '../widgets/screen_canvas.dart';
 
 class OrderCallScreen extends StatelessWidget {
   final String orderNumber;
@@ -14,77 +15,69 @@ class OrderCallScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 64),
-        child: SingleChildScrollView(
+    return ScreenCanvas.column(
+      children: [
+        Container(
+          width: 640,
+          padding: const EdgeInsets.fromLTRB(48, 30, 48, 30),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(28),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 640,
-                padding: const EdgeInsets.fromLTRB(48, 30, 48, 30),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.border),
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '주문번호',
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textSub,
-                        letterSpacing: 5,
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // 주문 배정 전에는 '조립대 02' 같은 긴 문자열이 들어와 넘칠 수 있습니다.
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        orderNumber,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontSize: 90,
-                          height: 1,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.text,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    const _KeycapColorBar(),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              SizedBox(
-                width: 200,
-                height: 70,
-                child: PrimaryButton(text: 'QR 코드 스캔', onPressed: onQrScan),
-              ),
-
-              const SizedBox(height: 22),
-
               const Text(
-                '영수증의 QR 코드를 스캔해 주세요.',
-                style: TextStyle(fontSize: 15, color: AppColors.textSub),
+                '주문번호',
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textSub,
+                  letterSpacing: 5,
+                ),
               ),
+
+              const SizedBox(height: 12),
+
+              // 주문 배정 전에는 '조립대 02' 같은 긴 문자열이 들어와 넘칠 수 있습니다.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  orderNumber,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 80,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.text,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              const _KeycapColorBar(),
             ],
           ),
         ),
-      ),
+
+        const SizedBox(height: 20),
+
+        SizedBox(
+          width: 200,
+          height: 70,
+          child: PrimaryButton(text: 'QR 코드 스캔', onPressed: onQrScan),
+        ),
+
+        const SizedBox(height: 22),
+
+        const Text(
+          '영수증의 QR 코드를 스캔해 주세요.',
+          style: TextStyle(fontSize: 17, color: AppColors.textSub),
+        ),
+      ],
     );
   }
 }

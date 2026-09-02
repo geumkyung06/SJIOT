@@ -71,7 +71,7 @@ class _ExitPasswordDialogState extends State<ExitPasswordDialog> {
               const Text(
                 '관 리 자 종 료',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 17,
                   fontWeight: FontWeight.w900,
                   color: AppColors.textSub,
                   letterSpacing: 5,
@@ -155,13 +155,13 @@ class _ExitPasswordDialogState extends State<ExitPasswordDialog> {
                 children: [
                   _KeypadButton(
                     label: '지움',
-                    fontSize: 15,
+                    fontSize: 17,
                     onPressed: _removeLastDigit,
                   ),
                   _KeypadButton(label: '0', onPressed: () => _appendDigit('0')),
                   _KeypadButton(
                     label: '확인',
-                    fontSize: 15,
+                    fontSize: 17,
                     filled: true,
                     onPressed: _submit,
                   ),
@@ -175,7 +175,7 @@ class _ExitPasswordDialogState extends State<ExitPasswordDialog> {
                 child: const Text(
                   '취소',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textSub,
                   ),
