@@ -11,6 +11,11 @@ class QrScannerScreen extends StatefulWidget {
 class _QrScannerScreenState extends State<QrScannerScreen> {
   bool _isProcessing = false;
 
+  // 전면 카메라 사용
+  final MobileScannerController _scannerController = MobileScannerController(
+    facing: CameraFacing.front,
+  );
+
   void _handleBarcode(BarcodeCapture capture) {
     if (_isProcessing) return;
 
@@ -28,13 +33,24 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   @override
+  void dispose() {
+    _scannerController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Stack(
           children: [
-            Positioned.fill(child: MobileScanner(onDetect: _handleBarcode)),
+            Positioned.fill(
+              child: MobileScanner(
+                controller: _scannerController,
+                onDetect: _handleBarcode,
+              ),
+            ),
 
             Positioned(
               top: 20,
