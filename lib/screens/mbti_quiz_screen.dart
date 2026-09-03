@@ -8,6 +8,11 @@ class MbtiQuizScreen extends StatefulWidget {
   final int totalQuestions;
   final String question;
   final List<String> optionTexts; // 4개
+  // [신규] 각 보기가 가리키는 글자(E/I/N/S/F/T/J/P)의 모든 색상이 품절이면
+  // true. mbti_manual_screen.dart에는 있었는데 이 화면엔 빠져있던 것을
+  // 추가함 — 안 그러면 관람객이 품절된 보기를 눌러도 왜 안 되는지
+  // 알 방법이 없었음.
+  final List<bool> optionSoldOut; // 4개
   final void Function(int digit)? onSelect; // 터치 지원: 1~4번 보기 선택
 
   const MbtiQuizScreen({
@@ -16,6 +21,7 @@ class MbtiQuizScreen extends StatefulWidget {
     required this.totalQuestions,
     required this.question,
     required this.optionTexts,
+    this.optionSoldOut = const [false, false, false, false],
     this.onSelect,
   });
 
@@ -104,6 +110,7 @@ class _MbtiQuizScreenState extends State<MbtiQuizScreen> with TickerProviderStat
         const SizedBox(height: 32),
         Column(
           children: List.generate(widget.optionTexts.length, (i) {
+            final soldOut = i < widget.optionSoldOut.length && widget.optionSoldOut[i];
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: _FadeSlideX(
@@ -111,25 +118,50 @@ class _MbtiQuizScreenState extends State<MbtiQuizScreen> with TickerProviderStat
                 x: _optX[i],
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: widget.onSelect == null ? null : () => widget.onSelect!(i + 1),
+                  onTap: (widget.onSelect == null || soldOut) ? null : () => widget.onSelect!(i + 1),
                   child: Container(
                     width: 560,
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: soldOut ? Colors.grey.shade400 : AppColors.ink, width: 2),
+                    ),
                     child: Row(
                       children: [
                         Container(
                           width: 36,
                           height: 36,
                           alignment: Alignment.center,
-                          color: AppColors.ink,
+                          color: soldOut ? Colors.grey.shade400 : AppColors.ink,
                           child: Text(
                             '${i + 1}',
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
                           ),
                         ),
                         const SizedBox(width: 16),
-                        Expanded(child: Text(widget.optionTexts[i], style: AppTextStyles.body)),
+                        Expanded(
+                          child: Text(
+                            widget.optionTexts[i],
+                            style: AppTextStyles.body.copyWith(
+                              color: soldOut ? Colors.grey.shade500 : null,
+                            ),
+                          ),
+                        ),
+                        if (soldOut)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '재고 없음',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
