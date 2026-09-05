@@ -6,10 +6,16 @@ import 'package:flutter/services.dart';
 import 'package:animations/animations.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
-import 'package:window_manager/window_manager.dart';
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
+// [신규] 플랫폼별 창 제어 분기(조건부 임포트).
+// - 웹(Chrome) 빌드 : kiosk_window_web.dart (전부 no-op)
+// - 그 외 모든 빌드  : kiosk_window_io.dart  (window_manager 기존 로직)
+// window_manager 는 웹을 지원하지 않고 내부적으로 dart:io 를 쓰기 때문에
+// 직접 import 하면 웹 빌드가 컴파일되지 않습니다.
+import 'services/kiosk_window_web.dart'
+    if (dart.library.io) 'services/kiosk_window_io.dart';
 import 'screens/home_screen.dart';
 import 'screens/mbti_choice_screen.dart';
 import 'screens/mbti_quiz_screen.dart';
@@ -35,31 +41,9 @@ const String kExitPin = '2026';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await windowManager.ensureInitialized();
-
-  // [디버그/키오스크용] 창을 항상 지정 해상도로 전체화면 표시하고,
-  // 뜨는 즉시 강제로 포커스를 줘서 마우스/터치 입력이 다른 창에
-  // 뺏기지 않게 합니다. 키오스크 터치 문제 원인 파악용 조치이며,
-  // 원인이 확인되면(오버레이 프로그램 등) 이 블록은 정리해도 됩니다.
-  final windowOptions = WindowOptions(
-    size: const Size(1920, 1080), // 키오스크 실제 해상도에 맞춰 조정하세요.
-    center: true,
-    backgroundColor: Colors.transparent,
-    titleBarStyle: kKioskWindowMode
-        ? TitleBarStyle.hidden
-        : TitleBarStyle.normal,
-    fullScreen: kKioskWindowMode,
-  );
-
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.show();
-    await windowManager.focus();
-    // 다른 창(사이니지 오버레이 등)이 위로 올라오지 못하게 최상단 고정.
-    // 개발 중엔 VS Code/터미널을 가리므로 kKioskWindowMode일 때만 켭니다.
-    if (kKioskWindowMode) {
-      await windowManager.setAlwaysOnTop(true);
-    }
-  });
+  // 창 크기/전체화면/최상단 고정 설정. 데스크톱에서는 기존과 동일하게
+  // 동작하고, 웹에서는 아무것도 하지 않습니다.
+  await initKioskWindow(kioskMode: kKioskWindowMode);
 
   runApp(const ClickyKeyringApp());
 }
@@ -186,7 +170,7 @@ class _AppRootState extends State<AppRoot> {
 
     if (key == '#') {
       if (_exitPinInput == kExitPin) {
-        windowManager.close();
+        closeKioskWindow();
       } else {
         setState(() {
           _exitPinInput = '';

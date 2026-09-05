@@ -1,9 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart' as http_io;
+
+// [신규] 플랫폼별 HTTP 클라이언트 분기(조건부 임포트).
+// - 웹(Chrome) 빌드  : http_client_web.dart  (기본 클라이언트)
+// - 그 외 모든 빌드   : http_client_io.dart   (커스텀 루트 인증서 로직)
+// dart:io / SecurityContext / IOClient 는 웹에 존재하지 않으므로 이렇게
+// 격리해야 웹 빌드가 컴파일됩니다. 데스크톱 빌드에는 예전 코드가 그대로
+// 들어가므로 Windows/macOS 동작은 변하지 않습니다.
+import 'http_client_web.dart' if (dart.library.io) 'http_client_io.dart';
 
 /// Flask 백엔드(POST /order, GET /order/<id>/status) 연동.
 /// baseUrl은 실제 EC2 도메인으로 교체해서 쓰세요.
@@ -31,25 +36,10 @@ class ApiService {
 
   static Future<http.Client> _getClient() async {
     if (_client != null) return _client!;
-
-    try {
-      final certData = await rootBundle.load(
-        'assets/certs/custom_root.pem',
-      );
-      final context = SecurityContext(withTrustedRoots: true);
-      context.setTrustedCertificatesBytes(
-        certData.buffer.asUint8List(),
-      );
-      final httpClient = HttpClient(context: context);
-      _client = http_io.IOClient(httpClient);
-      // ignore: avoid_print
-      print('>>> [DEBUG] 커스텀 인증서 로드 성공, 신뢰 목록에 추가됨');
-    } catch (e) {
-      // ignore: avoid_print
-      print('>>> [DEBUG] 커스텀 인증서 로드 실패, 기본 클라이언트 사용: $e');
-      _client = http.Client();
-    }
-
+    // 실제 생성은 플랫폼별 구현에 위임합니다.
+    //   http_client_io.dart  : 커스텀 루트 인증서를 신뢰 목록에 추가(기존 로직)
+    //   http_client_web.dart : 브라우저가 TLS를 직접 처리하므로 기본 클라이언트
+    _client = await createHttpClient();
     return _client!;
   }
 
