@@ -260,12 +260,17 @@ class _AppRootState extends State<AppRoot> {
   // ---------------- 품절 재고 ----------------
   Set<String> _soldOutBoards = {};
   Set<String> _soldOutKeycaps = {};
+  // Set<String> _soldOutAxes = {};
+  // Set<String> _soldOutSwitches = {};
 
   bool _stockLoading = false;
   String? _stockError;
 
   // 키캡 색상 선택 화면 안내 문구
   String? _keycapMessage;
+
+  // 디자인 확인 화면에서 수정/재고 안내 문구
+  String? _designConfirmMessage;
 
   // ---------------- 키캡 색상 ----------------
   late List<String> _letters;
@@ -691,8 +696,7 @@ class _AppRootState extends State<AppRoot> {
 
     _direction = 1; // 여기서부터 아래는 전부 "앞으로" 이동이므로 미리 표시
 
-    final isEnter =
-        event.physicalKey == PhysicalKeyboardKey.enter ||
+    final isEnter = event.physicalKey == PhysicalKeyboardKey.enter ||
         event.physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     switch (_step) {
@@ -929,8 +933,7 @@ class _AppRootState extends State<AppRoot> {
     // --------------------------------------------------
     // ENTER: 전체 선택 여부 및 주문 직전 재고 검사
     // --------------------------------------------------
-    final isEnter =
-        physicalKey == PhysicalKeyboardKey.enter ||
+    final isEnter = physicalKey == PhysicalKeyboardKey.enter ||
         physicalKey == PhysicalKeyboardKey.numpadEnter;
 
     if (isEnter) {
@@ -1065,7 +1068,45 @@ class _AppRootState extends State<AppRoot> {
     setState(() {
       _step = AppStep.designConfirm;
       _keycapMessage = null;
+      _designConfirmMessage = null; // [수정] 디자인 수정용
     });
+  }
+
+  // STEP 06(디자인 확인)애서 특정 키캡을 클릭하여 키캡의 색상 변경
+  Future<bool> _changeDesignKeycapColor(
+    int index,
+    String colorCode,
+  ) async {
+    if (_submittingOrder || _stockLoading) return false;
+
+    if (index < 0 || index >= _letters.length) return false;
+
+    // 실제 변경 직전에 최신 재고 확인
+    final success = await _loadSoldOutStock();
+
+    if (!mounted || !success) {
+      setState(() {
+        _designConfirmMessage = '재고 정보를 확인하지 못했습니다.';
+      });
+      return false;
+    }
+
+    final letter = _letters[index];
+
+    // 선택하려는 키캡 색상이 품절인지 확인
+    if (_isKeycapColorSoldOut(letter, colorCode)) {
+      setState(() {
+        _designConfirmMessage = '$letter 키캡의 해당 색상은 현재 품절입니다.';
+      });
+      return false;
+    }
+
+    setState(() {
+      _colorCodes[index] = colorCode;
+      _designConfirmMessage = null;
+    });
+
+    return true;
   }
 
   // STEP 06(디자인 확인)에서 Esc를 눌렀을 때: 아무 정보도 전송하지 않고
@@ -1110,9 +1151,7 @@ class _AppRootState extends State<AppRoot> {
       invalidIndex = _removeInvalidColorSelections();
 
       if (invalidIndex != null) {
-        _cursor = invalidIndex!;
-        _keycapMessage = '선택한 부품의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
-        _step = AppStep.keycapFill;
+        _designConfirmMessage = '선택한 키캡의 재고가 변경되었습니다. 색상을 다시 선택해 주세요.';
       }
     });
 
@@ -1126,10 +1165,9 @@ class _AppRootState extends State<AppRoot> {
 
     if (firstEmptyIndex != -1) {
       setState(() {
-        _cursor = firstEmptyIndex;
-        _keycapMessage = '색을 모두 선택하세요.';
-        _step = AppStep.keycapFill;
+        _designConfirmMessage = '색상이 비어 있는 키캡이 있습니다. 해당 키캡을 눌러 색상을 선택해 주세요.';
       });
+
       return;
     }
 
@@ -1268,7 +1306,8 @@ class _AppRootState extends State<AppRoot> {
           final refreshed = await _loadSoldOutStock(scope: 'keycap');
           if (!mounted) return;
           setState(() {
-            final invalidIndex = refreshed ? _removeInvalidColorSelections() : null;
+            final invalidIndex =
+                refreshed ? _removeInvalidColorSelections() : null;
             _cursor = invalidIndex ?? 0;
             _submittingOrder = false;
             _step = AppStep.keycapFill;
@@ -1292,7 +1331,8 @@ class _AppRootState extends State<AppRoot> {
   void _mockSubmitAndGoToReceipt() {
     _orderId = 'mock-order-id';
     setState(() {
-      _receiptOrderNumber = (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
+      _receiptOrderNumber =
+          (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
       _orderStatus = {'stage': 'queued', 'position_in_queue': 1};
       _receiptQrBytes = null; // 목업 모드에서는 실제 QR 이미지가 없음(자리표시자로 표시)
       _step = AppStep.receipt;
@@ -1375,7 +1415,12 @@ class _AppRootState extends State<AppRoot> {
         // [수정] 영수증 화면의 8초 자동 복귀 타이머는 화면 진입 시 이미
         // 예약되어 있으므로 여기서 다시 예약하지 않습니다. (다시 예약하면
         // 화면에 보이는 카운트다운과 실제 복귀 시점이 어긋납니다)
-        const terminalStages = {'completed', 'expired', 'cancelled', 'abandoned'};
+        const terminalStages = {
+          'completed',
+          'expired',
+          'cancelled',
+          'abandoned'
+        };
         if (terminalStages.contains(status['stage'])) {
           return false;
         }
@@ -1436,7 +1481,14 @@ class _AppRootState extends State<AppRoot> {
   bool _receiptStatusIsActive() {
     if (_orderId == null) return false;
     final stage = _orderStatus?['stage'] as String?;
-    const activeStages = {'assigned', 'dispensed', 'loaded', 'arrived', 'verified', 'completed'};
+    const activeStages = {
+      'assigned',
+      'dispensed',
+      'loaded',
+      'arrived',
+      'verified',
+      'completed'
+    };
     return activeStages.contains(stage);
   }
 
@@ -1484,7 +1536,8 @@ class _AppRootState extends State<AppRoot> {
         break;
 
       case AppStep.mbtiChoice:
-        screen = MbtiChoiceScreen(onSelect: (digit) => _selectMbtiChoice(digit));
+        screen =
+            MbtiChoiceScreen(onSelect: (digit) => _selectMbtiChoice(digit));
         break;
 
       case AppStep.mbtiQuiz:
@@ -1497,7 +1550,9 @@ class _AppRootState extends State<AppRoot> {
           optionTexts: quizOptions.map((o) => o['text'] as String).toList(),
           // [신규] 각 보기의 글자가 품절이면 화면에 표시해서, 관람객이
           // 왜 안 눌리는지 알 수 있게 함
-          optionSoldOut: quizOptions.map((o) => _isLetterSoldOut(o['letter'] as String)).toList(),
+          optionSoldOut: quizOptions
+              .map((o) => _isLetterSoldOut(o['letter'] as String))
+              .toList(),
           onSelect: (digit) => _selectQuizOption(digit),
         );
         break;
@@ -1578,6 +1633,12 @@ class _AppRootState extends State<AppRoot> {
           boardColor: BoardColors.of(_boardColorCode ?? 'g'),
           letters: _letters,
           colorAt: _colorAt,
+          colorCodes: _colorCodes, // 현재 키캡 색상 코드
+          keycapColorOptions: _colorMap, // 선택 가능한 키캡 색상
+          soldOutKeycaps: _soldOutKeycaps, // 품절 키캡
+          onKeycapColorChanged: _changeDesignKeycapColor,
+          stockLoading: _stockLoading,
+          message: _designConfirmMessage,
           isSubmitting: _submittingOrder,
           onConfirm: () => _confirmAndSubmitOrder(),
           onCancel: _cancelDesignAndReset,
@@ -1637,15 +1698,15 @@ class _AppRootState extends State<AppRoot> {
                             reverse: _direction == -1,
                             transitionBuilder:
                                 (child, primaryAnimation, secondaryAnimation) {
-                                  return SharedAxisTransition(
-                                    animation: primaryAnimation,
-                                    secondaryAnimation: secondaryAnimation,
-                                    transitionType:
-                                        SharedAxisTransitionType.horizontal,
-                                    fillColor: Colors.transparent,
-                                    child: child,
-                                  );
-                                },
+                              return SharedAxisTransition(
+                                animation: primaryAnimation,
+                                secondaryAnimation: secondaryAnimation,
+                                transitionType:
+                                    SharedAxisTransitionType.horizontal,
+                                fillColor: Colors.transparent,
+                                child: child,
+                              );
+                            },
                             child: KeyedSubtree(
                               key: ValueKey(_step),
                               child: screen,
@@ -1747,17 +1808,22 @@ class _ExitConfirmDialog extends StatelessWidget {
               children: [
                 const Text(
                   '종료하시겠습니까?',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.ink),
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.ink),
                 ),
                 const SizedBox(height: 16),
                 // 입력한 자리 수만큼 점(●)으로 마스킹해서 표시
                 Container(
                   height: 40,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(border: Border.all(color: AppColors.muted)),
+                  decoration:
+                      BoxDecoration(border: Border.all(color: AppColors.muted)),
                   child: Text(
                     input.isEmpty ? ' ' : '●' * input.length,
-                    style: const TextStyle(fontSize: 20, letterSpacing: 6, color: AppColors.ink),
+                    style: const TextStyle(
+                        fontSize: 20, letterSpacing: 6, color: AppColors.ink),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1765,7 +1831,10 @@ class _ExitConfirmDialog extends StatelessWidget {
                   height: 18,
                   child: Text(
                     errorText ?? '',
-                    style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1774,7 +1843,10 @@ class _ExitConfirmDialog extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: row.map((k) => _ExitKeypadButton(label: k, onTap: () => onKeyTap(k))).toList(),
+                      children: row
+                          .map((k) => _ExitKeypadButton(
+                              label: k, onTap: () => onKeyTap(k)))
+                          .toList(),
                     ),
                   ),
                 ),
@@ -1789,7 +1861,10 @@ class _ExitConfirmDialog extends StatelessWidget {
                     ),
                     child: const Text(
                       '아니오',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink),
                     ),
                   ),
                 ),
@@ -1816,10 +1891,12 @@ class _ExitKeypadButton extends StatelessWidget {
         width: 68,
         height: 56,
         alignment: Alignment.center,
-        decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 1.4)),
+        decoration:
+            BoxDecoration(border: Border.all(color: AppColors.ink, width: 1.4)),
         child: Text(
           label,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.ink),
+          style: const TextStyle(
+              fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.ink),
         ),
       ),
     );
