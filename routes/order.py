@@ -24,13 +24,11 @@ from config import (QUEUE_KEY,
 from infra.logger import logger
 
 from infra.extensions import r
-from infra.mobius import _push_station_snapshot
 from infra.keys import (_order_counter_key, 
                         _touch,
                         _ensure_initial_state,
                       )
 
-from services import stock
 from services.order_service import _is_valid_mbti
 from services.dispatch import try_assign_next
 from services.process import is_at_or_past
@@ -136,13 +134,9 @@ def post_order_list():
         if r.llen(QUEUE_KEY) >= MAX_QUEUE_LEN:
             return jsonify({'error': '대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요'}), 409
 
-        # 재고 예약 판정. 실재고에서 큐·진행 중 주문이 잡아둔 몫을 뺀 값으로 본다.
-        # 여기서 안 막으면 큐 안의 주문끼리 같은 카트리지를 놓고 경합한다 (명세 8-1).
-        ok, short = stock.can_accept(board, keycap, colors)
-        if not ok:
-            logger.warning(f"[order] 재고 부족으로 접수 거절 — {short}")
-            return jsonify({'error': '선택하신 조합의 재고가 부족합니다',
-                            'out_of_stock': short}), 409
+        # 재고 판정은 여기서 하지 않는다. 커스텀을 다 끝낸 사용자를 접수 단계에서
+        # 되돌리지 않기 위해서다 — 키오스크가 /stock/out 으로 품절 조합을 이미 막는다.
+        # 못 내보내는 주문은 배정 단계(stock.blockers)에서 '대기'로 흡수한다.
 
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
         order_seq = r.incr(_order_counter_key())

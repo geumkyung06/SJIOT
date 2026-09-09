@@ -104,42 +104,27 @@ def _dispatch_order(order_id):
 
 # stock 캐시는 services/stock.py 로 이관 (warehouse:stock 은 hash)
 
-# cnt_station
-# 현재 배정되어있는 stations들만 업데이트
+# cnt_station — 기록용. 구독자 0. 확정본 형태는 래퍼 없이 조립대 번호가 최상위다.
+#   {"1": {"order_id": "ord_xxxx", "order_seq": "109"}, "2": {...}, "3": {...}}
 def send_station_cin(stations):
-    # 나중에 tables 도 변경 필요
-    con = {"stations": stations}
-    return create_cin("cnt_station", con)
+    return create_cin("cnt_station", stations)
 
 def _build_station_snapshot():
     stations = {}
-    now = datetime.now(KST).isoformat()
-
     for sid in ("1", "2", "3"):
         order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
         od = r.hgetall(f"order:{order_id}") if order_id else None
-
         if not od:
-            # cin 폴링해야할 듯(cnt_process)
-            # order_id 기준으로 찾아서 업뎃
-            stations[sid] = {"order_id": None,
-                             "order_seq": None, "updated_at": now}
+            stations[sid] = {"order_id": None, "order_seq": None}
             continue
-
-        status = od.get("stage")
-        if status is None:
-            logger.warning(f"[station] 매핑 없는 stage={status} (station={sid})")
-            # cin 폴링해야할 듯(cnt_process)
-            status = "occupied"
-        stations[sid] = {"order_id": order_id,
-                         "order_seq": od.get("order_seq"), "updated_at": now}
+        stations[sid] = {"order_id": order_id, "order_seq": od.get("order_seq")}
     return stations
 
 def _push_station_snapshot():
-    """redis 기준 스냅샷을 cnt_table로 전송. 실패해도 로직은 계속."""
+    """redis 기준 스냅샷을 cnt_station에 기록. 실패해도 로직은 계속 (명령이 아니다)."""
     ok = send_station_cin(_build_station_snapshot())
     if not ok:
-        logger.warning("[table] cnt_table 스냅샷 전송 실패")
+        logger.warning("[station] cnt_station 기록 실패")
     return ok
 
 # 명령은 cnt_process 하나로만 나간다 (services/process.push_process)

@@ -54,3 +54,6 @@ app.*.map.json
 
 test_subscriptions.py
 .gcloudignore
+
+Claude outputs/
+debug/

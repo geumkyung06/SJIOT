@@ -5,6 +5,10 @@ QUEUE_KEY = os.getenv("QUEUE_KEY", "order:queue")
 WAREHOUSE_KEY = os.getenv("WAREHOUSE_KEY", "warehouse:occupancy")
 STATION_KEY = os.getenv("STATION_KEY", "station:occupancy")
 AGV_KEY = os.getenv("AGV_KEY", "agv:occupancy")
+# cnt_agv 가 올린 status 원문을 그대로 보관한다 (loaded·station_arrived·unloaded·parked…).
+# occupancy(idle/busy)만으로는 'AGV가 지금 어디서 뭘 하는 중인지'를 알 수 없어서
+# 워치독이 정상 대기와 고장을 구분하지 못한다.
+AGV_STATUS_KEY = os.getenv("AGV_STATUS_KEY", "agv:status")
 DEADLINE_KEY = os.getenv("DEADLINE_KEY", "order:deadlines")
 
 WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")
@@ -20,6 +24,11 @@ STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
 STATION_UNCLAIM_MIN_SEC = int(os.getenv("STATION_UNCLAIM_MIN_SEC", "150"))  # 2분 30초
 
 ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
+
+# 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관 — TEST_KEY_TTL 로 건드리지 않는다.
+ARCHIVE_PREFIX = os.getenv("ARCHIVE_PREFIX", "orders:archive:")
+STATS_PREFIX = os.getenv("STATS_PREFIX", "stats:")
+ARCHIVE_TTL = int(os.getenv("ARCHIVE_TTL", str(90 * 24 * 3600)))
 
 ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
 

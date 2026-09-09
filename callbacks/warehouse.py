@@ -182,8 +182,17 @@ def on_cartridge_status(kind, cartridge_id, con):
     # disable / empty — 진행 중 주문이 그 칸을 '아직 배출 전'일 때만 fault (명세 6-3)
     order_id = r.get(WAREHOUSE_ORDER_KEY)
     if order_id and cartridge_id in stock.parts_of(order_id, kind) and _still_needs(order_id, kind):
-        fault = f"{kind}_empty" if status == "empty" else f"{kind}_cartridge_failed"
-        set_fault(order_id, fault)          # 안에서 push_process를 부른다
-    else:
-        logger.warning(f"[{kind}_status] {cartridge_id}={status} — 해당 조합 주문 차단")
-        push_process()                      # 진행 주문이 없어도 restock 목록은 나가야 한다
+        if status == "empty":
+            set_fault(order_id, f"{kind}_empty")     # 안에서 push_process를 부른다
+            return
+        if kind == "keycap":
+            set_fault(order_id, "keycap_cartridge_failed")
+            return
+        # 보드는 카트리지가 아니라 보관대다 — 로봇팔이 트레이에 직접 넣으므로
+        # 카트리지 고장이라는 게 없다 (확정본에서 board_cartridge_failed 폐기).
+        logger.error(f"[board_status] {cartridge_id}={status} — 보관대 이상. fault 없음")
+        push_process()
+        return
+
+    logger.warning(f"[{kind}_status] {cartridge_id}={status} — 해당 조합 주문 차단")
+    push_process()                          # 진행 주문이 없어도 restock 목록은 나가야 한다

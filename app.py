@@ -16,6 +16,7 @@ from routes.order import bp as order_bp
 from routes.stock import bp as stock_bp
 from routes.station import bp as station_bp
 from routes.callback import bp as callback_bp
+from routes.admin import bp as admin_bp
 
 
 def _boot_background():
@@ -73,6 +74,7 @@ def create_app():
     app.register_blueprint(stock_bp)
     app.register_blueprint(station_bp)
     app.register_blueprint(callback_bp)
+    app.register_blueprint(admin_bp)
 
     _ensure_initial_state()
 

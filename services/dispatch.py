@@ -5,19 +5,26 @@
     2. 조립대 빈 칸이 있나   station:current_order:{1,2,3}
     3. 이 주문이 쓰는 카트리지 5칸이 멀쩡한가   stock.blockers()
 
+AGV는 게이트로 쓰지 않는다. AGV가 1대라 넣고 싶어지지만, 넣으면 앞 주문이 조립대에서
+사용자를 기다리는 동안(최대 3분) 창고가 놀게 되어 사실상 1주문씩만 도는 파이프라인이 된다.
+대신 AGV를 기다리느라 pickup_reached 마감(120초)을 넘기는 문제는 워치독이 흡수한다 —
+cnt_agv 의 마지막 status 가 station_arrived 면 고장이 아니라 정상 대기이므로 마감을 연장한다
+(services/watchdog.py `_agv_waiting_at_station`).
+
 카트리지 idle/busy는 게이트로 쓰지 않는다. 창고가 idle이면 카트리지도 idle이어야 하고,
 idle CIN 하나만 유실돼도(주문당 카트리지 콜백이 10건) 그 칸이 영구히 busy로 남아 교착된다.
 
 배정 트리거 — 배정을 막던 조건이 풀리는 지점 전부에서 try_assign_next()를 부른다.
 창고 busy거나 빈 조립대가 없으면 즉시 None으로 빠지므로 값이 싸다.
-    POST /order 접수 직후          큐에 새 주문
-    pickup_reached                 창고가 비었음 (트레이가 픽업대 도착, 벨트 비었음)
-    completed / unclaimed          조립대가 비었음
-    카트리지 정상 복귀              막혀 있던 주문이 풀림
+    POST /order 접수 직후          큐에 새 주문                    routes/order.py
+    pickup_reached                 창고가 비었음 (벨트 비었음)      callbacks/conveyor.py
+    completed / unclaimed          조립대가 비었음                  routes/station.py · watchdog
+    카트리지 정상 복귀              막혀 있던 주문이 풀림            callbacks/warehouse.py
 """
 import json
 
-from config import QUEUE_KEY, WAREHOUSE_KEY, STATION_KEY, WAREHOUSE_ORDER_KEY, STATION_ORDER_PREFIX
+from config import (QUEUE_KEY, WAREHOUSE_KEY, STATION_KEY,
+                    WAREHOUSE_ORDER_KEY, STATION_ORDER_PREFIX)
 from infra.extensions import r
 from infra.logger import logger
 from infra.keys import _touch, _touch_order, _get_free_station
@@ -82,19 +89,25 @@ def _assign(order_id, station_id):
     _touch(WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY, f"{STATION_ORDER_PREFIX}{station_id}")
     _touch_order(order_id)
 
-    # cnt_order 기록. 실패하면 배정을 통째로 되돌린다 — 창고가 못 받은 주문을 진행 중으로 두면 안 된다.
-    if not _dispatch_order(order_id):
-        logger.error(f"[assign] cnt_order 기록 실패 → 배정 롤백 ({order_id})")
+    # 명령은 cnt_process 하나로만 나간다. 창고·AGV는 그것만 보고 움직이므로
+    # '배정이 실제로 전달됐는가'의 판정도 cnt_process push 성공 여부다.
+    # 실패하면 배정을 통째로 되돌린다 — 창고가 못 받은 주문을 진행 중으로 두면 안 된다.
+    if not set_stage(order_id, "assigned"):
+        logger.error(f"[assign] cnt_process push 실패 → 배정 롤백 ({order_id})")
         _rollback(order_id, station_id)
         return None
 
     logger.info(f"[assign] {order_id} → station {station_id}")
-    set_stage(order_id, "assigned")     # cnt_process push까지 여기서 일어난다
-    _push_station_snapshot()
+    # 아래 둘은 기록용이다. 실패해도 로그만 남기고 진행한다 (명령이 아니므로).
+    _dispatch_order(order_id)           # cnt_order — 배정 시점 기록
+    _push_station_snapshot()            # cnt_station — 조립대 배정 변경 기록
     return order_id
 
 
 def _rollback(order_id, station_id):
+    from services import watchdog
+
+    watchdog.disarm(order_id)           # set_stage가 걸어둔 assigned 마감을 푼다
     r.set(WAREHOUSE_KEY, "idle")
     r.delete(WAREHOUSE_ORDER_KEY)
     r.hset(STATION_KEY, station_id, "idle")
@@ -118,7 +131,13 @@ def release_warehouse():
 
 
 def release_station(station_id):
-    """completed / unclaimed — 조립대를 비운다."""
+    """completed / unclaimed — 조립대를 비운다.
+
+    배정이 안 되면 cnt_process를 따로 밀지 않는다. set_stage(completed/unclaimed) 시점엔
+    조립대가 아직 안 비어서 그 주문이 스냅샷에 남지만, station:current_order가 지워졌으므로
+    '다음 push'에서 active_order_ids()에 안 잡혀 자동으로 빠진다.
+    살아있는 구독자는 seq가 안 오르면 무시하고, completed는 어느 머신의 명령도 아니다.
+    """
     r.delete(f"{STATION_ORDER_PREFIX}{station_id}")
     r.hset(STATION_KEY, str(station_id), "idle")
     _touch(STATION_KEY)

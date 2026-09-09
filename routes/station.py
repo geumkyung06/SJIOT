@@ -12,6 +12,7 @@ from config import (QUEUE_KEY,
                     MAX_QUEUE_LEN,
                     STATION_VERIFIED_PREFIX,
                     STATION_UNCLAIM_MIN_SEC,
+                    AGV_STATUS_KEY,
                     ORDER_PAGE_BASE,
                     STATION_RESET_PASSWORD,
                     COLOR_LIST,
@@ -24,7 +25,7 @@ from infra.logger import logger
 from infra.extensions import r
 from infra.mobius import _push_station_snapshot
 from services.process import set_stage, is_before, is_after
-from services.dispatch import release_station
+from services.archive import finish_order
 from services.watchdog import DEADLINE_KEY
 from infra.keys import (_order_counter_key, 
                         _touch,
@@ -32,20 +33,15 @@ from infra.keys import (_order_counter_key,
                       )
 
 from services.order_service import _is_valid_mbti
+from services.station_service import (elapsed_since_arrival,
+                                      unclaim_guard,
+                                      check_station_timeouts)
 
 bp = Blueprint('station', __name__)
 
 
-def _elapsed_since_arrival(order_data):
-    """arrived_at 이후 경과 초. 기록이 없거나 깨졌으면 None."""
-    raw = order_data.get("arrived_at")
-    if not raw:
-        return None
-    try:
-        return (datetime.now(KST) - datetime.fromisoformat(raw)).total_seconds()
-    except ValueError:
-        logger.warning(f"[station] arrived_at 파싱 실패 {raw!r}")
-        return None
+# arrived_at 계산·노쇼 판정은 services/station_service.py 에 있다 (라우트는 응답만 만든다)
+_elapsed_since_arrival = elapsed_since_arrival
 
 @bp.route('/station/<order_id>/start', methods=['POST'])
 def station_start(order_id):
@@ -191,9 +187,8 @@ def station_complete(station_id):
     if is_after(stage, "received"):
         return jsonify({'error': '이미 종료된 주문입니다', 'stage': stage}), 409
 
-    r.delete(f"{STATION_VERIFIED_PREFIX}{station_id}")
-    set_stage(order_id, "completed")            # cnt_process push + 타임아웃 해제
-    release_station(station_id)                 # 조립대 비우고 다음 주문 배정 시도
+    # 아카이브 + 집계 → stage 전이 → 조립대 해제 → 다음 배정 (services/archive.py)
+    finish_order(order_id, "completed")
     # 배정이 됐으면 _assign이 cnt_station을 올린다. 안 됐으면 올릴 변화가 없다.
 
     return jsonify({'ok': True, 'order_id': order_id}), 200
@@ -258,25 +253,26 @@ def station_unclaim(station_id):
     if is_after(stage, "arrived"):
         return jsonify({'error': '이미 처리된 주문입니다', 'stage': stage}), 409
 
-    # 3분 카운트는 프론트가 돌리지만 그건 클라이언트 값이다. 그대로 믿으면 도착 직후에도
-    # 요청 하나로 노쇼 처리가 된다. 서버가 arrived_at으로 다시 잰다.
-    # arrived_at이 없으면(서버 재시작 등) 막지 않는다 — 막으면 조립대가 영영 안 비고,
-    # 그 경우는 워치독 arrived(300초)가 어차피 정리한다.
-    elapsed = _elapsed_since_arrival(order_data)
-    if elapsed is not None and elapsed < STATION_UNCLAIM_MIN_SEC:
+    # QR 인증 후 조립 타임아웃(STATION_TIMEOUT_SEC)을 넘긴 조립대를 여기서 같이 정리한다.
+    # 이 백업 경로는 부르는 곳이 없어서 죽어 있었다. 노쇼 요청은 사람이 조립대 앞에 없다는
+    # 신호라 다른 칸의 방치도 같이 훑기 좋은 시점이다.
+    check_station_timeouts()
+
+    # 노쇼로 처리해도 되는 시점인지는 서버가 arrived_at 으로 다시 잰다 (station_service).
+    ok, elapsed, remain = unclaim_guard(order_data)
+    if not ok:
         return jsonify({
             'error': '아직 대기 시간이 남았습니다',
-            'elapsed_sec': int(elapsed),
-            'remain_sec': math.ceil(STATION_UNCLAIM_MIN_SEC - elapsed),
+            'elapsed_sec': elapsed,
+            'remain_sec': remain,
         }), 425
     if elapsed is None:
         logger.warning(f"[station] {order_id} arrived_at 없음 — 시간 가드 건너뜀")
 
-    set_stage(order_id, "unclaimed")            # 노쇼는 fault가 아니라 정상 종료 경로
-    r.delete(f"{STATION_VERIFIED_PREFIX}{station_id}")
+    # 노쇼는 fault가 아니라 정상 종료 경로. 아카이브까지 같이 남긴다.
     # agv:occupancy는 busy로 둔다. AGV가 아직 트레이를 들고 폐기장소로 가는 중이고,
     # discarded → parked를 올리면 그때 idle이 된다.
-    release_station(station_id)
+    finish_order(order_id, "unclaimed", reason="unclaimed")
 
     return jsonify({
         'ok': True,
@@ -356,13 +352,15 @@ def station_reset(station_id):
             r.delete(f"{STATION_ORDER_PREFIX}{sid}")
             r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
         r.delete(QUEUE_KEY)
-        r.delete(DEADLINE_KEY, "process:last")     # 워치독 예약 · 스냅샷 지문
-        for key in r.scan_iter("order:*:pending") :
-            r.delete(key)
-        for key in r.scan_iter("order:*:wrong") :
-            r.delete(key)
-        for key in r.scan_iter("order:*:gate") :
-            r.delete(key)
+        r.delete(AGV_STATUS_KEY)                   # AGV 마지막 보고 (워치독 연장 판정에 쓰임)
+        r.delete(DEADLINE_KEY, "process:last", "process:seq")   # 워치독 예약 · 스냅샷 지문/번호
+
+        # 주문 스코프 키 전부. order:{id} 해시가 남으면 죽은 주문이 스냅샷·조회에 되살아난다.
+        # order:counter:* 와 orders:archive:* / stats:* 는 건드리지 않는다 — 집계 기록이다.
+        for pattern in ("order:*:pending", "order:*:wrong", "order:*:gate",
+                        "order:ord_*", "idempotency:*"):
+            for key in r.scan_iter(pattern):
+                r.delete(key)
 
         _push_station_snapshot()
     

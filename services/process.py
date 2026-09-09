@@ -59,7 +59,9 @@ def set_stage(order_id, stage):
     else:
         watchdog.arm(order_id, stage)
 
-    push_process()
+    # push 성공 여부를 돌려준다 — 명령 채널이 cnt_process 하나뿐이라
+    # '창고가 이 주문을 받았는가'의 판정 근거가 이것밖에 없다 (dispatch._assign).
+    return push_process()
 
 def set_fault(order_id, fault):
     """fault만 세우고 stage는 그대로 둔다

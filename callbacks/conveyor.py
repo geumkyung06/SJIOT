@@ -14,6 +14,13 @@ from services.process import set_stage, set_fault, is_at_or_past
 KEYCAP_FIELDS = ("keycap1", "keycap2", "keycap3", "keycap4")
 
 
+def _keycap_result(con):
+    """확정본 con 은 {"order_id", "status": {"keycap1".."keycap4"}} 로 한 겹 안에 있다.
+    최상위에 그대로 싣는 경우도 받아둔다 — 창고 구현이 어느 쪽이든 깨지지 않게."""
+    inner = con.get("status")
+    return inner if isinstance(inner, dict) else con
+
+
 def handle_conveyor(path, con):
     match path:
         case ["cnt_keycap_conveyor"]:
@@ -47,7 +54,8 @@ def on_keycap_conveyor(con):
         return
     order_id, stage = got
 
-    failed = [f for f in KEYCAP_FIELDS if con.get(f) == "failed"]
+    result = _keycap_result(con)
+    failed = [f for f in KEYCAP_FIELDS if result.get(f) == "failed"]
     if failed:
         # W7 미해결 — con은 키캡별(keycap1~4)인데 fault는 벨트 구간별(01/02)이라 축이 다르다.
         # 창고팀이 section 필드를 넣어주기 전까지는 그 값이 있을 때만 구분한다.
@@ -56,7 +64,7 @@ def on_keycap_conveyor(con):
         set_fault(order_id, f"keycap_{section}_belt_jammed")
         return
 
-    if not all(con.get(f) == "done" for f in KEYCAP_FIELDS):
+    if not all(result.get(f) == "done" for f in KEYCAP_FIELDS):
         logger.info(f"[keycap_conveyor] {order_id} 진행 중 — {con}")
         return
     if is_at_or_past(stage, "keycap_reached"):
