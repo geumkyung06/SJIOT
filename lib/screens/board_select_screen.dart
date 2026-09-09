@@ -6,6 +6,9 @@ import '../theme/app_theme.dart';
 /// 판 크기는 1×4로 고정되고 대신 "판 색상"을 고르는 화면으로 바뀌었습니다.
 /// 애니메이션 구조(등장 타이밍 등)는 기존 화면과 동일하게 유지했습니다.
 ///
+/// [디자인 교체] 시안 톤 — 색 판 위에 키캡이 꽂힐 자리를 뚫어 보여주고,
+/// 그 아래 숫자 뱃지와 색 이름을 둡니다.
+///
 /// 색상 코드는 키캡 색상과 동일한 4가지(g/y/b/r)를 그대로 씁니다.
 /// ⚠️ 'r' 코드는 화면에는 핑크로 보이지만, 백엔드에는 그대로 'red'/'r'로
 /// 전송합니다(코드 키를 바꾸지 말 것 — 팀 확정 사항).
@@ -93,22 +96,22 @@ class _BoardSelectScreenState extends State<BoardSelectScreen> with TickerProvid
           opacity: _labelOpacity,
           child: const Text('STEP 04 / 06', style: AppTextStyles.label),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _FadeSlide(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('보드판 색상을 선택하세요', style: AppTextStyles.heading),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text('숫자 1~4를 눌러 선택하세요', style: AppTextStyles.body),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 72),
         Wrap(
           alignment: WrapAlignment.center,
-          spacing: 32,
-          runSpacing: 32,
+          spacing: 44,
+          runSpacing: 44,
           children: List.generate(_colors.length, (i) {
             final spec = _colors[i];
             final isSoldOut = widget.soldOutColors.contains(spec.code);
@@ -144,89 +147,73 @@ class _BoardColorOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = isSoldOut ? Colors.grey.shade400 : spec.color;
+    final accent = isSoldOut ? AppColors.disabledBg : spec.color;
 
     return Column(
       children: [
-        Stack(
-          children: [
-            // [수정] 이전에는 이 자리에 색이 있는 사각형(그림자 역할)을 뒀는데,
-            // 이제 판 자체가 색을 갖게 되면서 그림자는 잉크색으로 바꿔
-            // "종이가 겹쳐진" 입체감만 남기고 색 표현은 판(_BoardPreview)이
-            // 전담하도록 했습니다.
-            Positioned(
-              left: -8,
-              top: -8,
-              child: Container(width: 200, height: 130, color: AppColors.ink),
-            ),
-            _BoardPreview(color: accent),
-          ],
+        _BoardPreview(color: accent, dimmed: isSoldOut),
+        const SizedBox(height: 26),
+        KeyNumBadge(
+          label: '${spec.digit}',
+          disabled: isSoldOut,
+          size: 54,
+          fontSize: 26,
         ),
-        const SizedBox(height: 16),
-        Container(
-          width: 52,
-          height: 52,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            border: Border.all(color: isSoldOut ? Colors.grey.shade500 : AppColors.ink, width: 2),
-          ),
-          child: Text(
-            '${spec.digit}',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: isSoldOut ? Colors.grey.shade600 : AppColors.ink,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
         Text(
           spec.name,
           style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: isSoldOut ? Colors.grey.shade600 : AppColors.ink,
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: isSoldOut ? AppColors.disabledText : AppColors.ink,
           ),
         ),
         if (isSoldOut)
           const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text('재고없음', style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+            padding: EdgeInsets.only(top: 10),
+            child: SoldOutPill(text: '재고없음', fontSize: 19),
           ),
       ],
     );
   }
 }
 
-// [수정] 실제 키보드 기판처럼: 판(케이스)은 선택한 색으로 칠하고,
-// 키캡이 꽂히는 4개 자리는 투명하게 뚫어서 그 아래(화면 배경)가 비쳐
-// 보이게 합니다. [수정] 키캡 모양과 통일감을 주기 위해 세로로 길쭉한
-// 직사각형이 아니라 키캡과 같은 정사각형 구멍으로 바꿨습니다.
+/// [디자인] 시안의 판 미리보기 — 색 판 위에 키캡이 꽂힐 4개 자리를 뚫어 놓은 모양.
 class _BoardPreview extends StatelessWidget {
   final Color color;
-  const _BoardPreview({required this.color});
+  final bool dimmed;
+  const _BoardPreview({required this.color, this.dimmed = false});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 200,
-      height: 130,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: color, border: Border.all(color: AppColors.ink, width: 2)),
+      padding: const EdgeInsets.all(26),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+        border: dimmed
+            ? Border.all(color: AppColors.disabledLine, width: 2)
+            : Border.all(color: AppColors.ink.withValues(alpha: 0.10), width: 2),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisSize: MainAxisSize.min,
         children: List.generate(
           4,
           (c) => Container(
-            width: 38,
-            height: 38,
+            width: 62,
+            height: 70,
+            margin: EdgeInsets.only(right: c == 3 ? 0 : 14),
             decoration: BoxDecoration(
-              // 진짜 투명 — 화면 배경(AppColors.background)이 그대로 비쳐서
-              // "키캡이 들어갈 구멍"처럼 보입니다.
+              // 진짜 투명 — 아래 판 색이 그대로 비쳐서
+              // "키캡이 들어갈 자리"처럼 보입니다.
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: dimmed
+                    ? AppColors.disabledLine
+                    : AppColors.ink.withValues(alpha: 0.22),
+                width: 3,
+              ),
             ),
           ),
         ),

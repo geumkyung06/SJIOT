@@ -3,8 +3,9 @@ import '../theme/app_theme.dart';
 
 /// STEP 00 — 시작 화면(인트로)
 ///
-/// 피그마(Figma Make) `IntroScreen`의 모션을 1:1로 이식합니다.
-/// (참고: src/app/App.tsx > function IntroScreen())
+/// [디자인 교체] "딸깍 Keyring Studio" 시안 톤으로 다시 칠했습니다.
+/// 애니메이션 타임라인(딜레이·지속시간·이동 픽셀)과 동작은 이전과 100% 동일하고,
+/// 색·글꼴 크기·모양(둥근 모서리, 입체 키캡, 하드 섀도 버튼)만 바뀌었습니다.
 ///
 /// 구현 방식(중요, v2):
 /// 이전 버전은 Timer.delayed로 각 요소의 `visible` bool을 따로 켜고
@@ -163,76 +164,113 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _FadeSlide(
               opacity: _tileOpacity[0],
               y: _tileY[0],
-              child: const _LogoTile(color: AppColors.coral, label: '딸'),
+              child: const _LogoTile(color: KeycapColors.green, label: '딸'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[1],
               y: _tileY[1],
-              child: const _LogoTile(color: AppColors.orange, label: '깍'),
+              child: const _LogoTile(color: KeycapColors.yellow, label: '깍'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[2],
               y: _tileY[2],
-              child: const _LogoTile(color: AppColors.yellow, label: 'KEY'),
+              child: const _LogoTile(color: KeycapColors.blue, label: 'KEY'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[3],
               y: _tileY[3],
-              child: const _LogoTile(color: AppColors.green, icon: Icons.auto_awesome),
+              child: const _LogoTile(
+                color: KeycapColors.red,
+                icon: Icons.auto_awesome,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 44),
         _FadeSlide(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text(
             '딸깍',
-            style: TextStyle(fontSize: 88, fontWeight: FontWeight.w900, color: AppColors.ink),
+            style: TextStyle(
+              fontSize: 118,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -2,
+              height: 1.1,
+              color: AppColors.ink,
+            ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         AnimatedBuilder(
           animation: _subtitleOpacity,
-          builder: (context, child) => Opacity(opacity: _subtitleOpacity.value, child: child),
+          builder: (context, child) =>
+              Opacity(opacity: _subtitleOpacity.value, child: child),
           child: const Text(
             'CLICKY KEYRING STUDIO',
-            style: TextStyle(fontSize: 18, letterSpacing: 6, color: AppColors.muted, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 24,
+              letterSpacing: 9,
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 22),
         AnimatedBuilder(
           animation: _dividerScaleX,
           builder: (context, child) => Transform.scale(
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.center,
             scaleX: _dividerScaleX.value,
             child: child,
           ),
-          child: Container(width: 260, height: 2, color: AppColors.ink),
+          child: Container(
+            width: 360,
+            height: 3,
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 34),
         AnimatedBuilder(
           animation: _bodyOpacity,
-          builder: (context, child) => Opacity(opacity: _bodyOpacity.value, child: child),
-          child: const Text('나만의 MBTI 키링을 만들어 보세요', style: AppTextStyles.body),
+          builder: (context, child) =>
+              Opacity(opacity: _bodyOpacity.value, child: child),
+          child: const Text(
+            '나만의 MBTI 키링을 만들어 보세요',
+            style: AppTextStyles.body,
+          ),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 54),
         _FadeSlide(
           opacity: _enterOpacity,
           y: _enterY,
           child: AnimatedBuilder(
             animation: _pulseOpacity,
-            builder: (context, child) => Opacity(opacity: _pulseOpacity.value, child: child),
+            builder: (context, child) =>
+                Opacity(opacity: _pulseOpacity.value, child: child),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: widget.enabled ? widget.onEnter : null,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-                child: const Text('시작하기', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 76,
+                  vertical: 28,
+                ),
+                decoration: AppDeco.pushButton(),
+                child: const Text(
+                  '시작하기',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink,
+                  ),
+                ),
               ),
             ),
           ),
@@ -275,6 +313,7 @@ class _FadeSlide extends StatelessWidget {
   }
 }
 
+/// [디자인] 시안의 입체 키캡을 그대로 쓴 로고 타일.
 class _LogoTile extends StatelessWidget {
   final Color color;
   final String? label;
@@ -283,14 +322,32 @@ class _LogoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 84,
-      height: 84,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: color, border: Border.all(color: AppColors.ink, width: 2)),
-      child: icon != null
-          ? Icon(icon, color: Colors.white, size: 26)
-          : Text(label ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
+    if (icon != null) {
+      return SizedBox(
+        width: 116,
+        height: 130,
+        child: Stack(
+          children: [
+            Keycap(
+              color: color,
+              letter: '',
+              width: 116,
+              height: 130,
+            ),
+            Center(
+              child: Icon(icon, color: AppColors.ink, size: 40),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Keycap(
+      color: color,
+      letter: label ?? '',
+      width: 116,
+      height: 130,
+      fontSize: label != null && label!.length > 1 ? 26 : 40,
     );
   }
 }

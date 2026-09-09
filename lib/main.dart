@@ -1646,6 +1646,11 @@ class _AppRootState extends State<AppRoot> {
         _step != AppStep.designConfirm &&
         _step != AppStep.receipt;
 
+    // [디자인] 시안 상단 진행바 표시 여부. 화면 전환 로직과는 무관한
+    // 순수 표시용 값입니다.
+    final progressStep = _progressStepOf(_step);
+    final showProgress = progressStep > 0;
+
     return KeyboardListener(
       focusNode: _focusNode,
       autofocus: true,
@@ -1655,16 +1660,17 @@ class _AppRootState extends State<AppRoot> {
         behavior: HitTestBehavior.translucent,
         child: Scaffold(
           backgroundColor: AppColors.background,
-          body: Stack(
+          body: KioskScaler(
+            child: Stack(
             children: [
-              SafeArea(
+              _KioskCardFrame(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     return SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      padding: EdgeInsets.zero,
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight - 48,
+                          minHeight: constraints.maxHeight,
                         ),
                         // 화면 전환 애니메이션 (슬라이드 + 페이드, 방향 인식)
                         // fillColor: Colors.transparent 로 지정해서 전환 중
@@ -1696,11 +1702,26 @@ class _AppRootState extends State<AppRoot> {
                   },
                 ),
               ),
+              // [디자인] 시안 상단 진행바
+              if (showProgress)
+                Positioned(
+                  top: KioskCanvas.margin + 58,
+                  left: KioskCanvas.margin + 320,
+                  right: KioskCanvas.margin + 72,
+                  child: _StepProgress(current: progressStep),
+                ),
+              // [디자인] 시안 하단 로고 푸터
+              const Positioned(
+                left: KioskCanvas.margin,
+                right: KioskCanvas.margin,
+                bottom: KioskCanvas.margin + 40,
+                child: _BrandFooter(),
+              ),
               if (showBackButton)
                 Positioned(
-                  top: 16,
-                  left: 16,
-                  child: SafeArea(child: _BackButton(onTap: _goBack)),
+                  top: KioskCanvas.margin + 44,
+                  left: KioskCanvas.margin + 56,
+                  child: _BackButton(onTap: _goBack),
                 ),
               // [키오스크 종료용] 화면에 아무것도 안 보이는 투명한 영역.
               // 이 구석을 3초 안에 5번 연속 터치하면 종료 확인창(비밀번호
@@ -1734,6 +1755,7 @@ class _AppRootState extends State<AppRoot> {
                   onCancel: _closeExitDialog,
                 ),
             ],
+            ),
           ),
         ),
       ),
@@ -1772,14 +1794,22 @@ class _ExitConfirmDialog extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: () {},
         child: Container(
-          color: Colors.black.withValues(alpha: 0.6),
+          color: AppColors.ink.withValues(alpha: 0.55),
           alignment: Alignment.center,
           child: Container(
-            width: 340,
-            padding: const EdgeInsets.all(28),
+            width: 620,
+            padding: const EdgeInsets.all(56),
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: AppColors.ink, width: 2),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: AppColors.border, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: 0.18),
+                  blurRadius: 48,
+                  offset: const Offset(0, 20),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1787,38 +1817,43 @@ class _ExitConfirmDialog extends StatelessWidget {
                 const Text(
                   '종료하시겠습니까?',
                   style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.ink),
+                    fontSize: 36,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: AppColors.ink,
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 28),
                 // 입력한 자리 수만큼 점(●)으로 마스킹해서 표시
                 Container(
-                  height: 40,
+                  height: 72,
                   alignment: Alignment.center,
-                  decoration:
-                      BoxDecoration(border: Border.all(color: AppColors.muted)),
+                  decoration: AppDeco.outlined(radius: 16),
                   child: Text(
                     input.isEmpty ? ' ' : '●' * input.length,
                     style: const TextStyle(
-                        fontSize: 20, letterSpacing: 6, color: AppColors.ink),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 18,
-                  child: Text(
-                    errorText ?? '',
-                    style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold),
+                      fontSize: 30,
+                      letterSpacing: 10,
+                      color: AppColors.ink,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
+                SizedBox(
+                  height: 32,
+                  child: Text(
+                    errorText ?? '',
+                    style: const TextStyle(
+                      color: AppColors.danger,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 ..._keys.map(
                   (row) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: row
@@ -1828,21 +1863,27 @@ class _ExitConfirmDialog extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 28),
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: onCancel,
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.ink, width: 2),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text(
-                      '아니오',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.ink),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onCancel,
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 22),
+                      decoration: AppDeco.outlined(
+                        radius: 18,
+                        borderColor: AppColors.ink,
+                      ),
+                      child: const Text(
+                        '아니오',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1866,21 +1907,24 @@ class _ExitKeypadButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        width: 68,
-        height: 56,
+        width: 138,
+        height: 88,
         alignment: Alignment.center,
-        decoration:
-            BoxDecoration(border: Border.all(color: AppColors.ink, width: 1.4)),
+        decoration: AppDeco.outlined(radius: 16),
         child: Text(
           label,
           style: const TextStyle(
-              fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.ink),
+            fontSize: 30,
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+          ),
         ),
       ),
     );
   }
 }
 
+/// [디자인] 시안의 좌측 상단 '← 이전' 버튼 (연한 테두리 pill)
 class _BackButton extends StatelessWidget {
   final VoidCallback onTap;
   const _BackButton({required this.onTap});
@@ -1889,28 +1933,199 @@ class _BackButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          border: Border.all(color: AppColors.ink, width: 2),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
+        decoration: AppDeco.outlined(radius: 16),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.arrow_back, size: 16, color: AppColors.ink),
-            SizedBox(width: 6),
+            Text(
+              '←',
+              style: TextStyle(
+                fontSize: 24,
+                height: 1.0,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
+            SizedBox(width: 12),
             Text(
               '이전',
               style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.ink,
-                fontSize: 13,
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                color: AppColors.muted,
               ),
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+/// ---------------------------------------------------------------------------
+/// [디자인] 시안 공통 셸 — 흰 카드 / 상단 진행바 / 하단 로고 푸터
+/// ---------------------------------------------------------------------------
+/// 아래 위젯들은 화면을 "그리는" 역할만 합니다. 상태나 흐름을 바꾸지 않습니다.
+
+/// 배경(#F5F6F8) 위에 얹히는 흰 카드. 모든 화면이 이 안에 들어갑니다.
+class _KioskCardFrame extends StatelessWidget {
+  final Widget child;
+  const _KioskCardFrame({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(KioskCanvas.margin),
+      child: DecoratedBox(
+        decoration: AppDeco.card,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            KioskCanvas.cardPaddingH,
+            KioskCanvas.cardPaddingTop,
+            KioskCanvas.cardPaddingH,
+            KioskCanvas.cardPaddingBottom,
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// 시안 우측 상단의 진행 막대 (STEP n / 6)
+class _StepProgress extends StatelessWidget {
+  final int current;
+  const _StepProgress({required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = (current / 6).clamp(0.0, 1.0);
+
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: Stack(
+                children: [
+                  const Positioned.fill(
+                    child: ColoredBox(color: AppColors.border),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: ratio,
+                      heightFactor: 1,
+                      child: const ColoredBox(color: AppColors.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 22),
+        Text(
+          '$current / 6',
+          style: const TextStyle(
+            fontSize: 21,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2,
+            color: AppColors.muted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 시안 하단의 세종대학교 / 사물인터넷혁신융합대학사업단 로고 푸터
+class _BrandFooter extends StatelessWidget {
+  const _BrandFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const _FooterLogo(
+          asset: 'assets/images/logo-sejong.png',
+          label: '세종대학교',
+          height: 66,
+        ),
+        Container(
+          width: 2,
+          height: 44,
+          margin: const EdgeInsets.symmetric(horizontal: 36),
+          color: AppColors.border,
+        ),
+        const _FooterLogo(
+          asset: 'assets/images/logo-iotcoss.png',
+          label: '사물인터넷혁신융합대학사업단',
+          height: 62,
+        ),
+      ],
+    );
+  }
+}
+
+class _FooterLogo extends StatelessWidget {
+  final String asset;
+  final String label;
+  final double height;
+  const _FooterLogo({
+    required this.asset,
+    required this.label,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(asset, height: height, fit: BoxFit.contain),
+        const SizedBox(width: 16),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 21,
+            fontWeight: FontWeight.w600,
+            color: AppColors.muted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 현재 단계를 진행바용 1~6 숫자로 환산합니다(표시 전용).
+/// 시작 화면과 영수증 화면은 6단계 밖이라 0(=진행바 숨김)입니다.
+int _progressStepOf(AppStep step) {
+  switch (step) {
+    case AppStep.home:
+    case AppStep.receipt:
+      return 0;
+    case AppStep.mbtiChoice:
+      return 1;
+    case AppStep.mbtiQuiz:
+    case AppStep.mbtiManual:
+      return 2;
+    case AppStep.mbtiResult:
+      return 3;
+    case AppStep.boardSelect:
+      return 4;
+    case AppStep.axisSelect:
+    case AppStep.keycapFill:
+      return 5;
+    case AppStep.complete:
+    case AppStep.designConfirm:
+      return 6;
   }
 }

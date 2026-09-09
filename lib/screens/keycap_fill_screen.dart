@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// STEP 05 — 키캡 색을 선택하세요 (보드 색상 선택 단계가 STEP 04로 정식 편입되면서 05로 밀림)
-/// 피그마 `App.tsx > ColorSelectScreen` 모션 1:1 이식.
+/// STEP 05 — 키캡 색을 선택하세요
+/// [디자인 교체] 시안 톤 — 판 위에 입체 키캡이 얹히고, 오른쪽에 색상 목록을 둡니다.
+/// (가로형 4K 화면에 맞춰 판과 색상 목록을 좌우로 배치했습니다.)
+/// 커서 이동·색상 적용·완료 처리 등 동작은 이전과 100% 동일합니다.
 class KeycapFillScreen extends StatefulWidget {
   final String boardShape; // '1x4' 고정 (2x2 옵션은 팀 확정으로 제거됨. 파라미터는 하위 호환용으로 유지)
-  final Color boardColor; // [신규] STEP 04에서 고른 판(케이스) 색상. 판 미리보기 배경(그림자 사각형)에 사용
+  final Color boardColor; // [신규] STEP 04에서 고른 판(케이스) 색상. 판 배경에 사용
   final List<String> letters;
   final int cursor;
   final Color Function(int index) colorAt;
@@ -98,7 +100,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
     final complete = filled == widget.letters.length;
     final cols = widget.boardShape == '2x2' ? 2 : 4;
     final rows = widget.boardShape == '2x2' ? 2 : 1;
-    final boardWidth = cols == 4 ? 460.0 : 260.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -107,13 +108,13 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
           opacity: _labelOpacity,
           child: const Text('STEP 05 / 06', style: AppTextStyles.label),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _FadeSlideY(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('키캡 색을 선택하세요', style: AppTextStyles.heading),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text(
@@ -122,37 +123,34 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
             textAlign: TextAlign.center,
           ),
         ),
-        const SizedBox(height: 40),
-        _FadeSlideY(
-          opacity: _plateOpacity,
-          y: _plateY,
-          child: Stack(
-            children: [
-              Positioned(
-                left: -8,
-                top: -8,
-                // [수정] 그림자 자리는 잉크색으로 바꾸고, 판 색상은 실제 판 표면(아래)에서
-                // 또렷하게 보이도록 함
-                child: Container(width: boardWidth, height: rows == 2 ? boardWidth : 150, color: AppColors.ink),
-              ),
-              Container(
-                width: boardWidth,
-                padding: const EdgeInsets.all(24),
-                // [수정] 판 표면을 흰색 고정이 아니라 선택한 판 색상으로 칠해서,
-                // 키캡을 끼워 넣는 동안에도 고른 판 색이 또렷하게 보이도록 함
-                decoration: BoxDecoration(color: widget.boardColor, border: Border.all(color: AppColors.ink, width: 2)),
+        const SizedBox(height: 52),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // ---- 판 + 키캡 ----
+            _FadeSlideY(
+              opacity: _plateOpacity,
+              y: _plateY,
+              child: Container(
+                padding: const EdgeInsets.all(26),
+                decoration: BoxDecoration(
+                  color: widget.boardColor,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: AppColors.ink.withValues(alpha: 0.12), width: 2),
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: List.generate(rows, (r) {
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: List.generate(cols, (c) {
                           final i = r * cols + c;
                           final isCursor = i == widget.cursor;
                           return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: widget.stockLoading || widget.onCellTap == null
@@ -171,34 +169,33 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                   }),
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 32),
-        // [버그 수정] 화살표 다이어그램을 통째로 없애면서, 그 옆에 있던
-        // Row가 잡아주던 "내용물만큼만 폭을 차지" 하는 효과까지 같이
-        // 사라져서 색상 선택 목록이 화면 전체 너비 기준으로 계산되며
-        // 왼쪽 끝으로 밀려나 보이는 문제가 있었습니다. Row(mainAxisSize:
-        // MainAxisSize.min)로 다시 감싸서 원래처럼 폭을 좁게 유지합니다.
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+            ),
+            const SizedBox(width: 96),
+            // ---- 색상 선택 목록 ----
             _FadeSlideX(
               opacity: _colorListOpacity,
               x: _colorListX,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('색상 선택', style: AppTextStyles.body),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   _legendRow(1, 'g', KeycapColors.green, '초록'),
                   _legendRow(2, 'y', KeycapColors.yellow, '노랑'),
                   _legendRow(3, 'b', KeycapColors.blue, '파랑'),
                   // [수정] 색상 코드('r')는 그대로 유지하되, 실제 색상이 빨강→핑크로
                   // 바뀌었으므로 화면에 보이는 한글 이름만 '핑크'로 변경
                   _legendRow(4, 'r', KeycapColors.red, '핑크'),
-                  const SizedBox(height: 8),
-                  Text('$filled / ${widget.letters.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 16),
+                  Text(
+                    '$filled / ${widget.letters.length}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -206,22 +203,22 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
         ),
         if (widget.stockLoading)
           const Padding(
-            padding: EdgeInsets.only(top: 16),
+            padding: EdgeInsets.only(top: 24),
             child: Text(
               '재고 확인 중...',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.muted),
             ),
           )
         else if (widget.message != null)
           Padding(
-            padding: const EdgeInsets.only(top: 16),
+            padding: const EdgeInsets.only(top: 24),
             child: Text(
               widget.message!,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.danger),
             ),
           ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 44),
         _FadeSlideY(
           opacity: _buttonOpacity,
           y: _buttonY,
@@ -229,13 +226,20 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
             behavior: HitTestBehavior.opaque,
             onTap: widget.stockLoading ? null : widget.onSubmit,
             child: Container(
-              width: boardWidth,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              width: 760,
+              padding: const EdgeInsets.symmetric(vertical: 26),
               alignment: Alignment.center,
-              color: complete ? AppColors.ink : AppColors.muted,
+              decoration: BoxDecoration(
+                color: complete ? AppColors.ink : AppColors.border,
+                borderRadius: BorderRadius.circular(18),
+              ),
               child: Text(
                 complete ? '디자인 확인' : '색을 모두 선택하세요',
-                style: TextStyle(color: complete ? AppColors.green : Colors.white70, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 27,
+                  color: complete ? Colors.white : AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -259,75 +263,52 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
           ? null
           : () => widget.onColorTap!(digit),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           children: [
             // 번호 칸은 항상 같은 크기 유지
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSoldOut ? Colors.grey.shade300 : Colors.transparent,
-                border: Border.all(
-                  color: isSoldOut ? Colors.grey.shade500 : AppColors.ink,
-                  width: 2,
-                ),
-              ),
-              child: Text(
-                num,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: isSoldOut ? Colors.grey.shade600 : AppColors.ink,
-                ),
-              ),
+            KeyNumBadge(
+              label: num,
+              disabled: isSoldOut,
+              size: 50,
+              fontSize: 24,
             ),
 
-            const SizedBox(width: 14),
+            const SizedBox(width: 20),
 
             // 색상 표시
             Container(
-              width: 36,
-              height: 36,
-              color: isSoldOut ? Colors.grey.shade400 : color,
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: isSoldOut ? AppColors.disabledBg : color,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isSoldOut
+                      ? AppColors.disabledLine
+                      : AppColors.ink.withValues(alpha: 0.14),
+                  width: 2,
+                ),
+              ),
             ),
 
-            const SizedBox(width: 14),
+            const SizedBox(width: 20),
 
             // 색상 이름
             SizedBox(
-              width: 70,
+              width: 96,
               child: Text(
                 name,
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w600,
-                  color: isSoldOut ? Colors.grey.shade600 : AppColors.ink,
+                  fontSize: 27,
+                  fontWeight: FontWeight.w700,
+                  color: isSoldOut ? AppColors.disabledText : AppColors.ink,
                 ),
               ),
             ),
 
             // 품절 표시
-            if (isSoldOut)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '재고 없음',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ),
+            if (isSoldOut) const SoldOutPill(),
           ],
         ),
       ),
@@ -388,6 +369,7 @@ class _FadeSlideX extends StatelessWidget {
   }
 }
 
+/// [디자인] 커서가 놓인 칸은 살짝 커졌다 작아지는 펄스 + 두꺼운 잉크 테두리.
 class _KeycapCell extends StatefulWidget {
   final bool isCursor;
   final Color color;
@@ -438,18 +420,11 @@ class _KeycapCellState extends State<_KeycapCell> with SingleTickerProviderState
       builder: (context, child) {
         return Transform.scale(
           scale: widget.isCursor ? _pulseScale.value : 1.0,
-          child: Container(
-            width: 84,
-            height: 84,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: widget.color,
-              border: Border.all(color: widget.isCursor ? AppColors.ink : Colors.transparent, width: 3),
-            ),
-            child: Text(
-              widget.letter,
-              style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900),
-            ),
+          child: Keycap(
+            color: widget.color,
+            letter: widget.letter,
+            selected: widget.isCursor,
+            empty: widget.color == AppColors.tileEmpty,
           ),
         );
       },

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// [신규] 영수증 페이지 — 6단계(STEP 01~06) 밖의 별도 화면
 ///
@@ -10,11 +11,14 @@ import 'package:flutter/material.dart';
 /// 디자인 확인 화면 몫이 됐습니다. 그래서 영수증 화면은 STEP 표시를
 /// 아예 빼고 6단계 밖의 화면으로 둡니다.
 ///
+/// [디자인 교체] 시안 톤(흰 종이 · 연한 테두리 · 점선 구분)으로 다시 칠하고,
+/// 가로형 4K 화면에 맞춰 QR과 주문 내역을 좌우로 배치했습니다.
+/// 표시 내용·카운트다운·상태 갱신 동작은 이전과 동일합니다.
+///
 /// 순수하게 보여주기만 하는 화면입니다. 키보드 입력을 받지 않습니다.
 /// 화면 안의 "N초 후 처음 화면으로 돌아갑니다" 문구는 표시용 카운트다운일
 /// 뿐이며, 실제 자동 복귀는 main.dart의 타이머(_scheduleDoneRestart)가
-/// 담당합니다. (두 타이머는 화면 진입과 거의 동시에 함께 시작되므로
-/// 화면에 보이는 숫자와 실제 복귀 시점은 사실상 일치합니다.)
+/// 담당합니다.
 ///
 /// 조립대 배정 상태는 main.dart가 주기적으로 서버에 재조회해서 넘겨주며,
 /// complete_screen.dart와 같은 문구 방식으로 실시간 변화합니다.
@@ -31,7 +35,7 @@ class ReceiptScreen extends StatefulWidget {
   final List<String> keycapLabels; // 예: 파랑 / 초록 / 노랑 / 빨강
   final String statusHeadline; // "배정 조립대" 박스에 보여줄 큰 문구 (실시간으로 바뀜)
   final String? statusCaption; // 그 아래 작은 보조 문구 (필요할 때만)
-  final bool isActive; // true=검정 배경(배정/제작/완료), false=옅은 갈색(대기/미배정)
+  final bool isActive; // true=잉크 배경(배정/제작/완료), false=흐린 배경(대기/미배정)
   final Uint8List? qrBytes; // GET /order/{order_id}/qr 로 받아온 실제 QR 이미지
   final int autoRestartSeconds;
 
@@ -63,11 +67,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> with TickerProviderStateM
   late int _secsLeft;
   Timer? _countdownTimer;
 
-  static const Color _paperColor = Color(0xFFFAF7F2);
-  static const Color _outerColor = Color(0xFFE8E2D9);
-  static const Color _dashColor = Color(0xFFB0A898);
-  static const Color _labelColor = Color(0xFF8A7E72);
-  static const Color _ink = Color(0xFF1A1A1A);
+  // [디자인] 시안 팔레트 기준 영수증 색
+  static const Color _paperColor = Color(0xFFFFFFFF);
+  static const Color _dashColor = Color(0xFFD5D9DF);
+  static const Color _labelColor = AppColors.muted;
+  static const Color _ink = AppColors.ink;
 
   @override
   void initState() {
@@ -107,220 +111,261 @@ class _ReceiptScreenState extends State<ReceiptScreen> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: _outerColor,
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // [수정] 영수증 화면은 더 이상 STEP 표시에 포함하지 않습니다
-          // (전체 6단계는 mbtiChoice~designConfirm까지이고, 영수증은 그 이후
-          // 별도 화면입니다). 카드 등장 애니메이션 타이밍은 그대로 유지하기
-          // 위해 라벨 대신 동일한 높이의 빈 여백만 둡니다.
-          AnimatedBuilder(
-            animation: _cardOpacity,
-            builder: (context, child) => Opacity(opacity: _cardOpacity.value.clamp(0.0, 1.0), child: child),
-            child: const SizedBox(height: 30),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedBuilder(
+          animation: Listenable.merge([_cardOpacity, _cardY]),
+          builder: (context, child) => Opacity(
+            opacity: _cardOpacity.value.clamp(0.0, 1.0),
+            child: Transform.translate(offset: Offset(0, _cardY.value), child: child),
           ),
-          AnimatedBuilder(
-            animation: Listenable.merge([_cardOpacity, _cardY]),
-            builder: (context, child) => Opacity(
-              opacity: _cardOpacity.value.clamp(0.0, 1.0),
-              child: Transform.translate(offset: Offset(0, _cardY.value), child: child),
+          child: Container(
+            width: 1220,
+            padding: const EdgeInsets.fromLTRB(52, 36, 52, 36),
+            decoration: BoxDecoration(
+              color: _paperColor,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: AppColors.border, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: 0.08),
+                  blurRadius: 34,
+                  offset: const Offset(0, 14),
+                ),
+              ],
             ),
-            child: SizedBox(
-              width: 360,
-              child: Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    color: _paperColor,
-                    padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
-                    child: Column(
-                      children: [
-                        const Text(
-                          '주문 영수증',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            letterSpacing: 1.4,
-                            color: _ink,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          '딸깍 키링 스튜디오',
-                          style: TextStyle(fontSize: 12, color: _labelColor, letterSpacing: 0.6),
-                        ),
-                        const SizedBox(height: 18),
-                        const _DashedRule(color: _dashColor),
-                        const SizedBox(height: 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '주문 영수증',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 34,
+                    letterSpacing: 3,
+                    color: _ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '딸깍 키링 스튜디오',
+                  style: TextStyle(fontSize: 22, color: _labelColor, letterSpacing: 1.2),
+                ),
+                const SizedBox(height: 22),
+                const _DashedRule(color: _dashColor),
+                const SizedBox(height: 26),
 
-                        // QR 자리 — 실제 QR 이미지(qrBytes)가 있으면 그걸 보여주고,
-                        // 아직 없거나(로딩 중) 받아오지 못했으면 자리표시자를 보여줌
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ---- QR 자리 ----
+                    // 실제 QR 이미지(qrBytes)가 있으면 그걸 보여주고,
+                    // 아직 없거나(로딩 중) 받아오지 못했으면 자리표시자를 보여줌
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         Container(
-                          width: 140,
-                          height: 140,
+                          width: 224,
+                          height: 224,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF0EBE3),
-                            border: Border.all(color: _dashColor, width: 1.5),
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: AppColors.border, width: 2),
                           ),
                           child: widget.qrBytes != null
-                              ? Image.memory(widget.qrBytes!, width: 120, height: 120, fit: BoxFit.contain)
+                              ? Image.memory(widget.qrBytes!,
+                                  width: 188, height: 188, fit: BoxFit.contain)
                               : CustomPaint(
-                                  size: const Size(80, 80),
+                                  size: const Size(128, 128),
                                   painter: _CheckerboardPainter(),
                                 ),
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          widget.qrBytes != null ? '스캔하여 주문 상태 확인' : '주문 접수 처리 중...',
-                          style: const TextStyle(fontSize: 10, color: _labelColor),
-                        ),
-                        const SizedBox(height: 18),
-                        const _DashedRule(color: _dashColor),
-                        const SizedBox(height: 16),
-
-                        _MetaRow(
-                          label: '주문번호',
-                          valueWidget: Text(
-                            widget.orderNumber,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 24,
-                              letterSpacing: 2,
-                              color: _ink,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        _MetaRow(
-                          label: '접수 시각',
-                          valueWidget: Text(widget.time, style: const TextStyle(fontSize: 14, color: _ink)),
-                        ),
-
-                        const SizedBox(height: 16),
-                        const _DashedRule(color: _dashColor),
-                        const SizedBox(height: 16),
-
-                        Align(
-                          alignment: Alignment.centerLeft,
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: 224,
                           child: Text(
-                            '주문 내역',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: _labelColor,
-                              letterSpacing: 1.6,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        _MetaRow(
-                          label: 'MBTI',
-                          valueWidget: Text(
-                            widget.mbti,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                              letterSpacing: 2,
-                              color: _ink,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _MetaRow(
-                          label: '키캡',
-                          valueWidget: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: List.generate(widget.keycapColors.length, (i) {
-                              return Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Column(
-                                  children: [
-                                    Container(width: 22, height: 22, color: widget.keycapColors[i]),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      widget.keycapLabels[i],
-                                      style: const TextStyle(fontSize: 9, color: _labelColor),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-                        const _DashedRule(color: _dashColor),
-                        const SizedBox(height: 16),
-
-                        // 배정 조립대 상태 — main.dart가 주기적으로 상태를
-                        // 다시 조회해서 넘겨주므로, 문구가 실시간으로 바뀝니다.
-                        // (대기열 N번째 → N번 조립대로 이동해주세요 → 제작 중 → 완료)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-                          margin: const EdgeInsets.only(bottom: 16),
-                          color: widget.isActive ? _ink : const Color(0xFF3A3530),
-                          child: Column(
-                            children: [
-                              const Text(
-                                '배정 조립대',
-                                style: TextStyle(fontSize: 9, letterSpacing: 1.6, color: Color(0xFFA09488)),
-                              ),
-                              const SizedBox(height: 6),
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                child: Text(
-                                  widget.statusHeadline,
-                                  key: ValueKey(widget.statusHeadline),
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w900,
-                                    color: Color(0xFFE8E2D9),
-                                  ),
-                                ),
-                              ),
-                              if (widget.statusCaption != null) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  widget.statusCaption!,
-                                  style: const TextStyle(fontSize: 11, color: Color(0xFF7A6E68)),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 28),
-                          child: Text(
-                            '문제가 발생했다면\n주변의 스태프에게 문의해주세요.',
+                            widget.qrBytes != null ? '스캔하여 주문 상태 확인' : '주문 접수 처리 중...',
                             textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 10, height: 1.6, color: _dashColor),
+                            style: const TextStyle(fontSize: 19, color: _labelColor),
+                          ),
+                        ),
+                        const SizedBox(height: 26),
+                        const SizedBox(
+                          width: 224,
+                          child: Text(
+                            '문제가 발생했다면\n주변의 스태프에게\n문의해주세요.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 18, height: 1.7, color: _labelColor),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  // 찢어진 하단 마감 (톱니 모양)
-                  CustomPaint(
-                    size: const Size(double.infinity, 14),
-                    painter: _TornEdgePainter(paperColor: _paperColor, bgColor: _outerColor),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 52),
+
+                    // ---- 주문 정보 + 배정 상태 ----
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _MetaRow(
+                            label: '주문번호',
+                            valueWidget: Text(
+                              widget.orderNumber,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 42,
+                                letterSpacing: 4,
+                                color: _ink,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _MetaRow(
+                            label: '접수 시각',
+                            valueWidget: Text(
+                              widget.time,
+                              style: const TextStyle(fontSize: 26, color: _ink),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+                          const _DashedRule(color: _dashColor),
+                          const SizedBox(height: 20),
+
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '주문 내역',
+                              style: TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                                color: _labelColor,
+                                letterSpacing: 3,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          _MetaRow(
+                            label: 'MBTI',
+                            valueWidget: Text(
+                              widget.mbti,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 30,
+                                letterSpacing: 4,
+                                color: _ink,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _MetaRow(
+                            label: '키캡',
+                            valueWidget: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(widget.keycapColors.length, (i) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 14),
+                                  child: Column(
+                                    children: [
+                                      Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: BoxDecoration(
+                                          color: widget.keycapColors[i],
+                                          borderRadius: BorderRadius.circular(9),
+                                          border: Border.all(
+                                            color: AppColors.ink.withValues(alpha: 0.14),
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        widget.keycapLabels[i],
+                                        style: const TextStyle(fontSize: 17, color: _labelColor),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // 배정 조립대 상태 — main.dart가 주기적으로 상태를
+                          // 다시 조회해서 넘겨주므로, 문구가 실시간으로 바뀝니다.
+                          // (대기열 N번째 → N번 조립대로 이동해주세요 → 제작 중 → 완료)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 22,
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget.isActive
+                                  ? AppColors.ink
+                                  : const Color(0xFF6C727C),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  '배정 조립대',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    letterSpacing: 3,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFC3C8D0),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  child: Text(
+                                    widget.statusHeadline,
+                                    key: ValueKey(widget.statusHeadline),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 34,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                if (widget.statusCaption != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    widget.statusCaption!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      color: Color(0xFFAEB4BE),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 20),
-          Text('$_secsLeft초 후 처음 화면으로 돌아갑니다', style: const TextStyle(fontSize: 12, color: _labelColor)),
-        ],
-      ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          '$_secsLeft초 후 처음 화면으로 돌아갑니다',
+          style: const TextStyle(fontSize: 21, color: _labelColor),
+        ),
+      ],
     );
   }
 }
@@ -336,7 +381,10 @@ class _MetaRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF8A7E72))),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 23, color: AppColors.muted),
+        ),
         valueWidget,
       ],
     );
@@ -350,7 +398,7 @@ class _DashedRule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(double.infinity, 1.5),
+      size: const Size(double.infinity, 2),
       painter: _DashedLinePainter(color: color),
     );
   }
@@ -364,9 +412,10 @@ class _DashedLinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 1.5;
-    const dashWidth = 5.0;
-    const dashSpace = 4.0;
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    const dashWidth = 9.0;
+    const dashSpace = 8.0;
     double x = 0;
     while (x < size.width) {
       canvas.drawLine(Offset(x, 0), Offset(x + dashWidth, 0), paint);
@@ -381,7 +430,7 @@ class _DashedLinePainter extends CustomPainter {
 class _CheckerboardPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0xFF1A1A1A);
+    final paint = Paint()..color = AppColors.border;
     const cells = 8;
     final cellSize = size.width / cells;
     for (int r = 0; r < cells; r++) {
@@ -393,32 +442,6 @@ class _CheckerboardPainter extends CustomPainter {
           );
         }
       }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _TornEdgePainter extends CustomPainter {
-  final Color paperColor;
-  final Color bgColor;
-  _TornEdgePainter({required this.paperColor, required this.bgColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const step = 12.0;
-    final paperPaint = Paint()..color = paperColor;
-    final bgPaint = Paint()..color = bgColor;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paperPaint);
-    double x = 0;
-    bool toggle = false;
-    while (x < size.width) {
-      if (toggle) {
-        canvas.drawRect(Rect.fromLTWH(x, 0, step / 2, size.height), bgPaint);
-      }
-      x += step / 2;
-      toggle = !toggle;
     }
   }
 

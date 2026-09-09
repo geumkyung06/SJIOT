@@ -201,7 +201,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                 targetAnchor: Alignment.bottomCenter,
                 followerAnchor: Alignment.topCenter,
 
-                offset: const Offset(0, 12),
+                offset: const Offset(0, 24),
 
                 child: Material(
                   color: Colors.transparent,
@@ -227,21 +227,21 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
 
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 8,
+        horizontal: 18,
+        vertical: 16,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         border: Border.all(
-          color: AppColors.ink,
+          color: AppColors.border,
           width: 2,
         ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
+            color: AppColors.ink.withValues(alpha: 0.14),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -255,7 +255,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
           final selected = currentColor == code;
 
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: GestureDetector(
               onTap: soldOut || _changing || widget.stockLoading
                   ? null
@@ -282,29 +282,23 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
               child: Opacity(
                 opacity: soldOut ? 0.25 : 1,
                 child: Container(
-                  width: 42,
-                  height: 42,
+                  width: 66,
+                  height: 66,
                   decoration: BoxDecoration(
                     color: color,
-                    borderRadius: BorderRadius.circular(9),
-                    border: selected
-                        ? Border.all(
-                            color: AppColors.ink,
-                            width: 3,
-                          )
-                        : null,
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.65),
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.ink
+                          : AppColors.ink.withValues(alpha: 0.14),
+                      width: selected ? 4 : 2,
+                    ),
                   ),
                   child: selected
                       ? const Icon(
                           Icons.check,
-                          size: 18,
-                          color: Colors.white,
+                          size: 30,
+                          color: AppColors.ink,
                         )
                       : null,
                 ),
@@ -426,7 +420,6 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
   Widget build(BuildContext context) {
     final cols = widget.boardShape == '2x2' ? 2 : widget.letters.length;
     final rows = widget.boardShape == '2x2' ? 2 : 1;
-    final plateWidth = widget.boardShape == '2x2' ? 260.0 : 460.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -435,13 +428,35 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
           opacity: _labelOpacity,
           child: const Text('STEP 06 / 06', style: AppTextStyles.label),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _FadeSlideY(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('디자인이 완성되었어요', style: AppTextStyles.heading),
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 20),
+        // [디자인] 시안의 안내 pill — 키캡을 눌러 색을 바꿀 수 있다는 힌트
+        _FadeSlideY(
+          opacity: _titleOpacity,
+          y: _titleY,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 18),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: AppColors.ink, width: 3),
+            ),
+            child: const Text(
+              '키캡을 눌러 색을 수정할 수 있어요',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 56),
         AnimatedBuilder(
           animation: Listenable.merge([_plateOpacity, _plateScale]),
           builder: (context, child) => Opacity(
@@ -451,36 +466,31 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              Positioned(
-                left: -8,
-                top: -8,
-                // [수정] 그림자 자리는 잉크색으로, 판 색상은 실제 표면에서 또렷하게
-                child: Container(
-                  width: plateWidth,
-                  height: rows == 2 ? plateWidth : 150,
-                  color: AppColors.ink,
-                ),
-              ),
+              // [디자인] 시안: 완성된 보드에는 두툼한 오프셋 그림자를 답니다.
               Container(
-                width: plateWidth,
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(26),
                 // [수정] 판 표면을 흰색 고정이 아니라 선택한 판 색상으로 표시
                 decoration: BoxDecoration(
                   color: widget.boardColor,
-                  border: Border.all(color: AppColors.ink, width: 2),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: AppColors.ink.withValues(alpha: 0.12),
+                    width: 2,
+                  ),
+                  boxShadow: AppDeco.plateShadow,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: List.generate(rows, (r) {
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: List.generate(cols, (c) {
                           final i = r * cols + c;
 
                           return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
                             child: CompositedTransformTarget(
                               link: _keycapLinks[i],
                               child: GestureDetector(
@@ -489,29 +499,13 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                                     : () {
                                         _openColorSelector(i);
                                       },
-                                child: Container(
-                                  width: 84,
-                                  height: 84,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: widget.colorAt(i),
-
-                                    // 현재 수정 중인 키캡 표시
-                                    border: _editingKeycapIndex == i
-                                        ? Border.all(
-                                            color: AppColors.ink,
-                                            width: 4,
-                                          )
-                                        : null,
-                                  ),
-                                  child: Text(
-                                    widget.letters[i],
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
+                                child: Keycap(
+                                  color: widget.colorAt(i),
+                                  letter: widget.letters[i],
+                                  // 현재 수정 중인 키캡 표시
+                                  selected: _editingKeycapIndex == i,
+                                  empty: widget.colorAt(i) ==
+                                      AppColors.tileEmpty,
                                 ),
                               ),
                             ),
@@ -525,7 +519,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
             ],
           ),
         ),
-        const SizedBox(height: 72),
+        const SizedBox(height: 96),
         // _FadeSlideY(
         //   opacity: _axisOpacity,
         //   y: _axisY,
@@ -609,7 +603,7 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
                       onTap: widget.onConfirm,
                       child: _TapButton(text: '접수하기', accent: AppColors.green),
                     ),
-                    const SizedBox(width: 32),
+                    const SizedBox(width: 44),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: widget.onCancel,
@@ -669,23 +663,22 @@ class _SubmittingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration:
-          BoxDecoration(border: Border.all(color: AppColors.muted, width: 2)),
+      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 26),
+      decoration: AppDeco.outlined(radius: 18),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
-            width: 18,
-            height: 18,
+            width: 32,
+            height: 32,
             child: CircularProgressIndicator(
-                strokeWidth: 2.4, color: AppColors.muted),
+                strokeWidth: 3.4, color: AppColors.muted),
           ),
-          const SizedBox(width: 14),
-          Text(
+          const SizedBox(width: 22),
+          const Text(
             '주문을 접수하고 있어요...',
             style: TextStyle(
-                fontSize: 16,
+                fontSize: 27,
                 fontWeight: FontWeight.w700,
                 color: AppColors.muted),
           ),
@@ -710,21 +703,23 @@ class _TapButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 16,
+        horizontal: 56,
+        vertical: 26,
       ),
       decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.ink,
-          width: 2,
+          color: accent,
+          width: 3,
         ),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 16,
+        style: const TextStyle(
+          fontSize: 28,
           fontWeight: FontWeight.w700,
-          color: accent,
+          color: AppColors.ink,
         ),
       ),
     );

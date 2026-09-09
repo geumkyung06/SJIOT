@@ -24,3 +24,25 @@ flutter:
   uses-material-design: true
   assets:
     - assets/certs/custom_root.pem
+    # [디자인] 화면 하단 로고 푸터에 쓰는 이미지
+    - assets/images/logo-sejong.png
+    - assets/images/logo-iotcoss.png
+
+  # [디자인] 시안(딸깍 Keyring Studio)과 동일한 글꼴.
+  # 키오스크 PC에 어떤 한글 폰트가 깔려 있든 항상 같은 모양으로 보이도록
+  # 앱에 직접 포함시킵니다. (코드 로직과는 무관한 디자인 리소스입니다.)
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+        - asset: assets/fonts/Pretendard-ExtraBold.otf
+          weight: 800
+        - asset: assets/fonts/Pretendard-Black.otf
+          weight: 900

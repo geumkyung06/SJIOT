@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// STEP 02B — MBTI 직접 입력
-/// 피그마 `App.tsx > MbtiDirectScreen` 모션 1:1 이식.
+/// [디자인 교체] 시안 톤(둥근 잉크 테두리 알파벳 버튼 · 사각 점 인디케이터).
+/// 선택 처리 동작과 애니메이션 타이밍은 이전과 동일합니다.
 class MbtiManualScreen extends StatefulWidget {
   final int questionIndex; // 0~3
   final int totalQuestions;
@@ -115,20 +116,21 @@ class _MbtiManualScreenState extends State<MbtiManualScreen>
             style: AppTextStyles.label,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _FadeSlideY(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('MBTI를 직접 입력하세요', style: AppTextStyles.heading),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text('해당하는 알파벳을 눌러주세요', style: AppTextStyles.body),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 76),
         Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _FadeScale(
               opacity: _badgeOpacity[0],
@@ -139,21 +141,29 @@ class _MbtiManualScreenState extends State<MbtiManualScreen>
                     ? null
                     : () => widget.onSelect!(widget.letterA),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _LetterBadge(
                       letter: widget.letterA,
                       soldOut: widget.letterASoldOut,
                     ),
-                    const SizedBox(width: 20),
-                    const Text(
-                      '입니까?',
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                    const SizedBox(width: 26),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 54),
+                      child: Text(
+                        '입니까?',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 40),
+            const SizedBox(width: 110),
             _FadeScale(
               opacity: _badgeOpacity[1],
               scale: _badgeScale[1],
@@ -163,15 +173,23 @@ class _MbtiManualScreenState extends State<MbtiManualScreen>
                     ? null
                     : () => widget.onSelect!(widget.letterB),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _LetterBadge(
                       letter: widget.letterB,
                       soldOut: widget.letterBSoldOut,
                     ),
-                    const SizedBox(width: 20),
-                    const Text(
-                      '입니까?',
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                    const SizedBox(width: 26),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 54),
+                      child: Text(
+                        '입니까?',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -179,7 +197,7 @@ class _MbtiManualScreenState extends State<MbtiManualScreen>
             ),
           ],
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 56),
         _ProgressDots(
           total: widget.totalQuestions,
           current: widget.questionIndex,
@@ -251,6 +269,7 @@ class _FadeScale extends StatelessWidget {
   }
 }
 
+/// [디자인] 시안의 알파벳 버튼 — 흰 배경 + 잉크 테두리 + 둥근 모서리
 class _LetterBadge extends StatelessWidget {
   final String letter;
   final bool soldOut;
@@ -263,39 +282,35 @@ class _LetterBadge extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 100,
-          height: 100,
+          width: 150,
+          height: 150,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: AppColors.ink, width: 3),
+          decoration: AppDeco.outlined(
+            radius: 24,
+            borderColor: soldOut ? AppColors.disabledLine : AppColors.ink,
+            fill: soldOut ? AppColors.disabledBg : AppColors.surface,
+            width: 3,
           ),
           child: Text(
             letter,
-            style: const TextStyle(
-              fontSize: 48,
-              fontWeight: FontWeight.w900,
-              color: AppColors.ink,
+            style: TextStyle(
+              fontSize: 68,
+              fontWeight: FontWeight.w800,
+              color: soldOut ? AppColors.disabledText : AppColors.ink,
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         if (soldOut)
-          const Text(
-            '재고없음',
-            style: TextStyle(
-              color: Colors.red,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-            ),
-          )
+          const SoldOutPill(text: '재고없음', fontSize: 19)
         else
-          const SizedBox(height: 16),
+          const SizedBox(height: 36),
       ],
     );
   }
 }
 
+/// [디자인] 시안의 사각 점 인디케이터
 class _ProgressDots extends StatefulWidget {
   final int total;
   final int current;
@@ -350,16 +365,19 @@ class _ProgressDotsState extends State<_ProgressDots>
           children: List.generate(widget.total, (i) {
             final isCurrent = i == widget.current;
             return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: 14,
-              height: 14,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              width: 18,
+              height: 18,
               transform: isCurrent
                   ? (Matrix4.identity()..scale(_pulseScale.value))
                   : Matrix4.identity(),
               transformAlignment: Alignment.center,
-              color: i <= widget.current
-                  ? AppColors.green
-                  : AppColors.tileEmpty,
+              decoration: BoxDecoration(
+                color: i <= widget.current
+                    ? AppColors.accent
+                    : AppColors.border,
+                borderRadius: BorderRadius.circular(5),
+              ),
             );
           }),
         );
