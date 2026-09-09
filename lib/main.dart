@@ -1309,23 +1309,20 @@ class _AppRootState extends State<AppRoot> {
     _orderId = 'mock-order-id';
     setState(() {
       _receiptOrderNumber = (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
-      _orderStatus = {'stage': 'queued', 'position_in_queue': 1};
+      _orderStatus = {'status': 'waiting', 'position_in_queue': 1};
       _receiptQrBytes = null; // 목업 모드에서는 실제 QR 이미지가 없음(자리표시자로 표시)
       _step = AppStep.receipt;
     });
     _scheduleDoneRestart();
 
-    // [수정] 백엔드 실제 order.stage 생애주기(queued→assigned→dispensed→
-    // loaded→arrived→verified→completed)를 그대로 흉내 내서, 오프라인
-    // 테스트에서도 실제와 같은 문구 전환을 확인할 수 있게 했습니다.
+    // [임시] 실제 서버 폴링 대신, 2초 간격으로 waiting → assigned →
+    // in_progress → done 상태를 흘려보내서 영수증 박스 애니메이션까지
+    // 백엔드 없이 확인할 수 있게 합니다.
     final mockSteps = <Map<String, dynamic>>[
-      {'stage': 'queued', 'position_in_queue': 1},
-      {'stage': 'assigned', 'station_id': '1'},
-      {'stage': 'dispensed', 'station_id': '1'},
-      {'stage': 'loaded', 'station_id': '1'},
-      {'stage': 'arrived', 'station_id': '1'},
-      {'stage': 'verified', 'station_id': '1'},
-      {'stage': 'completed', 'station_id': '1'},
+      {'status': 'waiting', 'position_in_queue': 1},
+      {'status': 'assigned', 'station_id': '1'},
+      {'status': 'in_progress', 'station_id': '1'},
+      {'status': 'done', 'station_id': '1'},
     ];
     for (var i = 0; i < mockSteps.length; i++) {
       Future.delayed(Duration(seconds: 2 * (i + 1)), () {
@@ -1369,7 +1366,7 @@ class _AppRootState extends State<AppRoot> {
   void _startAutoRestartTimer() {
     _autoRestartTimer?.cancel();
     _autoRestartTimer = Timer(_stuckTimeout, () {
-      if (mounted && _orderStatus?['stage'] != 'completed') {
+      if (mounted && _orderStatus?['status'] != 'done') {
         _restart();
       }
     });
@@ -1385,14 +1382,10 @@ class _AppRootState extends State<AppRoot> {
         final status = await _api.getOrderStatus(_orderId!);
         if (!mounted) return false;
         setState(() => _orderStatus = status);
-        // [수정] 백엔드가 응답 필드명을 status → stage로 변경함
-        // (플랫폼팀 공지, 2026-09-03). 값도 실제 order.stage 생애주기
-        // 기준으로 종료 조건을 판단하도록 함께 고침.
         // [수정] 영수증 화면의 8초 자동 복귀 타이머는 화면 진입 시 이미
         // 예약되어 있으므로 여기서 다시 예약하지 않습니다. (다시 예약하면
         // 화면에 보이는 카운트다운과 실제 복귀 시점이 어긋납니다)
-        const terminalStages = {'completed', 'expired', 'cancelled', 'abandoned'};
-        if (terminalStages.contains(status['stage'])) {
+        if (status['status'] == 'done') {
           return false;
         }
         return true;
@@ -1403,39 +1396,24 @@ class _AppRootState extends State<AppRoot> {
   }
 
   // 영수증 화면의 "배정 조립대" 박스에 표시할 큰 문구.
-  // [수정] 백엔드 필드명이 status → stage로 바뀌었고(플랫폼팀 공지), 값도
-  // 저희가 예전에 임시로 썼던 waiting/in_progress/done이 아니라 실제
-  // order.stage 생애주기(queued→assigned→dispensed→loaded→arrived→
-  // verified→completed, 그 외 expired/abandoned/cancelled)를 그대로
-  // 반영하도록 다시 짰습니다.
+  // complete_screen.dart의 _statusText()와 같은 문구 방식을 따릅니다.
   String _receiptStatusHeadline() {
     // 대기열/조립대가 가득 차서 주문 자체가 생성되지 못한 경우
     if (_orderId == null) return '대기 중';
 
-    final stage = _orderStatus?['stage'] as String?;
-    final st = _orderStatus?['station_id'];
-    switch (stage) {
-      case 'queued':
+    final status = _orderStatus?['status'] as String?;
+    switch (status) {
+      case 'waiting':
         final pos = _orderStatus?['position_in_queue'];
         return pos != null ? '대기열 $pos번째' : '대기 중';
       case 'assigned':
+        final st = _orderStatus?['station_id'];
         return st != null ? '$st번 조립대로 이동해주세요' : '조립대 배정됨';
-      case 'dispensed':
-        return st != null ? '$st번 조립대로 부품을 보내고 있어요' : '부품 준비 중';
-      case 'loaded':
-        return st != null ? '$st번 조립대로 배송 중이에요' : '배송 중';
-      case 'arrived':
-        return st != null ? '$st번 조립대에서 QR을 스캔해주세요' : '조립대에 도착했어요';
-      case 'verified':
+      case 'in_progress':
+        final st = _orderStatus?['station_id'];
         return st != null ? '$st번 조립대에서 제작 중' : '제작 중';
-      case 'completed':
+      case 'done':
         return '제작 완료!';
-      case 'expired':
-        return '시간 초과로 취소되었습니다';
-      case 'cancelled':
-        return '주문이 취소되었습니다';
-      case 'abandoned':
-        return '조립이 완료되지 않았습니다';
       default:
         return '접수 처리 중...';
     }
@@ -1447,13 +1425,12 @@ class _AppRootState extends State<AppRoot> {
     return null;
   }
 
-  // 박스 배경색 결정: 실제로 조립대가 움직이고 있는 상태(배정 이후)면
-  // 진한 검정, 그 외(대기/접수 처리 중)에는 옅은 갈색으로 표시합니다.
+  // 박스 배경색 결정: 실제로 조립대가 움직이고 있는 상태(배정/제작/완료)면
+  // 진한 검정, 그 외(대기/접수 처리 중/미배정)에는 옅은 갈색으로 표시합니다.
   bool _receiptStatusIsActive() {
     if (_orderId == null) return false;
-    final stage = _orderStatus?['stage'] as String?;
-    const activeStages = {'assigned', 'dispensed', 'loaded', 'arrived', 'verified', 'completed'};
-    return activeStages.contains(stage);
+    final status = _orderStatus?['status'] as String?;
+    return status == 'assigned' || status == 'in_progress' || status == 'done';
   }
 
   void _restart() {
