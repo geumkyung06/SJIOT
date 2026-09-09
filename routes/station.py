@@ -1,15 +1,17 @@
+import math
 from datetime import datetime
+
 from flask import Blueprint, jsonify, request
 
 from config import (QUEUE_KEY,
                     WAREHOUSE_KEY,
                     STATION_KEY,
                     AGV_KEY,
-                    FAULT_KEY,
                     WAREHOUSE_ORDER_KEY,
                     STATION_ORDER_PREFIX,
                     MAX_QUEUE_LEN,
                     STATION_VERIFIED_PREFIX,
+                    STATION_UNCLAIM_MIN_SEC,
                     ORDER_PAGE_BASE,
                     STATION_RESET_PASSWORD,
                     COLOR_LIST,
@@ -20,20 +22,30 @@ from config import (QUEUE_KEY,
 from infra.logger import logger
 
 from infra.extensions import r
-from infra.mobius import (handle_stock_notification,
-                          send_agv_command_cin,
-                          _push_station_snapshot,
-                        )
+from infra.mobius import _push_station_snapshot
+from services.process import set_stage, is_before, is_after
+from services.dispatch import release_station
+from services.watchdog import DEADLINE_KEY
 from infra.keys import (_order_counter_key, 
                         _touch,
                         _ensure_initial_state,
                       )
 
 from services.order_service import _is_valid_mbti
-from services.station_service import _try_assign_next
-from services.process import is_at_or_past, push_process
 
 bp = Blueprint('station', __name__)
+
+
+def _elapsed_since_arrival(order_data):
+    """arrived_at 이후 경과 초. 기록이 없거나 깨졌으면 None."""
+    raw = order_data.get("arrived_at")
+    if not raw:
+        return None
+    try:
+        return (datetime.now(KST) - datetime.fromisoformat(raw)).total_seconds()
+    except ValueError:
+        logger.warning(f"[station] arrived_at 파싱 실패 {raw!r}")
+        return None
 
 @bp.route('/station/<order_id>/start', methods=['POST'])
 def station_start(order_id):
@@ -85,18 +97,22 @@ def station_start(order_id):
         return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': (assigned_station_id)}), 403
     if r.get(f"{STATION_ORDER_PREFIX}{req_station_id}") != order_id:
         return jsonify({'error': '이미 종료되었거나 이 조립대의 현재 주문이 아닙니다'}), 409
-    if order_data.get("stage") in ("verified", "completed", "expired", "cancelled"):
-        return jsonify({'error': '이미 처리된 주문입니다'}), 409
 
-    send_agv_command_cin(order_id, req_station_id, "verified")
+    # 인증 가능한 지점은 arrived 하나뿐이다. STAGE_ORDER 순번으로 양쪽을 다 막는다.
+    #   앞  — AGV가 아직 조립대에 없다. 통과시키면 이동 중인 AGV에 하차 명령이 나간다.
+    #   뒤  — unclaimed·verified·received·completed. 특히 received에서 다시 찍으면
+    #         stage가 verified로 역행하고 AGV가 하차 명령을 두 번 받는다.
+    stage = order_data.get("stage")
+    if is_before(stage, "arrived"):
+        return jsonify({'error': '아직 부품이 도착하지 않았습니다', 'stage': stage}), 409
+    if is_after(stage, "arrived"):
+        return jsonify({'error': '이미 처리된 주문입니다', 'stage': stage}), 409
 
-    r.hset(STATION_KEY, assigned_station_id, "busy")
-    r.hset(f"order:{order_id}", "stage", "verified")
+    r.hset(STATION_KEY, assigned_station_id, "busy")   # 배정 때 이미 busy. 방어적 재확인
     r.set(f"{STATION_VERIFIED_PREFIX}{assigned_station_id}", datetime.now(KST).isoformat())
+    set_stage(order_id, "verified")
     _touch(STATION_KEY, f"order:{order_id}", f"{STATION_VERIFIED_PREFIX}{assigned_station_id}")
-
-    if _try_assign_next() is None:
-        _push_station_snapshot()
+    # cnt_station은 배정 시점에만 올린다 — 여기서 push하면 같은 배정에 CIN이 하나 더 쌓인다
 
     return jsonify({
         'ok': True,
@@ -171,14 +187,14 @@ def station_complete(station_id):
             'current_order_id': order_id
         }), 409
 
-    r.delete(order_key)
-    r.delete(f"{STATION_VERIFIED_PREFIX}{station_id}")
-    r.hset(STATION_KEY, station_id, "idle")
-    r.hset(f"order:{order_id}", "stage", "completed")
-    _touch(STATION_KEY, f"order:{order_id}")
+    stage = r.hget(f"order:{order_id}", "stage")
+    if is_after(stage, "received"):
+        return jsonify({'error': '이미 종료된 주문입니다', 'stage': stage}), 409
 
-    if _try_assign_next() is None:
-        _push_station_snapshot()
+    r.delete(f"{STATION_VERIFIED_PREFIX}{station_id}")
+    set_stage(order_id, "completed")            # cnt_process push + 타임아웃 해제
+    release_station(station_id)                 # 조립대 비우고 다음 주문 배정 시도
+    # 배정이 됐으면 _assign이 cnt_station을 올린다. 안 됐으면 올릴 변화가 없다.
 
     return jsonify({'ok': True, 'order_id': order_id}), 200
 
@@ -232,24 +248,40 @@ def station_unclaim(station_id):
         return jsonify({'error': '이 조립대에 배정된 주문이 아닙니다', 'assigned_station_id': (assigned_station_id)}), 403
     if r.get(f"{STATION_ORDER_PREFIX}{station_id}") != order_id:
         return jsonify({'error': '이미 종료되었거나 이 조립대의 현재 주문이 아닙니다'}), 409
-    
-    prev_stage = order_data.get("stage")
 
-    r.hset(f"order:{order_id}", "stage", "unclaimed")
-    _push_station_snapshot()
-    push_process(False)
+    # /start와 같은 이유로 arrived에서만 받는다.
+    # 특히 verified 이후를 막아야 한다 — 사용자가 인증한 직후 프론트 타이머가 뒤늦게
+    # 터지면 verified를 unclaimed로 덮어쓰고, AGV는 이미 받은 하차 명령대로 움직인다.
+    stage = order_data.get("stage")
+    if is_before(stage, "arrived"):
+        return jsonify({'error': '아직 부품이 도착하지 않았습니다', 'stage': stage}), 409
+    if is_after(stage, "arrived"):
+        return jsonify({'error': '이미 처리된 주문입니다', 'stage': stage}), 409
 
-    # 조립대 정리
-    r.hset(STATION_KEY, station_id, "idle")
-    r.delete(f"{STATION_ORDER_PREFIX}{station_id}")
+    # 3분 카운트는 프론트가 돌리지만 그건 클라이언트 값이다. 그대로 믿으면 도착 직후에도
+    # 요청 하나로 노쇼 처리가 된다. 서버가 arrived_at으로 다시 잰다.
+    # arrived_at이 없으면(서버 재시작 등) 막지 않는다 — 막으면 조립대가 영영 안 비고,
+    # 그 경우는 워치독 arrived(300초)가 어차피 정리한다.
+    elapsed = _elapsed_since_arrival(order_data)
+    if elapsed is not None and elapsed < STATION_UNCLAIM_MIN_SEC:
+        return jsonify({
+            'error': '아직 대기 시간이 남았습니다',
+            'elapsed_sec': int(elapsed),
+            'remain_sec': math.ceil(STATION_UNCLAIM_MIN_SEC - elapsed),
+        }), 425
+    if elapsed is None:
+        logger.warning(f"[station] {order_id} arrived_at 없음 — 시간 가드 건너뜀")
+
+    set_stage(order_id, "unclaimed")            # 노쇼는 fault가 아니라 정상 종료 경로
     r.delete(f"{STATION_VERIFIED_PREFIX}{station_id}")
-    _touch(STATION_KEY, AGV_KEY, f"order:{order_id}")
-
-    if _try_assign_next() is None:
-        _push_station_snapshot()
+    # agv:occupancy는 busy로 둔다. AGV가 아직 트레이를 들고 폐기장소로 가는 중이고,
+    # discarded → parked를 올리면 그때 idle이 된다.
+    release_station(station_id)
 
     return jsonify({
-        'ok': True
+        'ok': True,
+        'order_id': order_id,
+        'stage': 'unclaimed',
     }), 200
 
 @bp.route('/station/free', methods=['GET'])
@@ -307,7 +339,6 @@ def station_reset(station_id):
     """
     data = request.get_json()
 
-    station_id.split(",")
     order_id = data.get("order_id").split(",")
     password = data.get("password")
 
@@ -316,8 +347,7 @@ def station_reset(station_id):
     # 조립대별 order_id 같이 확인 정말 맞는 정보인지 확인 필요 아니면 오류 리턴
 
     try :
-        for sid in station_id :
-            r.hset(STATION_KEY, mapping={f"{sid}: idle"})
+        r.hset(STATION_KEY, mapping={sid: "idle" for sid in ("1", "2", "3")})
 
         r.set(WAREHOUSE_KEY, "idle")
         r.delete(WAREHOUSE_ORDER_KEY)
@@ -326,7 +356,14 @@ def station_reset(station_id):
             r.delete(f"{STATION_ORDER_PREFIX}{sid}")
             r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
         r.delete(QUEUE_KEY)
-    
+        r.delete(DEADLINE_KEY, "process:last")     # 워치독 예약 · 스냅샷 지문
+        for key in r.scan_iter("order:*:pending") :
+            r.delete(key)
+        for key in r.scan_iter("order:*:wrong") :
+            r.delete(key)
+        for key in r.scan_iter("order:*:gate") :
+            r.delete(key)
+
         _push_station_snapshot()
     
         return jsonify({'ok': True}), 200
@@ -370,15 +407,34 @@ def get_station_status(station_id):
     station_id = str(station_id)
     order_id = r.get(f"{STATION_ORDER_PREFIX}{station_id}")
     if not order_id:
-        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
+        return jsonify({'ready': False, 'error': '이 조립대에 배정된 주문이 없습니다'}), 400
 
     order_data = r.hgetall(f"order:{order_id}")
     if not order_data:
         # station_order 키는 남아있는데 order 해시가 TTL로 만료된 엣지 케이스
-        return jsonify({'error': '이 조립대에 배정된 주문이 없습니다'}), 400
+        return jsonify({'ready': False, 'error': '이 조립대에 배정된 주문이 없습니다'}), 400
 
-    return jsonify({
+    # 배정만 됐을 뿐 부품은 아직 창고·벨트·AGV 위에 있다. 이 구간에 주문번호를 내주면
+    # 디스플레이가 AGV보다 먼저 주문을 띄우고 사용자가 빈 조립대 앞에서 QR을 찍는다.
+    # 400을 쓰는 건 프론트가 이 엔드포인트의 400을 이미 "아직 없음"으로 처리하기 때문.
+    stage = order_data.get("stage")
+    if is_before(stage, "arrived"):
+        return jsonify({'ready': False, 'error': '아직 부품이 도착하지 않았습니다'}), 400
+
+    elapsed = _elapsed_since_arrival(order_data)
+    body = {
+        "ready": True,
         "order_id": order_id,
         "order_seq": order_data.get("order_seq"),
-        "stage": order_data["stage"]
-    }), 200
+        "stage": stage,
+        "board": order_data.get("board"),
+        "keycap": order_data.get("keycap"),
+        "colors": [c for c in (order_data.get("colors") or "").split(",") if c],
+        "arrived_at": order_data.get("arrived_at"),
+        "fault": order_data.get("fault") or None,
+    }
+    if elapsed is not None:
+        # 프론트가 자체 타이머 대신 이 값을 써도 되도록 서버 기준 잔여 시간을 같이 준다.
+        body["elapsed_sec"] = int(elapsed)
+        body["unclaim_remain_sec"] = max(0, math.ceil(STATION_UNCLAIM_MIN_SEC - elapsed))
+    return jsonify(body), 200

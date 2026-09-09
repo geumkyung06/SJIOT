@@ -102,16 +102,14 @@ def _dispatch_order(order_id):
         int(od["order_seq"]),
     )
 
-# stock
-def handle_stock_notification(con):
-    """Mobius subscription 콜백에서 호출. cnt_stock의 최신 con으로 Redis 캐시 갱신."""
-    r.set("warehouse:stock", json.dumps(con))
+# stock 캐시는 services/stock.py 로 이관 (warehouse:stock 은 hash)
 
-# station
-def send_station_cin(tables):
+# cnt_station
+# 현재 배정되어있는 stations들만 업데이트
+def send_station_cin(stations):
     # 나중에 tables 도 변경 필요
-    con = {"tables": tables}
-    return create_cin("cnt_table", con)
+    con = {"stations": stations}
+    return create_cin("cnt_station", con)
 
 def _build_station_snapshot():
     stations = {}
@@ -120,20 +118,20 @@ def _build_station_snapshot():
     for sid in ("1", "2", "3"):
         order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
         od = r.hgetall(f"order:{order_id}") if order_id else None
-        status = od.get("stage")
 
         if not od:
             # cin 폴링해야할 듯(cnt_process)
             # order_id 기준으로 찾아서 업뎃
-            stations[sid] = {"status": "empty", "order_id": None, 
+            stations[sid] = {"order_id": None,
                              "order_seq": None, "updated_at": now}
             continue
-        
+
+        status = od.get("stage")
         if status is None:
             logger.warning(f"[station] 매핑 없는 stage={status} (station={sid})")
             # cin 폴링해야할 듯(cnt_process)
             status = "occupied"
-        stations[sid] = {"status": status, "order_id": order_id,
+        stations[sid] = {"order_id": order_id,
                          "order_seq": od.get("order_seq"), "updated_at": now}
     return stations
 
@@ -144,14 +142,7 @@ def _push_station_snapshot():
         logger.warning("[table] cnt_table 스냅샷 전송 실패")
     return ok
 
-# command
-def send_agv_command_cin(order_id, station_id, status):
-    con = {
-        "order_id": order_id,
-        "station_id": station_id,
-        "status": status
-    }
-    return create_cin("cnt_agv_command", con)
+# 명령은 cnt_process 하나로만 나간다 (services/process.push_process)
 
 # supscription
 def _extract_notification_con(data):
@@ -189,37 +180,3 @@ def _extract_notification_con(data):
             con["count"] = 0
 
     return con
-
-# cnt_process
-def send_process_cin(seq, order_id, board, keycap, colors, station_id, status, restock: None):
-    now = datetime.now(KST).isoformat()
-    if not restock: 
-        con = {
-            "seq": seq,
-            "updated_at": now,
-            "orders": {
-                str(order_id): {
-                    "station_id": station_id,
-                    "status": status,
-                    "board": board,
-                    "colors": colors,
-                    "keycap": keycap,
-                }      
-            },
-        }
-    else:
-        con = {
-            "seq": seq,
-            "updated_at": now,
-            "orders": {
-                str(order_id): {
-                    "station_id": station_id,
-                    "status": status,
-                    "board": board,
-                    "colors": colors,
-                    "keycap": keycap,
-                }      
-            },
-            "restock": restock
-        }
-    return create_cin("cnt_order", con)

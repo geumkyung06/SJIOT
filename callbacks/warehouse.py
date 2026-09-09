@@ -1,10 +1,9 @@
-import json
-
 from config import WAREHOUSE_ORDER_KEY
 from infra.extensions import r
 from infra.logger import logger
 
-from services import collector
+from services import collector, stock
+from services.stock import BOARD_SLOT_MAP as BOARD_CODE
 from services.process import set_stage, set_fault, push_process
 
 # 이 콜백이 정상적으로 올 수 있는 stage. 그 외는 재전송으로 보고 버린다.
@@ -12,9 +11,6 @@ KEYCAP_STAGES = {"assigned", "keycap_mismatched"}
 BOARD_STAGES = {"tray_reached", "board_mismatched"}
 
 MAX_RETRY = 2
-
-# 주문의 board는 'blue', 카트리지 컨테이너는 cnt_b.
-BOARD_CODE = {"red": "r", "yellow": "y", "green": "g", "blue": "b"}
 
 
 def handle_warehouse(path, con):
@@ -61,20 +57,6 @@ def _current_order(con, allow_stages, tag):
         return None
 
     return order_id, stage
-
-
-def _parts_of(order_id, kind):
-    """주문이 쓰는 카트리지 id 목록.
-        keycap → ['E_r', 'S_y', 'F_b', 'J_g']
-        board  → ['b']
-    """
-    o = r.hgetall(f"order:{order_id}")
-    if kind == "board":
-        board = o.get("board")
-        return [BOARD_CODE.get(board, board)] if board else []
-    letters = o.get("keycap") or ""
-    colors = json.loads(o.get("colors") or "[]")
-    return [f"{ch}_{c}" for ch, c in zip(letters, colors)]
 
 
 def _mismatch(order_id, slot):
@@ -159,6 +141,17 @@ def try_board_packed(order_id):
 
 
 # 카트리지 상태
+def _still_needs(order_id, kind):
+    """이 주문이 그 칸을 아직 잡고 있는(=배출 전) 구간인가.
+
+    마지막 1개가 나가서 empty가 된 경우는 fault가 아니다 — 그 부품은 이미 트레이 위에 있고,
+    빈 카트리지는 '다음 주문'의 문제다. 예약 해제 시점과 같은 집합을 쓴다 (명세 8-1).
+    """
+    stage = r.hget(f"order:{order_id}", "stage")
+    reserved = stock.KEYCAP_RESERVED if kind == "keycap" else stock.BOARD_RESERVED
+    return stage in reserved
+
+
 def on_cartridge_status(kind, cartridge_id, con):
     """con = {"order_id": ..., "count": 6, "status": "idle"}
 
@@ -167,18 +160,28 @@ def on_cartridge_status(kind, cartridge_id, con):
     """
     count = con.get("count")
     status = con.get("status")
-    r.hset("warehouse:stock", cartridge_id,
-           json.dumps({"count": count, "status": status}))
+    prev = stock.get(cartridge_id) or {}
+    prev_status = prev.get("status")
+    prev_count = int(prev.get("count") or 0)
+    stock.put(cartridge_id, count, status)
     logger.info(f"[{kind}_status] {cartridge_id} count={count} status={status}")
 
     if status in ("idle", "busy"):
-        # count가 0이 되면 restock 목록이 바뀐다. 내용이 같으면 push_process가 알아서 안 올린다.
-        push_process()
+        # 막혀 있던 칸이 풀렸다 → 보류된 주문을 다시 시도한다.
+        # 이게 없으면 재고를 채워도 blocked_by 주문이 다음 종료까지 대기한다.
+        # status만 보면 안 된다 — 배출로 count가 0이 된 칸은 status가 idle인 채로 막히므로
+        # (blockers는 count<=0도 막는다) 채워 넣어도 복구 트리거가 안 걸린다.
+        if int(count or 0) > 0 and (prev_status in stock.BLOCKING_STATUS or prev_count <= 0):
+            from services.dispatch import on_stock_recovered
+            on_stock_recovered()
+        else:
+            # count가 0이 되면 restock 목록이 바뀐다. 내용이 같으면 push_process가 안 올린다.
+            push_process()
         return
 
-    # disable / empty — 진행 중 주문이 그 칸을 쓸 때만 fault (명세 6-3)
+    # disable / empty — 진행 중 주문이 그 칸을 '아직 배출 전'일 때만 fault (명세 6-3)
     order_id = r.get(WAREHOUSE_ORDER_KEY)
-    if order_id and cartridge_id in _parts_of(order_id, kind):
+    if order_id and cartridge_id in stock.parts_of(order_id, kind) and _still_needs(order_id, kind):
         fault = f"{kind}_empty" if status == "empty" else f"{kind}_cartridge_failed"
         set_fault(order_id, fault)          # 안에서 push_process를 부른다
     else:

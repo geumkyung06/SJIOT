@@ -9,12 +9,12 @@ from config import (QUEUE_KEY,
                     WAREHOUSE_KEY,
                     STATION_KEY,
                     AGV_KEY,
-                    FAULT_KEY,
                     WAREHOUSE_ORDER_KEY,
                     STATION_ORDER_PREFIX,
                     MAX_QUEUE_LEN,
                     STATION_VERIFIED_PREFIX,
                     ORDER_PAGE_BASE,
+                    ORDER_TTL,
                     STATION_RESET_PASSWORD,
                     COLOR_LIST,
                     BOARD_LIST,
@@ -24,17 +24,15 @@ from config import (QUEUE_KEY,
 from infra.logger import logger
 
 from infra.extensions import r
-from infra.mobius import (handle_stock_notification,
-                          send_agv_command_cin,
-                          _push_station_snapshot,
-                        )
+from infra.mobius import _push_station_snapshot
 from infra.keys import (_order_counter_key, 
                         _touch,
                         _ensure_initial_state,
                       )
 
+from services import stock
 from services.order_service import _is_valid_mbti
-from services.station_service import _try_assign_next
+from services.dispatch import try_assign_next
 from services.process import is_at_or_past
 
 bp = Blueprint('order', __name__)
@@ -138,6 +136,14 @@ def post_order_list():
         if r.llen(QUEUE_KEY) >= MAX_QUEUE_LEN:
             return jsonify({'error': '대기열이 가득 찼습니다. 잠시 후 다시 시도해주세요'}), 409
 
+        # 재고 예약 판정. 실재고에서 큐·진행 중 주문이 잡아둔 몫을 뺀 값으로 본다.
+        # 여기서 안 막으면 큐 안의 주문끼리 같은 카트리지를 놓고 경합한다 (명세 8-1).
+        ok, short = stock.can_accept(board, keycap, colors)
+        if not ok:
+            logger.warning(f"[order] 재고 부족으로 접수 거절 — {short}")
+            return jsonify({'error': '선택하신 조합의 재고가 부족합니다',
+                            'out_of_stock': short}), 409
+
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
         order_seq = r.incr(_order_counter_key())
 
@@ -151,11 +157,11 @@ def post_order_list():
             "order_seq": order_seq,
             "created_at": datetime.now(KST).isoformat()
         })
-        r.expire(f"order:{order_id}", 3600)  # TTL 1시간
+        r.expire(f"order:{order_id}", ORDER_TTL)
         _touch(QUEUE_KEY)
 
         # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
-        assigned_order_id = _try_assign_next()
+        assigned_order_id = try_assign_next()
         logger.debug(f"배정된 order_id: {assigned_order_id}")
 
         order_data = r.hgetall(f"order:{order_id}")

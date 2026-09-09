@@ -5,17 +5,19 @@ QUEUE_KEY = os.getenv("QUEUE_KEY", "order:queue")
 WAREHOUSE_KEY = os.getenv("WAREHOUSE_KEY", "warehouse:occupancy")
 STATION_KEY = os.getenv("STATION_KEY", "station:occupancy")
 AGV_KEY = os.getenv("AGV_KEY", "agv:occupancy")
-
-FAULT_KEY = os.getenv("FAULT_KEY", "order:fault")
+DEADLINE_KEY = os.getenv("DEADLINE_KEY", "order:deadlines")
 
 WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")
-WAREHOUSE_KEYCAP_DISPENSE_KEY = os.getenv("WAREHOUSE_DISPENSE_KEY", "warehouse:current_order:keycap")
-WAREHOUSE_BOARD_DISPENSE_KEY = os.getenv("WAREHOUSE_DISPENSE_KEY", "warehouse:current_order:board")
-STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order")
+STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order:")
 MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 처리 못 함)
 
-STATION_VERIFIED_PREFIX = os.getenv("STATION_VERIFIED_PREFIX", "station:verified_at")
+STATION_VERIFIED_PREFIX = os.getenv("STATION_VERIFIED_PREFIX", "station:verified_at:")
 STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
+
+# 노쇼(unclaim) 최소 대기 시간. 프론트가 3분 타이머를 돌리지만 그건 클라이언트 값이라
+# 조작하면 도착 직후에도 unclaim을 때릴 수 있다. 서버가 arrived_at으로 다시 잰다.
+# 프론트 3분(180s)보다 넉넉히 아래로 둔다 — 프론트 요청 실패 시 재시도 여유를 주기 위함.
+STATION_UNCLAIM_MIN_SEC = int(os.getenv("STATION_UNCLAIM_MIN_SEC", "150"))  # 2분 30초
 
 ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
 
@@ -28,7 +30,7 @@ MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
 # 테스트 기간 전용: 설정돼 있으면 건드리는 키마다 이 초만큼 TTL을 계속 갱신함.
 # 운영 전환 시 이 env var만 빼면(또는 0으로) 원래대로 영구 보존됨.
 TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
-ORDER_TTL = int(os.getenv("TEST_KEY_TTL"))
+ORDER_TTL = int(os.getenv("ORDER_TTL", "3600"))  # order:{id}와 부산물 키의 기본 수명
 
 COLOR_LIST = [c.strip() for c in os.getenv("COLOR_LIST", "r,y,g,b").split(",")]
 BOARD_LIST = [b.strip() for b in os.getenv("BOARD_LIST", "red,yellow,green,blue").split(",")]
@@ -49,10 +51,11 @@ STAGE_ORDER = ["queued",
                "keycap_packed",
                "tray_reached",
                "board_mismatched",
+               "board_packed",
                "pickup_reached",
                "loaded",
                "arrived",
-               "uncalimed",
+               "unclaimed",
                "verified",
                "received",
                "completed"

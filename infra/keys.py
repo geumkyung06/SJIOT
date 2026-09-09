@@ -6,7 +6,6 @@ from config import (QUEUE_KEY,
                     WAREHOUSE_KEY,
                     STATION_KEY,
                     AGV_KEY,
-                    FAULT_KEY,
                     WAREHOUSE_ORDER_KEY,
                     STATION_ORDER_PREFIX,
                     MAX_QUEUE_LEN,
@@ -19,7 +18,6 @@ from config import (QUEUE_KEY,
                     TEST_KEY_TTL,
                     COLOR_LIST,
                     BOARD_LIST,
-                    STAGE_TO_STATION_STATUS,
                     KST,
                     STAGE_ORDER
                    )
@@ -34,6 +32,18 @@ def _touch(*keys):
         return
     for key in keys:
         r.expire(key, TEST_KEY_TTL)
+
+def _touch_order(order_id):
+    """order:{id}와 그 부산물 키의 TTL을 한 번에 갱신.
+
+    주문 스코프 키가 6개라 개별로 _touch 하면 만료가 어긋난다.
+    죽은 주문의 pending이 남으면 다음 주문 판정을 오염시킨다.
+    """
+    _touch(f"order:{order_id}",
+           *[f"order:{order_id}:{slot}:{kind}"
+             for slot in ("keycap", "board") for kind in ("pending", "wrong")],
+           f"order:{order_id}:gate")
+
 
 def _ensure_initial_state():
     """warehouse/station 상태키가 없으면 초기값으로 세팅"""

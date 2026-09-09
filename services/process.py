@@ -6,7 +6,8 @@ from infra.logger import logger
 from infra.keys import _touch
 from infra.mobius import create_cin
 
-from config import KST, STAGE_ORDER
+from config import KST, STAGE_ORDER, STATION_ORDER_PREFIX
+from services import stock, watchdog
 
 _ALIAS = {
     "keycap_mismatched": "assigned",
@@ -23,6 +24,28 @@ def is_at_or_past(stage, target):
     """이미 그 단계를 지났는가 — 재전송 알림을 거르는 가드."""
     return rank(stage) >= rank(target)
 
+
+# ── 라우트 가드용 원본 순번 ──────────────────────────────────────────
+# rank()는 _ALIAS로 unclaimed를 arrived에 접는다. 재전송을 거를 땐 그게 맞지만
+# (노쇼는 arrived의 곁가지지 그 다음 단계가 아니다), 라우트 가드는 둘을 구분해야 한다.
+# unclaimed 주문에 /start가 들어오면 rank 기준으론 arrived와 동급이라 그냥 통과한다.
+# 그래서 가드는 STAGE_ORDER 배열 순서를 그대로 쓴다.
+
+def stage_index(stage):
+    """STAGE_ORDER 원본 순번. 모르는 값은 -1."""
+    return _RANK.get(stage, -1)
+
+def is_before(stage, target):
+    """STAGE_ORDER 기준 target보다 앞인가. stage가 None이면 True(아직 안 왔다)."""
+    return stage_index(stage) < stage_index(target)
+
+def is_after(stage, target):
+    """STAGE_ORDER 기준 target보다 뒤인가."""
+    return stage_index(stage) > stage_index(target)
+
+TERMINAL = {"completed", "unclaimed"}
+
+
 def set_stage(order_id, stage):
     """stage 전이 + cnt_process push. 콜백은 항상 이걸로만 stage를 바꾼다."""
     key = f"order:{order_id}"
@@ -30,6 +53,12 @@ def set_stage(order_id, stage):
     r.hset(key, "stage", stage)
     _touch(key)
     logger.info(f"[stage] {order_id} {prev} -> {stage}")
+
+    if stage in TERMINAL:
+        watchdog.disarm(order_id)
+    else:
+        watchdog.arm(order_id, stage)
+
     push_process()
 
 def set_fault(order_id, fault):
@@ -38,12 +67,16 @@ def set_fault(order_id, fault):
     key = f"order:{order_id}"
     r.hset(key, "fault", fault)
     _touch(key)
+    watchdog.disarm(order_id)
     logger.error(f"[fault] {order_id} <- {fault} (stage={r.hget(key, 'stage')} 유지)")
     push_process()
 
 def clear_fault(order_id):
-    r.hdel(f"order:{order_id}", "fault")
-    _touch(f"order:{order_id}")
+    """관리자 해제 — stage는 그대로이므로 그 자리에서 이어지고, 시계만 다시 건다."""
+    key = f"order:{order_id}"
+    r.hdel(key, "fault")
+    _touch(key)
+    watchdog.arm(order_id, r.hget(key, "stage"))
     push_process()
 
 
@@ -52,7 +85,7 @@ def active_order_ids():
     """진행 중 주문 = 조립대에 배정된 주문. queued는 스냅샷에 올리지 않는다."""
     oids = []
     for sid in ("1", "2", "3"):
-        oid = r.get(f"station:current_order:{sid}")
+        oid = r.get(f"{STATION_ORDER_PREFIX}{sid}")
         if oid:
             oids.append(oid)
     return oids
@@ -70,7 +103,7 @@ def _build_body():
             "status": o.get("stage"),          # Redis stage → 스냅샷 status
             "board": o.get("board"),
             "keycap": o.get("keycap"),
-            "colors": json.loads(o.get("colors") or "[]"),
+            "colors": [c for c in (o.get("colors") or "").split(",") if c],
             "fault": o.get("fault") or None,
         }
 
@@ -119,17 +152,5 @@ def push_process(periodic=False):
     return create_cin("cnt_process", con)
 
 def restock_list(kind):
-    """warehouse:stock에서 재고가 바닥난 칸 목록.
-    """
-    out = []
-    for cid, raw in (r.hgetall("warehouse:stock") or {}).items():
-        try:
-            s = json.loads(raw)
-        except (ValueError, TypeError):
-            continue
-        is_board = "_" not in cid                    # 보드는 'r', 키캡은 'E_r'
-        if (kind == "board") != is_board:
-            continue
-        if int(s.get("count") or 0) <= 0 or s.get("status") == "empty":
-            out.append(cid)
-    return sorted(out)      # 순서가 흔들리면 내용이 같은데 fingerprint가 달라진다
+    """채워야 할 칸 목록. 순서가 흔들리면 내용이 같은데 fingerprint가 달라지므로 stock에서 정렬해 준다."""
+    return stock.restock_list(kind)
