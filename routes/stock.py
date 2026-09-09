@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify
-from services.mobius import get_out_of_stock
+from services.stock_service import get_out_of_stock, get_stocks_from_redis
 
 bp = Blueprint('stock', __name__)
 
@@ -34,3 +34,29 @@ def get_out_of_stock_status():
     if out is None:
         return jsonify({'error': '재고 정보를 아직 불러오지 못했습니다'}), 503
     return jsonify(out), 200
+
+@bp.route('/stock', methods=["GET"])
+def get_all_of_stock_status():
+    """
+    전체 재고 조회
+    ---
+    tags:
+      - Stock
+    responses:
+      200:
+        description: 카테고리별 재고 확인
+        schema:
+          type: object
+          properties:
+            stocks:
+              type: json
+              description: 키캡 알파벳/색상별 정보, 보드 개수
+              example: {"keycap": {"E_r":50, "E_Y":48, ...}, "board": {"r":30, ...}}
+      503:
+        description: 재고 정보를 아직 캐시하지 못함 (cnt_stock 구독 알림 미수신)
+    """
+    stocks = get_stocks_from_redis()
+
+    if stocks is None:
+        return jsonify({"error": '재고 정보를 아직 불러오지 못했습니다'}), 503
+    return jsonify(stocks), 200    
