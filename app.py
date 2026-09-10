@@ -47,6 +47,12 @@ def create_app():
     CORS(app, resources={r"*": {"origins": "*"}})
 
     swagger_config = {
+        # flasgger 0.9.7.1 버그 우회 — ui3 템플릿이 이렇게 렌더한다.
+        #     let auth_config = {{ flasgger_config.get("auth") | safe }};
+        # 이 키가 없으면 파이썬 None 이 그대로 JS 에 박혀 ReferenceError 가 나고,
+        # window.onload 가 그 줄에서 죽어 window.ui 대입까지 못 간다.
+        # 그러면 Swagger UI 초기화가 안 끝나서 **모든 엔드포인트의 "Try it out" 이 사라진다.**
+        "auth": {},
         "headers": [],
         "specs": [{
             "endpoint": 'apispec_1',
@@ -66,7 +72,9 @@ def create_app():
             "version": "1.0.0",
         },
         "basePath": "/",
-        "schemes": ["https"],
+        # 배포는 https, 로컬(127.0.0.1:5000)은 http 다. https 만 선언하면
+        # Swagger UI 가 로컬에서도 https 로 요청을 만들어 Execute 가 실패한다.
+        "schemes": ["https", "http"],
     }
     Swagger(app, config=swagger_config, template=template)
 

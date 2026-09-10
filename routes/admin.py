@@ -137,46 +137,31 @@ def admin_reset():
         required: true
         schema:
           type: object
+          example: {"password": "관리자 비밀번호", "mode": "zero", "keep_queue": false}
           properties:
             password:
               type: string
-              description: 관리자 비밀번호 (STATION_RESET_PASSWORD 와 동일)
+              description: "관리자 비밀번호 (STATION_RESET_PASSWORD 와 동일)"
             mode:
               type: string
               enum: [zero, mobius, hard]
               default: zero
-              description: >
-                zero   — 전부 초기값. 재고 36칸을 STOCK_MAX_COUNT 로, 전 설비 idle,
-                         진행 중 주문 전부 삭제. 전시회 첫날 시작 전처럼
-                         '아무것도 진행 중이 아니어야 할 때'.
-                mobius — zero 를 돌린 뒤 Mobius 최신값으로 덮어쓴다. 재고·AGV·
-                         진행 중 주문을 되찾는다. 사고 복구, 2일차 시작 전.
-                hard   — zero + 아카이브·집계·일련번호까지 삭제. 90일 보관 기록이
-                         사라진다. confirm 이 필요하다.
+              description: "zero=전부 초기값(재고 36칸을 STOCK_MAX_COUNT 로, 전 설비 idle, 진행 중 주문 삭제) · mobius=zero 뒤 Mobius 최신값으로 복구 · hard=zero + 아카이브·집계·일련번호까지 삭제(confirm 필요)"
             confirm:
               type: string
-              description: >
-                mode=hard 일 때만 필수. 정확히 "HARD-RESET" 이어야 한다.
-                비밀번호만으로는 오타 한 번에 90일치 기록이 날아가서 한 겹 더 둔다.
+              description: "mode=hard 전용·필수. 정확히 HARD-RESET 이어야 한다. 비밀번호만으로는 오타 한 번에 90일치 기록이 날아가서 한 겹 더 둔다"
             keep_queue:
               type: boolean
               default: false
-              description: >
-                대기열(order:queue)과 그 주문 해시를 보존할지. 대기열은 Mobius 어디에도
-                없어서 지우면 복구가 불가능하다 (cnt_process 는 조립대에 올라간 주문만 싣는다).
+              description: "대기열(order:queue)과 그 주문 해시를 보존할지. 대기열은 Mobius 어디에도 없어서 지우면 복구가 불가능하다"
             reset_seq:
               type: boolean
               default: false
-              description: >
-                mode=hard 전용. process:seq 까지 0 으로 되돌린다.
-                머신은 "seq 가 안 오르면 무시" 로 재전송을 거르므로, 리셋하면
-                **창고·AGV 머신도 같이 재시작해야** 새 스냅샷을 받는다. 그래서 기본은 유지다.
+              description: "mode=hard 전용. process:seq 까지 리셋. 머신은 seq 가 안 오르면 무시하므로, 리셋하면 창고·AGV 머신도 같이 재시작해야 한다"
             flush_unknown:
               type: boolean
               default: false
-              description: >
-                mode=hard 전용. 이 서비스가 쓰지 않는 키까지 삭제.
-                실 Redis 는 배포본과 같은 DB 라 기본은 목록만 보고하고 건드리지 않는다.
+              description: "mode=hard 전용. 이 서비스가 쓰지 않는 키까지 삭제. 실 Redis 는 배포본과 같은 DB 라 기본은 목록만 보고한다"
     responses:
       200:
         description: 초기화 완료. 무엇을 지우고 무엇을 복구했는지 보고서를 돌려준다
