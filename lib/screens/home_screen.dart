@@ -22,7 +22,6 @@ import '../theme/app_theme.dart';
 ///
 /// 피그마 delay/duration 매핑 (모두 opacity 0→1과 함께):
 ///   로고 타일 0~3 : delay 60/130/200/270ms, y −20px→0,  duration 300ms
-///   타이틀(딸깍)   : delay 180ms,            y  16px→0,  duration 300ms
 ///   서브타이틀     : delay 260ms,            (이동 없음), duration 300ms
 ///   구분선(scaleX) : delay 320ms,            scaleX 0→1, duration 400ms
 ///   본문 문구      : delay 380ms,            (이동 없음), duration 300ms
@@ -46,9 +45,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // 각 요소의 opacity / 이동(px) 애니메이션
   late final List<Animation<double>> _tileOpacity;
   late final List<Animation<double>> _tileY;
-
-  late final Animation<double> _titleOpacity;
-  late final Animation<double> _titleY;
 
   late final Animation<double> _subtitleOpacity;
 
@@ -110,10 +106,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       slideY(270, 570, -20),
     ];
 
-    // 타이틀 "딸깍": delay .18 / duration 300ms / y 16px→0
-    _titleOpacity = fadeIn(180, 480);
-    _titleY = slideY(180, 480, 16);
-
     // 서브타이틀: delay .26 / duration 300ms / 이동 없음(opacity만)
     _subtitleOpacity = fadeIn(260, 560);
 
@@ -164,19 +156,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _FadeSlide(
               opacity: _tileOpacity[0],
               y: _tileY[0],
-              child: const _LogoTile(color: KeycapColors.green, label: '딸'),
+              child: const _LogoTile(color: KeycapColors.green, label: 'K'),
             ),
             const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[1],
               y: _tileY[1],
-              child: const _LogoTile(color: KeycapColors.yellow, label: '깍'),
+              child: const _LogoTile(color: KeycapColors.yellow, label: 'E'),
             ),
             const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[2],
               y: _tileY[2],
-              child: const _LogoTile(color: KeycapColors.blue, label: 'KEY'),
+              child: const _LogoTile(color: KeycapColors.blue, label: 'Y'),
             ),
             const SizedBox(width: 20),
             _FadeSlide(
@@ -190,21 +182,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ],
         ),
         const SizedBox(height: 44),
-        _FadeSlide(
-          opacity: _titleOpacity,
-          y: _titleY,
-          child: const Text(
-            '딸깍',
-            style: TextStyle(
-              fontSize: 118,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -2,
-              height: 1.1,
-              color: AppColors.ink,
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
         AnimatedBuilder(
           animation: _subtitleOpacity,
           builder: (context, child) =>

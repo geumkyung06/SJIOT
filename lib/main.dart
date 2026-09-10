@@ -16,6 +16,8 @@ import 'services/api_service.dart';
 // 직접 import 하면 웹 빌드가 컴파일되지 않습니다.
 import 'services/kiosk_window_web.dart'
     if (dart.library.io) 'services/kiosk_window_io.dart';
+
+import 'services/receipt_printer_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/mbti_choice_screen.dart';
 import 'screens/mbti_quiz_screen.dart';
@@ -1231,17 +1233,39 @@ class _AppRootState extends State<AppRoot> {
         // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
         // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
         final orderId = _orderId;
+
         if (orderId != null) {
           try {
             final qrBytes = await _api.getOrderQr(orderId);
+
+            // 화면에 사용할 QR 저장
             if (mounted) {
-              setState(() => _receiptQrBytes = qrBytes);
+              setState(() {
+                _receiptQrBytes = qrBytes;
+              });
+            }
+
+            // 실제 영수증 출력
+            try {
+              await ReceiptPrinterService.printReceipt(
+                orderNumber: _receiptOrderNumber ?? '-',
+                time: _receiptTime ?? _formatNowHHmm(),
+                mbti: _mbtiResult ?? '----',
+                keycapLabels: List.generate(
+                  _boardCount,
+                  (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
+                ),
+                qrBytes: qrBytes,
+              );
+
+              debugPrint('>>> 영수증 출력 완료');
+            } catch (e) {
+              debugPrint('>>> 영수증 출력 실패: $e');
             }
           } catch (e) {
             print('>>> QR 조회 실패: $e');
           }
         }
-
         return; // 성공했으므로 재시도 루프 종료
       } on TimeoutException {
         // "응답을 못 받은" 경우 → 같은 idempotency 키로 자동 재시도
@@ -1334,7 +1358,8 @@ class _AppRootState extends State<AppRoot> {
       _receiptOrderNumber =
           (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
       _orderStatus = {'stage': 'queued', 'position_in_queue': 1};
-      _receiptOrderNumber = (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
+      _receiptOrderNumber =
+          (DateTime.now().millisecondsSinceEpoch % 900 + 100).toString();
       _orderStatus = {'status': 'waiting', 'position_in_queue': 1};
       _receiptQrBytes = null; // 목업 모드에서는 실제 QR 이미지가 없음(자리표시자로 표시)
       _step = AppStep.receipt;
@@ -1662,99 +1687,99 @@ class _AppRootState extends State<AppRoot> {
           backgroundColor: AppColors.background,
           body: KioskScaler(
             child: Stack(
-            children: [
-              _KioskCardFrame(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return SingleChildScrollView(
-                      padding: EdgeInsets.zero,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
-                        // 화면 전환 애니메이션 (슬라이드 + 페이드, 방향 인식)
-                        // fillColor: Colors.transparent 로 지정해서 전환 중
-                        // Scaffold의 AppColors.background 위에 별도 흰색 판이
-                        // 덧씌워지지 않도록 함.
-                        child: Center(
-                          child: PageTransitionSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            reverse: _direction == -1,
-                            transitionBuilder:
-                                (child, primaryAnimation, secondaryAnimation) {
-                              return SharedAxisTransition(
-                                animation: primaryAnimation,
-                                secondaryAnimation: secondaryAnimation,
-                                transitionType:
-                                    SharedAxisTransitionType.horizontal,
-                                fillColor: Colors.transparent,
-                                child: child,
-                              );
-                            },
-                            child: KeyedSubtree(
-                              key: ValueKey(_step),
-                              child: screen,
+              children: [
+                _KioskCardFrame(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.zero,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          // 화면 전환 애니메이션 (슬라이드 + 페이드, 방향 인식)
+                          // fillColor: Colors.transparent 로 지정해서 전환 중
+                          // Scaffold의 AppColors.background 위에 별도 흰색 판이
+                          // 덧씌워지지 않도록 함.
+                          child: Center(
+                            child: PageTransitionSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              reverse: _direction == -1,
+                              transitionBuilder: (child, primaryAnimation,
+                                  secondaryAnimation) {
+                                return SharedAxisTransition(
+                                  animation: primaryAnimation,
+                                  secondaryAnimation: secondaryAnimation,
+                                  transitionType:
+                                      SharedAxisTransitionType.horizontal,
+                                  fillColor: Colors.transparent,
+                                  child: child,
+                                );
+                              },
+                              child: KeyedSubtree(
+                                key: ValueKey(_step),
+                                child: screen,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              // [디자인] 시안 상단 진행바
-              if (showProgress)
+                // [디자인] 시안 상단 진행바
+                if (showProgress)
+                  Positioned(
+                    top: KioskCanvas.margin + 58,
+                    left: KioskCanvas.margin + 320,
+                    right: KioskCanvas.margin + 72,
+                    child: _StepProgress(current: progressStep),
+                  ),
+                // [디자인] 시안 하단 로고 푸터
+                const Positioned(
+                  left: KioskCanvas.margin,
+                  right: KioskCanvas.margin,
+                  bottom: KioskCanvas.margin + 40,
+                  child: _BrandFooter(),
+                ),
+                if (showBackButton)
+                  Positioned(
+                    top: KioskCanvas.margin + 44,
+                    left: KioskCanvas.margin + 56,
+                    child: _BackButton(onTap: _goBack),
+                  ),
+                // [키오스크 종료용] 화면에 아무것도 안 보이는 투명한 영역.
+                // 이 구석을 3초 안에 5번 연속 터치하면 종료 확인창(비밀번호
+                // 입력)이 뜹니다. 운영진 전용 숨겨진 동작이며, 관람객에게는
+                // 노출되지 않습니다.
+                // [버그 수정] 원래 top-left(0,0)~(60,60)에 있었는데, 바로 그
+                // 자리에 "이전(ESC)" 버튼(top:16,left:16)이 겹쳐 있었습니다.
+                // Stack에서 이 위젯이 버튼보다 나중에 그려져서(=위에 깔려서)
+                // 버튼의 왼쪽 절반(아이콘 쪽)을 탭하면 이 투명 레이어가 먼저
+                // 탭을 가로채 버튼이 눌리지 않는 문제가 있었습니다. 아무것도
+                // 없는 우측 하단 구석으로 옮겨서 겹침을 없앴습니다.
                 Positioned(
-                  top: KioskCanvas.margin + 58,
-                  left: KioskCanvas.margin + 320,
-                  right: KioskCanvas.margin + 72,
-                  child: _StepProgress(current: progressStep),
+                  bottom: 0,
+                  right: 0,
+                  width: 60,
+                  height: 60,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleExitCornerTap,
+                    child: const SizedBox.expand(),
+                  ),
                 ),
-              // [디자인] 시안 하단 로고 푸터
-              const Positioned(
-                left: KioskCanvas.margin,
-                right: KioskCanvas.margin,
-                bottom: KioskCanvas.margin + 40,
-                child: _BrandFooter(),
-              ),
-              if (showBackButton)
-                Positioned(
-                  top: KioskCanvas.margin + 44,
-                  left: KioskCanvas.margin + 56,
-                  child: _BackButton(onTap: _goBack),
-                ),
-              // [키오스크 종료용] 화면에 아무것도 안 보이는 투명한 영역.
-              // 이 구석을 3초 안에 5번 연속 터치하면 종료 확인창(비밀번호
-              // 입력)이 뜹니다. 운영진 전용 숨겨진 동작이며, 관람객에게는
-              // 노출되지 않습니다.
-              // [버그 수정] 원래 top-left(0,0)~(60,60)에 있었는데, 바로 그
-              // 자리에 "이전(ESC)" 버튼(top:16,left:16)이 겹쳐 있었습니다.
-              // Stack에서 이 위젯이 버튼보다 나중에 그려져서(=위에 깔려서)
-              // 버튼의 왼쪽 절반(아이콘 쪽)을 탭하면 이 투명 레이어가 먼저
-              // 탭을 가로채 버튼이 눌리지 않는 문제가 있었습니다. 아무것도
-              // 없는 우측 하단 구석으로 옮겨서 겹침을 없앴습니다.
-              Positioned(
-                bottom: 0,
-                right: 0,
-                width: 60,
-                height: 60,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _handleExitCornerTap,
-                  child: const SizedBox.expand(),
-                ),
-              ),
-              // [신규] 종료 확인창. 5회 터치를 감지하면 이게 화면 전체를
-              // 덮으며 나타나서, 그 아래 키오스크 진행 화면으로는 터치가
-              // 전달되지 않습니다(전체를 덮는 GestureDetector가 가로챔).
-              if (_showExitDialog)
-                _ExitConfirmDialog(
-                  input: _exitPinInput,
-                  errorText: _exitPinError,
-                  onKeyTap: _onExitKeypadTap,
-                  onCancel: _closeExitDialog,
-                ),
-            ],
+                // [신규] 종료 확인창. 5회 터치를 감지하면 이게 화면 전체를
+                // 덮으며 나타나서, 그 아래 키오스크 진행 화면으로는 터치가
+                // 전달되지 않습니다(전체를 덮는 GestureDetector가 가로챔).
+                if (_showExitDialog)
+                  _ExitConfirmDialog(
+                    input: _exitPinInput,
+                    errorText: _exitPinError,
+                    onKeyTap: _onExitKeypadTap,
+                    onCancel: _closeExitDialog,
+                  ),
+              ],
             ),
           ),
         ),
