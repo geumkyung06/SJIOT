@@ -11,7 +11,10 @@ Future<void> initKioskWindow({required bool kioskMode}) async {
   await windowManager.ensureInitialized();
 
   final windowOptions = WindowOptions(
-    size: const Size(1920, 1080), // 키오스크 실제 해상도에 맞춰 조정하세요.
+    // [세로 전환] 세로 키오스크(2160 x 3840)에 맞춘 9:16 창.
+    // kioskMode가 true면 어차피 전체화면이라 이 값은 창모드에서만 쓰입니다.
+    // 노트북에서 창모드로 테스트할 땐 Size(540, 960)처럼 줄여서 쓰세요.
+    size: const Size(1080, 1920),
     center: true,
     backgroundColor: Colors.transparent,
     titleBarStyle: kioskMode ? TitleBarStyle.hidden : TitleBarStyle.normal,

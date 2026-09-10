@@ -81,16 +81,18 @@ class BoardColors {
 }
 
 /// ---------------------------------------------------------------------------
-/// 화면 규격 — UHD 4K (3840 x 2160)
+/// 화면 규격 — UHD 4K 세로 설치 (2160 x 3840)
 /// ---------------------------------------------------------------------------
-/// 화면 코드는 전부 아래 "설계 캔버스"(1920 x 1080) 좌표로 작성하고,
+/// [세로 전환] 키오스크를 세로로 세워 쓰기로 해서 설계 캔버스를
+/// 1920 x 1080(가로 16:9) → 1080 x 1920(세로 9:16)으로 바꿨습니다.
+/// 화면 코드는 전부 아래 "설계 캔버스"(1080 x 1920) 좌표로 작성하고,
 /// [KioskScaler] 가 실제 해상도에 맞춰 통째로 비율 확대/축소합니다.
-///   · 3840 x 2160 네이티브(배율 100%) → 2.0배로 확대
-///   · 1920 x 1080 (배율 200% / 레티나) → 1.0배
+///   · 2160 x 3840 네이티브(배율 100%) → 2.0배로 확대
+///   · 1080 x 1920 (배율 200% / 레티나) → 1.0배
 /// 어느 쪽이든 화면에 보이는 결과는 완전히 같습니다.
 class KioskCanvas {
-  static const double width = 1920;
-  static const double height = 1080;
+  static const double width = 1080;
+  static const double height = 1920;
 
   /// 배경과 흰 카드 사이 여백
   static const double margin = 40;
@@ -98,7 +100,9 @@ class KioskCanvas {
   static const double cardRadius = 36;
 
   /// 카드 안쪽 여백(상단은 진행바, 하단은 로고 푸터가 차지)
-  static const double cardPaddingH = 96;
+  /// [세로 전환] 캔버스 폭이 1920 → 1080으로 줄어서 좌우 여백도 96 → 64로
+  /// 줄였습니다. (본문 폭: 1080 - margin*2 - 64*2 = 872)
+  static const double cardPaddingH = 64;
   static const double cardPaddingTop = 120;
   static const double cardPaddingBottom = 136;
 }

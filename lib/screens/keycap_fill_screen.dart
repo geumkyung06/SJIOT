@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// STEP 05 — 키캡 색을 선택하세요
-/// [디자인 교체] 시안 톤 — 판 위에 입체 키캡이 얹히고, 오른쪽에 색상 목록을 둡니다.
-/// (가로형 4K 화면에 맞춰 판과 색상 목록을 좌우로 배치했습니다.)
+/// [디자인 교체] 시안 톤 — 판 위에 입체 키캡이 얹힙니다.
+/// [세로 전환] 세로형 4K 화면(1080 x 1920 캔버스)에 맞춰, 예전에 판 오른쪽에
+/// 세로 목록으로 있던 색상 선택지 4개를 판 "아래"에 가로 한 줄로 옮겼습니다.
 /// 커서 이동·색상 적용·완료 처리 등 동작은 이전과 100% 동일합니다.
 class KeycapFillScreen extends StatefulWidget {
   final String boardShape; // '1x4' 고정 (2x2 옵션은 팀 확정으로 제거됨. 파라미터는 하위 호환용으로 유지)
@@ -43,6 +44,11 @@ class KeycapFillScreen extends StatefulWidget {
 class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProviderStateMixin {
   static const int _durationMs = 700;
 
+  // [세로 전환] 보드 아래 가로 한 줄에 4칸이 들어가는 치수.
+  // 196 * 4 + 24 * 3 = 856  (카드 본문 폭 872 안에 들어감)
+  static const double _cardWidth = 196;
+  static const double _cardGap = 24;
+
   late final AnimationController _controller;
 
   late final Animation<double> _labelOpacity;
@@ -52,7 +58,7 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
   late final Animation<double> _plateOpacity;
   late final Animation<double> _plateY;
   late final Animation<double> _colorListOpacity;
-  late final Animation<double> _colorListX;
+  late final Animation<double> _colorListY;
   late final Animation<double> _buttonOpacity;
   late final Animation<double> _buttonY;
 
@@ -68,10 +74,6 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
     Animation<double> slideY(double s, double e, double from) => Tween<double>(begin: from, end: 0).animate(
           CurvedAnimation(parent: _controller, curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut)),
         );
-    Animation<double> slideX(double s, double e, double from) => Tween<double>(begin: from, end: 0).animate(
-          CurvedAnimation(parent: _controller, curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut)),
-        );
-
     _labelOpacity = fadeIn(40, 340);
     _titleOpacity = fadeIn(70, 370);
     _titleY = slideY(70, 370, 10);
@@ -79,7 +81,8 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
     _plateOpacity = fadeIn(160, 460);
     _plateY = slideY(160, 460, 12);
     _colorListOpacity = fadeIn(220, 520);
-    _colorListX = slideX(220, 520, -10);
+    // [세로 전환] 보드 아래로 내려왔으므로 등장도 가로(-10px) → 세로(12px) 슬라이드
+    _colorListY = slideY(220, 520, 12);
     _buttonOpacity = fadeIn(280, 580);
     _buttonY = slideY(280, 580, 10);
 
@@ -124,82 +127,88 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
           ),
         ),
         const SizedBox(height: 52),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // ---- 판 + 키캡 ----
-            _FadeSlideY(
-              opacity: _plateOpacity,
-              y: _plateY,
-              child: Container(
-                padding: const EdgeInsets.all(26),
-                decoration: BoxDecoration(
-                  color: widget.boardColor,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: AppColors.ink.withValues(alpha: 0.12), width: 2),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(rows, (r) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: List.generate(cols, (c) {
-                          final i = r * cols + c;
-                          final isCursor = i == widget.cursor;
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: widget.stockLoading || widget.onCellTap == null
-                                  ? null
-                                  : () => widget.onCellTap!(i),
-                              child: _KeycapCell(
-                                isCursor: isCursor,
-                                color: widget.colorAt(i),
-                                letter: widget.letters[i],
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                    );
-                  }),
-                ),
-              ),
+        // ---- 판 + 키캡 ----
+        _FadeSlideY(
+          opacity: _plateOpacity,
+          y: _plateY,
+          child: Container(
+            padding: const EdgeInsets.all(26),
+            decoration: BoxDecoration(
+              color: widget.boardColor,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: AppColors.ink.withValues(alpha: 0.12), width: 2),
             ),
-            const SizedBox(width: 96),
-            // ---- 색상 선택 목록 ----
-            _FadeSlideX(
-              opacity: _colorListOpacity,
-              x: _colorListX,
-              child: Column(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(rows, (r) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(cols, (c) {
+                      final i = r * cols + c;
+                      final isCursor = i == widget.cursor;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: widget.stockLoading || widget.onCellTap == null
+                              ? null
+                              : () => widget.onCellTap!(i),
+                          child: _KeycapCell(
+                            isCursor: isCursor,
+                            color: widget.colorAt(i),
+                            letter: widget.letters[i],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+        const SizedBox(height: 44),
+        // ---- 색상 선택: 보드 그림 "아래"에 가로 한 줄 4칸 ----
+        // [세로 전환] 예전에는 보드 오른쪽에 세로 목록으로 붙어 있었지만,
+        // 세로 캔버스(1080 x 1920)에서는 좌우 폭이 모자라서 보드 아래로 내리고
+        // 보드의 키캡 4개와 개수·방향이 맞게 가로 한 줄로 폈습니다.
+        // 폭 계산: _cardWidth(196) * 4 + _cardGap(24) * 3 = 856 <= 본문 폭 872
+        _FadeSlideY(
+          opacity: _colorListOpacity,
+          y: _colorListY,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('색상 선택', style: AppTextStyles.body),
+              const SizedBox(height: 20),
+              Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('색상 선택', style: AppTextStyles.body),
-                  const SizedBox(height: 16),
-                  _legendRow(1, 'g', KeycapColors.green, '초록'),
-                  _legendRow(2, 'y', KeycapColors.yellow, '노랑'),
-                  _legendRow(3, 'b', KeycapColors.blue, '파랑'),
+                  _colorCard(1, 'g', KeycapColors.green, '초록'),
+                  const SizedBox(width: _cardGap),
+                  _colorCard(2, 'y', KeycapColors.yellow, '노랑'),
+                  const SizedBox(width: _cardGap),
+                  _colorCard(3, 'b', KeycapColors.blue, '파랑'),
+                  const SizedBox(width: _cardGap),
                   // [수정] 색상 코드('r')는 그대로 유지하되, 실제 색상이 빨강→핑크로
-                  // 바뀌었으므로 화면에 보이는 한글 이름만 '핑크'로 변경
-                  _legendRow(4, 'r', KeycapColors.red, '핑크'),
-                  const SizedBox(height: 16),
-                  Text(
-                    '$filled / ${widget.letters.length}',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.muted,
-                    ),
-                  ),
+                  // 바뀌었으므로 화면에 보이는 한글 이름만 '핑크'로 표시합니다.
+                  _colorCard(4, 'r', KeycapColors.red, '핑크'),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 22),
+              Text(
+                '$filled / ${widget.letters.length}',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                ),
+              ),
+            ],
+          ),
         ),
         if (widget.stockLoading)
           const Padding(
@@ -248,41 +257,48 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
     );
   }
 
-  Widget _legendRow(
+  /// [세로 전환] 보드 아래 가로 한 줄에 놓이는 색상 선택 카드.
+  /// 예전 세로 목록(_legendRow)을 대체하며, 번호 배지 · 색상 칩 · 이름을
+  /// 세로로 쌓습니다. 탭 동작(onColorTap)과 품절 처리는 이전과 동일합니다.
+  Widget _colorCard(
     int digit,
     String colorCode,
     Color color,
     String name,
   ) {
     final isSoldOut = widget.soldOutColors.contains(colorCode);
-    final num = '$digit';
+    final tappable =
+        !(widget.stockLoading || isSoldOut || widget.onColorTap == null);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: (widget.stockLoading || isSoldOut || widget.onColorTap == null)
-          ? null
-          : () => widget.onColorTap!(digit),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        child: Row(
+      onTap: tappable ? () => widget.onColorTap!(digit) : null,
+      child: Container(
+        width: _cardWidth,
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        decoration: AppDeco.outlined(
+          radius: 18,
+          borderColor: isSoldOut ? AppColors.disabledLine : AppColors.border,
+          fill: isSoldOut ? AppColors.disabledBg : AppColors.surface,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // 번호 칸은 항상 같은 크기 유지
+            // 번호 배지 (숫자 키 1~4와 대응)
             KeyNumBadge(
-              label: num,
+              label: '$digit',
               disabled: isSoldOut,
               size: 50,
               fontSize: 24,
             ),
-
-            const SizedBox(width: 20),
-
-            // 색상 표시
+            const SizedBox(height: 16),
+            // 색상 칩 — 세로 배치라 가로 목록보다 크게 키웠습니다(46 → 84)
             Container(
-              width: 46,
-              height: 46,
+              width: 84,
+              height: 84,
               decoration: BoxDecoration(
                 color: isSoldOut ? AppColors.disabledBg : color,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isSoldOut
                       ? AppColors.disabledLine
@@ -291,24 +307,19 @@ class _KeycapFillScreenState extends State<KeycapFillScreen> with TickerProvider
                 ),
               ),
             ),
-
-            const SizedBox(width: 20),
-
-            // 색상 이름
-            SizedBox(
-              width: 96,
-              child: Text(
-                name,
-                style: TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w700,
-                  color: isSoldOut ? AppColors.disabledText : AppColors.ink,
-                ),
+            const SizedBox(height: 14),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 27,
+                fontWeight: FontWeight.w700,
+                color: isSoldOut ? AppColors.disabledText : AppColors.ink,
               ),
             ),
-
-            // 품절 표시
-            if (isSoldOut) const SoldOutPill(),
+            if (isSoldOut) ...[
+              const SizedBox(height: 10),
+              const SoldOutPill(),
+            ],
           ],
         ),
       ),
@@ -344,25 +355,6 @@ class _FadeSlideY extends StatelessWidget {
       builder: (context, child) => Opacity(
         opacity: opacity.value.clamp(0.0, 1.0),
         child: Transform.translate(offset: Offset(0, y.value), child: child),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _FadeSlideX extends StatelessWidget {
-  final Animation<double> opacity;
-  final Animation<double> x;
-  final Widget child;
-  const _FadeSlideX({required this.opacity, required this.x, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([opacity, x]),
-      builder: (context, child) => Opacity(
-        opacity: opacity.value.clamp(0.0, 1.0),
-        child: Transform.translate(offset: Offset(x.value, 0), child: child),
       ),
       child: child,
     );
