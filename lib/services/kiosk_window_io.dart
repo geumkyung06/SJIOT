@@ -32,7 +32,7 @@ Future<void> initKioskWindow({required bool kioskMode}) async {
   });
 }
 
-/// 좌측 상단 5회 터치 + PIN 입력으로 앱을 종료할 때 호출됩니다.
+/// 하단 사업단 로고 7회 터치(5초 이내) + PIN 입력으로 앱을 종료할 때 호출됩니다.
 Future<void> closeKioskWindow() async {
   await windowManager.close();
 }

@@ -32,9 +32,9 @@ import 'screens/receipt_screen.dart';
 // [디버그/키오스크용] 개발 중(flutter run)에는 전체화면+최상단 고정이
 // VS Code/터미널을 가려서 오히려 불편하므로 기본은 꺼둡니다.
 // 실제 키오스크에 배포하는 release 빌드에서만 true로 바꿔서 쓰세요.
-// [항상 켜짐] 좌측 상단 구석 5회 터치로 종료할 수 있는 숨겨진 동작이
-// 마련되어 있으므로, 개발 중(flutter run)에도 실제 키오스크와 동일한
-// 전체화면 환경에서 테스트할 수 있도록 항상 true로 둡니다.
+// [항상 켜짐] 하단 "사물인터넷혁신융합대학사업단" 로고를 5초 안에 7번 눌러
+// 종료할 수 있는 숨겨진 동작이 마련되어 있으므로, 개발 중(flutter run)에도
+// 실제 키오스크와 동일한 전체화면 환경에서 테스트할 수 있도록 항상 true로 둡니다.
 const bool kKioskWindowMode = true;
 
 // [운영진 전용] 종료 확인창에서 입력해야 하는 비밀번호.
@@ -101,9 +101,16 @@ class _AppRootState extends State<AppRoot> {
   final FocusNode _focusNode = FocusNode();
   final ApiService _api = ApiService();
 
-  // [키오스크 종료용] 좌측 상단 구석을 짧은 시간 안에 5번 연속 터치하면
-  // 종료 확인창(비밀번호 입력)이 뜹니다. 관람객은 우연히 찾기 어렵지만,
-  // 운영진은 알고 있으면 키보드 없이도 종료할 수 있는 숨겨진 동작입니다.
+  // [키오스크 종료용] 화면 하단 푸터의 "사물인터넷혁신융합대학사업단" 로고와
+  // 글씨를 5초 안에 7번 이상 연속 터치하면 종료 확인창(비밀번호 입력)이 뜹니다.
+  // 관람객은 우연히 찾기 어렵지만, 운영진은 알고 있으면 키보드 없이도 종료할 수
+  // 있는 숨겨진 동작입니다.
+  // [변경] 예전에는 "우측 하단 투명 구석을 3초 안에 5번"이었는데, 아무것도 없는
+  // 구석이라 운영진도 위치를 찾기 어려워서 눈에 보이는 사업단 로고로 옮기고,
+  // 대신 우연히 눌릴 확률을 낮추려고 조건을 7회 / 5초로 늘렸습니다.
+  static const int _exitTapTarget = 7;
+  static const Duration _exitTapWindow = Duration(seconds: 5);
+
   int _exitTapCount = 0;
   DateTime? _firstExitTapTime;
 
@@ -116,16 +123,19 @@ class _AppRootState extends State<AppRoot> {
   Timer? _exitDialogTimeoutTimer;
   static const Duration _exitDialogTimeout = Duration(seconds: 25);
 
-  void _handleExitCornerTap() {
+  /// 하단 푸터의 사업단 로고/글씨를 탭할 때마다 호출됩니다.
+  /// 첫 탭으로부터 [_exitTapWindow](5초) 안에 [_exitTapTarget](7회) 이상
+  /// 눌리면 종료 확인창을 엽니다. 5초가 지나면 카운트가 처음부터 다시 셉니다.
+  void _handleExitBrandTap() {
     final now = DateTime.now();
     if (_firstExitTapTime == null ||
-        now.difference(_firstExitTapTime!) > const Duration(seconds: 3)) {
+        now.difference(_firstExitTapTime!) > _exitTapWindow) {
       _firstExitTapTime = now;
       _exitTapCount = 1;
     } else {
       _exitTapCount++;
     }
-    if (_exitTapCount >= 5) {
+    if (_exitTapCount >= _exitTapTarget) {
       _exitTapCount = 0;
       _firstExitTapTime = null;
       _openExitDialog();
@@ -1736,11 +1746,13 @@ class _AppRootState extends State<AppRoot> {
                     child: _StepProgress(current: progressStep),
                   ),
                 // [디자인] 시안 하단 로고 푸터
-                const Positioned(
+                // [키오스크 종료용] 이 안의 "사물인터넷혁신융합대학사업단"
+                // 로고+글씨가 종료 확인창을 여는 숨겨진 버튼입니다(5초 7회).
+                Positioned(
                   left: KioskCanvas.margin,
                   right: KioskCanvas.margin,
                   bottom: KioskCanvas.margin + 40,
-                  child: _BrandFooter(),
+                  child: _BrandFooter(onSecretTap: _handleExitBrandTap),
                 ),
                 if (showBackButton)
                   Positioned(
@@ -1748,28 +1760,7 @@ class _AppRootState extends State<AppRoot> {
                     left: KioskCanvas.margin + 56,
                     child: _BackButton(onTap: _goBack),
                   ),
-                // [키오스크 종료용] 화면에 아무것도 안 보이는 투명한 영역.
-                // 이 구석을 3초 안에 5번 연속 터치하면 종료 확인창(비밀번호
-                // 입력)이 뜹니다. 운영진 전용 숨겨진 동작이며, 관람객에게는
-                // 노출되지 않습니다.
-                // [버그 수정] 원래 top-left(0,0)~(60,60)에 있었는데, 바로 그
-                // 자리에 "이전(ESC)" 버튼(top:16,left:16)이 겹쳐 있었습니다.
-                // Stack에서 이 위젯이 버튼보다 나중에 그려져서(=위에 깔려서)
-                // 버튼의 왼쪽 절반(아이콘 쪽)을 탭하면 이 투명 레이어가 먼저
-                // 탭을 가로채 버튼이 눌리지 않는 문제가 있었습니다. 아무것도
-                // 없는 우측 하단 구석으로 옮겨서 겹침을 없앴습니다.
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  width: 60,
-                  height: 60,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _handleExitCornerTap,
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-                // [신규] 종료 확인창. 5회 터치를 감지하면 이게 화면 전체를
+                // [신규] 종료 확인창. 숨겨진 터치를 감지하면 이게 화면 전체를
                 // 덮으며 나타나서, 그 아래 키오스크 진행 화면으로는 터치가
                 // 전달되지 않습니다(전체를 덮는 GestureDetector가 가로챔).
                 if (_showExitDialog)
@@ -1788,7 +1779,8 @@ class _AppRootState extends State<AppRoot> {
   }
 }
 
-// [신규] 종료 확인창. 화면 전체를 어둡게 덮고, 가운데 카드에
+// [신규] 종료 확인창. 하단 사업단 로고 7회 터치(5초 이내)로 열립니다.
+// 화면 전체를 어둡게 덮고, 가운데 카드에
 // "종료하시겠습니까?" + 비밀번호 입력용 숫자 키패드 + "아니오" 버튼을 보여줌.
 // '*' = 입력 지우기, '#' = 확인(비밀번호 검증), 숫자 = 입력.
 class _ExitConfirmDialog extends StatelessWidget {
@@ -2071,7 +2063,12 @@ class _StepProgress extends StatelessWidget {
 
 /// 시안 하단의 세종대학교 / 사물인터넷혁신융합대학사업단 로고 푸터
 class _BrandFooter extends StatelessWidget {
-  const _BrandFooter();
+  /// [키오스크 종료용] 사업단 로고/글씨를 탭할 때마다 호출됩니다.
+  /// 겉모습은 평범한 로고 그대로이고, 5초 안에 7번 이상 눌렸는지는
+  /// 호출받는 쪽(_handleExitBrandTap)이 셉니다.
+  final VoidCallback? onSecretTap;
+
+  const _BrandFooter({this.onSecretTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2090,10 +2087,11 @@ class _BrandFooter extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 36),
           color: AppColors.border,
         ),
-        const _FooterLogo(
+        _FooterLogo(
           asset: 'assets/images/logo-iotcoss.png',
           label: '사물인터넷혁신융합대학사업단',
           height: 62,
+          onTap: onSecretTap,
         ),
       ],
     );
@@ -2104,15 +2102,21 @@ class _FooterLogo extends StatelessWidget {
   final String asset;
   final String label;
   final double height;
+
+  /// [키오스크 종료용] 지정되면 로고+글씨 전체가 탭을 받습니다.
+  /// 눌린 티(물결 효과 등)는 일부러 내지 않아서 관람객에게는 그냥 로고로 보입니다.
+  final VoidCallback? onTap;
+
   const _FooterLogo({
     required this.asset,
     required this.label,
     required this.height,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Image.asset(asset, height: height, fit: BoxFit.contain),
@@ -2126,6 +2130,18 @@ class _FooterLogo extends StatelessWidget {
           ),
         ),
       ],
+    );
+
+    if (onTap == null) return content;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        // 로고 글자에 딱 붙지 않아도 눌리도록 탭 범위를 살짝 넓힙니다.
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: content,
+      ),
     );
   }
 }
