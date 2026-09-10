@@ -3,7 +3,8 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from config import (QUEUE_KEY,
+from config import (ORDER_TTL,
+                    QUEUE_KEY,
                     WAREHOUSE_KEY,
                     STATION_KEY,
                     AGV_KEY,
@@ -27,8 +28,8 @@ from infra.mobius import _push_station_snapshot
 from services.process import set_stage, is_before, is_after
 from services.archive import finish_order
 from services.watchdog import DEADLINE_KEY
-from infra.keys import (_order_counter_key, 
-                        _touch,
+from infra.keys import (_touch_order,
+                        _order_counter_key,
                         _ensure_initial_state,
                       )
 
@@ -107,7 +108,8 @@ def station_start(order_id):
     r.hset(STATION_KEY, assigned_station_id, "busy")   # 배정 때 이미 busy. 방어적 재확인
     r.set(f"{STATION_VERIFIED_PREFIX}{assigned_station_id}", datetime.now(KST).isoformat())
     set_stage(order_id, "verified")
-    _touch(STATION_KEY, f"order:{order_id}", f"{STATION_VERIFIED_PREFIX}{assigned_station_id}")
+    _touch_order(order_id)
+    r.expire(f"{STATION_VERIFIED_PREFIX}{assigned_station_id}", ORDER_TTL)
     # cnt_station은 배정 시점에만 올린다 — 여기서 push하면 같은 배정에 CIN이 하나 더 쌓인다
 
     return jsonify({
@@ -303,70 +305,9 @@ def free_stations():
     free = [sid for sid, status in station_status.items() if status == "idle"]
     return jsonify({'free_stations': free}), 200
 
-@bp.route('/station/<station_id>/reset', methods=['POST'])
-def station_reset(station_id):
-    """
-    warehouse/station/대기열 상태를 초기값으로 리셋.
-    ---
-    tags:
-      - Debug
-    parameters:
-          - in: body
-            name: station_id
-            type: array
-            required: false
-            example: [1,2]
-            schema:
-              type: object
-              properties:
-                password:
-                  type: string
-                  description: 초기화 비밀번호
-                  example: "reset"
-                order_id:
-                  type: array
-                  description: 조립대 번호
-                  example: ["ord_01", "ord_02"]
-    responses:
-      200:
-        description: 초기화 완료
-      404:
-        description: 디버그 엔드포인트 비활성화 상태
-    """
-    data = request.get_json()
-
-    order_id = data.get("order_id").split(",")
-    password = data.get("password")
-
-    if password != STATION_RESET_PASSWORD:
-        return jsonify({"error":"비밀번호가 틀렸습니다"}), 400
-    # 조립대별 order_id 같이 확인 정말 맞는 정보인지 확인 필요 아니면 오류 리턴
-
-    try :
-        r.hset(STATION_KEY, mapping={sid: "idle" for sid in ("1", "2", "3")})
-
-        r.set(WAREHOUSE_KEY, "idle")
-        r.delete(WAREHOUSE_ORDER_KEY)
-        r.set(AGV_KEY, "idle")
-        for sid in ("1", "2", "3"):
-            r.delete(f"{STATION_ORDER_PREFIX}{sid}")
-            r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
-        r.delete(QUEUE_KEY)
-        r.delete(AGV_STATUS_KEY)                   # AGV 마지막 보고 (워치독 연장 판정에 쓰임)
-        r.delete(DEADLINE_KEY, "process:last", "process:seq")   # 워치독 예약 · 스냅샷 지문/번호
-
-        # 주문 스코프 키 전부. order:{id} 해시가 남으면 죽은 주문이 스냅샷·조회에 되살아난다.
-        # order:counter:* 와 orders:archive:* / stats:* 는 건드리지 않는다 — 집계 기록이다.
-        for pattern in ("order:*:pending", "order:*:wrong", "order:*:gate",
-                        "order:ord_*", "idempotency:*"):
-            for key in r.scan_iter(pattern):
-                r.delete(key)
-
-        _push_station_snapshot()
-    
-        return jsonify({'ok': True}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# /station/<id>/reset 은 POST /admin/reset 으로 옮겼다 (routes/admin.py).
+# 초기화는 조립대 하나가 아니라 라인 전체의 일이고, 재고 초기화와 Mobius 복구가
+# 같이 붙었기 때문이다. 프론트는 이 경로를 쓰지 않는다.
 
 @bp.route('/station/<station_id>/status', methods=['GET'])
 def get_station_status(station_id):

@@ -15,7 +15,8 @@ from config import (QUEUE_KEY,
                     ORDER_PAGE_BASE,
                     STATION_RESET_PASSWORD,
                     MBTI_AXES,
-                    TEST_KEY_TTL,
+                    ORDER_TTL,
+                    ORDER_COUNTER_TTL,
                     COLOR_LIST,
                     BOARD_LIST,
                     KST,
@@ -24,25 +25,31 @@ from config import (QUEUE_KEY,
 
 def _order_counter_key():
     today = datetime.now(KST).strftime("%Y%m%d")
-    return f"{ORDER_COUNTER_KEY}:{today}"
+    key = f"{ORDER_COUNTER_KEY}:{today}"
+    if r.exists(key):
+        r.expire(key, ORDER_COUNTER_TTL)     # 예전엔 TTL 이 없어 날짜마다 영구히 쌓였다
+    return key
 
-def _touch(*keys):
-    """테스트 모드일 때 해당 키들의 TTL을 TEST_KEY_TTL로 (재)설정"""
-    if not TEST_KEY_TTL:
-        return
-    for key in keys:
-        r.expire(key, TEST_KEY_TTL)
+def _order_keys(order_id):
+    """한 주문이 만드는 키 전부. 만료가 어긋나면 죽은 주문의 pending 이 남아
+    다음 주문 판정을 오염시키므로 항상 한 묶음으로 다룬다."""
+    return [f"order:{order_id}",
+            *[f"order:{order_id}:{slot}:{kind}"
+              for slot in ("keycap", "board") for kind in ("pending", "wrong")],
+            f"order:{order_id}:gate"]
 
-def _touch_order(order_id):
-    """order:{id}와 그 부산물 키의 TTL을 한 번에 갱신.
 
-    주문 스코프 키가 6개라 개별로 _touch 하면 만료가 어긋난다.
-    죽은 주문의 pending이 남으면 다음 주문 판정을 오염시킨다.
+def _touch_order(order_id, ttl=ORDER_TTL):
+    """주문 스코프 키의 수명을 한 번에 갱신한다 (기본 ORDER_TTL = 24시간).
+
+    상태 키(warehouse·station·agv·queue·process)에는 TTL 을 걸지 않는다.
+    그건 '지금 상태'라 만료되면 안 된다 — 예전엔 TEST_KEY_TTL 하나로 여기까지 TTL 이
+    걸려서, 한 시간 조용하면 warehouse:occupancy 가 사라졌다.
+    상태 키를 지우는 경로는 POST /admin/reset 하나뿐이다.
     """
-    _touch(f"order:{order_id}",
-           *[f"order:{order_id}:{slot}:{kind}"
-             for slot in ("keycap", "board") for kind in ("pending", "wrong")],
-           f"order:{order_id}:gate")
+    for key in _order_keys(order_id):
+        if r.exists(key):
+            r.expire(key, ttl)
 
 
 def _ensure_initial_state():
@@ -53,7 +60,6 @@ def _ensure_initial_state():
         r.hset(STATION_KEY, mapping={"1": "idle", "2": "idle", "3": "idle"})
     if not r.exists(AGV_KEY):
         r.set(AGV_KEY, "idle")
-    _touch(WAREHOUSE_KEY, STATION_KEY, AGV_KEY)
 
 def _get_free_station():
     station_status = r.hgetall(STATION_KEY)

@@ -25,7 +25,7 @@ STATION_UNCLAIM_MIN_SEC = int(os.getenv("STATION_UNCLAIM_MIN_SEC", "150"))  # 2�
 
 ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
 
-# 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관 — TEST_KEY_TTL 로 건드리지 않는다.
+# 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관.
 ARCHIVE_PREFIX = os.getenv("ARCHIVE_PREFIX", "orders:archive:")
 STATS_PREFIX = os.getenv("STATS_PREFIX", "stats:")
 ARCHIVE_TTL = int(os.getenv("ARCHIVE_TTL", str(90 * 24 * 3600)))
@@ -36,10 +36,22 @@ STATION_RESET_PASSWORD = os.getenv("STATION_RESET_PASSWORD")
 
 MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
 
-# 테스트 기간 전용: 설정돼 있으면 건드리는 키마다 이 초만큼 TTL을 계속 갱신함.
-# 운영 전환 시 이 env var만 빼면(또는 0으로) 원래대로 영구 보존됨.
-TEST_KEY_TTL = int(os.getenv("TEST_KEY_TTL", "0")) or None
-ORDER_TTL = int(os.getenv("ORDER_TTL", "3600"))  # order:{id}와 부산물 키의 기본 수명
+# ── TTL ───────────────────────────────────────────────────────────────
+# 키 성격별로 나눈다. 예전에는 TEST_KEY_TTL 하나로 '건드린 키 전부'에 같은 TTL을 걸었는데,
+# 그러면 warehouse:occupancy 같은 '지금 상태' 키까지 한 시간 조용하면 사라진다.
+# 상태 키(warehouse/station/agv/queue/process)에는 TTL을 걸지 않는다.
+# 그것들을 지우는 경로는 POST /admin/reset 하나뿐이다.
+ORDER_TTL = int(os.getenv("ORDER_TTL", str(24 * 3600)))          # 진행 중 주문 24시간
+ORDER_DONE_TTL = int(os.getenv("ORDER_DONE_TTL", "600"))         # 종료된 주문 10분
+ORDER_COUNTER_TTL = int(os.getenv("ORDER_COUNTER_TTL", str(90 * 24 * 3600)))   # 일련번호 90일
+
+# 카트리지 1칸의 최대 수량. /admin/reset?mode=zero 가 36칸을 이 값으로 채운다.
+# 나중에 env 로 뺄 값이라 전역 하나로 둔다.
+STOCK_MAX_COUNT = int(os.getenv("STOCK_MAX_COUNT", "24"))
+
+# 노쇼 폐기 마감. unclaimed 로 끝난 트레이를 AGV가 discarded 로 보고할 때까지
+# 조립대를 잡아 둔다 — 그래야 폐기 명령이 cnt_process 에서 사라지지 않는다.
+DISCARD_TIMEOUT_SEC = int(os.getenv("DISCARD_TIMEOUT_SEC", "300"))
 
 COLOR_LIST = [c.strip() for c in os.getenv("COLOR_LIST", "r,y,g,b").split(",")]
 BOARD_LIST = [b.strip() for b in os.getenv("BOARD_LIST", "red,yellow,green,blue").split(",")]

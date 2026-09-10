@@ -3,7 +3,6 @@ from datetime import datetime
 
 from config import AGV_KEY, AGV_STATUS_KEY, STATION_ORDER_PREFIX, KST
 from infra.extensions import r
-from infra.keys import _touch
 from infra.logger import logger
 
 from services import watchdog
@@ -86,12 +85,10 @@ def on_agv(con):
     # 올라온 status 를 그대로 보관한다. 진단·로그용이다.
     if status:
         r.set(AGV_STATUS_KEY, status)
-        _touch(AGV_STATUS_KEY)
 
     if status == "parked":
         # agv:occupancy 가 idle 이 되는 지점은 여기 하나뿐이다.
         r.set(AGV_KEY, "idle")
-        _touch(AGV_KEY)
         logger.info("[agv] 대기장소 복귀 — idle")
         # AGV가 자유로워졌다 → 픽업대에서 기다리던 주문의 시계를 새로 건다.
         watchdog.rearm_pickup_waiters()
@@ -102,8 +99,16 @@ def on_agv(con):
     watchdog.extend_pickup_waiters()
 
     if status == "discarded":
-        # 노쇼 폐기 완료. 주문은 이미 unclaimed로 끝났고 조립대도 비었으므로
-        # stage를 건드릴 게 없다. 폐기 후 바로 대기장소로 가며 parked를 따로 올린다.
+        # 노쇼 폐기 완료. stage 는 이미 unclaimed 로 끝나 있으니 건드리지 않는다.
+        # 대신 여기서 **조립대를 푼다** — finish_order 는 폐기 명령이 cnt_process 에서
+        # 먼저 사라지지 않도록 조립대를 잡아 둔 채 넘어왔다 (services/archive.py).
+        from services.archive import release_station_after_discard
+
+        order_id = con.get("order_id") or _current_order(con, status)
+        if order_id:
+            release_station_after_discard(order_id)
+        else:
+            logger.warning(f"[agv] 폐기 보고인데 대상 주문을 못 찾음 con={con}")
         logger.info("[agv] 폐기 완료 — 대기장소로 복귀 중")
         return
 
@@ -140,7 +145,6 @@ def on_agv(con):
 
     if status == "loaded":
         r.set(AGV_KEY, "busy")
-        _touch(AGV_KEY)
 
     if status == "station_arrived":
         # 오배송. cnt_agv 는 order_id·station_id 를 싣기로 했으므로, 그 쌍이 배정과

@@ -73,6 +73,66 @@ def get_latest_con(cnt_rn):
             return None
     return con
 
+def get_recent_cons(cnt_rn, limit=8):
+    """컨테이너의 최근 CIN limit 건을 con(dict) 목록으로. 최신이 앞이다.
+
+    부팅 복구가 '이 주문의 키캡이 몇 개나 배출됐나'를 세는 데 쓴다.
+    /la 는 1건뿐이라 4건 중 몇 건이 나왔는지 알 수 없다.
+
+    [ 실측으로 정한 경로 — debug/get_cin_test.py ]
+    · rcn=4 / rcn=6 / rcn=8 은 이 플랫폼에서 CIN 을 실어 주지 않는다 (200 이지만 0건)
+    · discovery(fu=1&ty=4)만 동작하고, URI 목록을 준다
+    · 반환 순서는 **최신 → 과거 (내림차순)** — rn 이 `4-YYYYMMDDHHMMSSmmm` 이라 확정
+    · **lim 을 쓰면 안 된다.** 이 플랫폼의 lim 은 '최신 N건'이 아니라
+      '가장 오래된 N건'을 준다 (lim=16 과 lim 없음의 꼬리 3건이 동일했다).
+      그래서 전량을 받고 앞에서 자른다. mni 가 50이라 목록 자체는 작다.
+    · 개별 GET 은 건당 0.11초. 8건에 0.9초 — 복구는 재기동 때 한 번이라 감당된다.
+    """
+    dis = _request("GET", cnt_rn, params={"fu": 1, "ty": 4}, what="discovery")
+    if dis is None:
+        return []
+    uris = dis.get("m2m:uril") or dis.get("uril") or (dis if isinstance(dis, list) else [])
+    if not isinstance(uris, list):
+        return []
+
+    out = []
+    for uri in uris[:limit]:                     # 내림차순이라 앞이 최신
+        body = _request("GET", None, url=f"{MP_URL}/{str(uri).lstrip('/')}", what="cin")
+        if not body:
+            continue
+        try:
+            con = body["m2m:cin"]["con"]
+        except (KeyError, TypeError):
+            continue
+        if isinstance(con, str):
+            try:
+                con = json.loads(con)
+            except json.JSONDecodeError:
+                continue
+        if isinstance(con, dict):
+            out.append(con)
+    return out
+
+
+def _request(method, cnt_rn, url=None, params=None, what=""):
+    """GET 한 번. 실패는 None 으로 접는다 — 복구가 조회 실패로 죽으면 안 된다."""
+    target = url or f"{MP_URL}/{CB}/{AE_RN}/{cnt_rn}"
+    try:
+        res = requests.request(method, target, headers=_headers(), params=params,
+                               timeout=(3, 8))
+    except requests.RequestException as e:
+        logger.error(f"[mobius] {what} {cnt_rn or target} 요청 실패: {e}")
+        return None
+    if res.status_code != 200:
+        logger.error(f"[mobius] {what} {cnt_rn or target} {res.status_code} {res.text[:160]}")
+        return None
+    try:
+        return res.json()
+    except ValueError:
+        logger.error(f"[mobius] {what} {cnt_rn or target} JSON 아님: {res.text[:160]}")
+        return None
+
+
 # order
 def send_order_cin(order_id, board, keycap, colors, station_id, order_seq):
     con = {

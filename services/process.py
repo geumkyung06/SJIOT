@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 
 from infra.extensions import r
 from infra.logger import logger
-from infra.keys import _touch
+from infra.keys import _touch_order
 from infra.mobius import create_cin
 
 from config import KST, STAGE_ORDER, STATION_ORDER_PREFIX
@@ -51,7 +51,7 @@ def set_stage(order_id, stage):
     key = f"order:{order_id}"
     prev = r.hget(key, "stage")
     r.hset(key, "stage", stage)
-    _touch(key)
+    _touch_order(order_id)
     logger.info(f"[stage] {order_id} {prev} -> {stage}")
 
     if stage in TERMINAL:
@@ -68,7 +68,7 @@ def set_fault(order_id, fault):
     관리자가 fault를 지우면 그 자리에서 이어진다."""
     key = f"order:{order_id}"
     r.hset(key, "fault", fault)
-    _touch(key)
+    _touch_order(order_id)
     watchdog.disarm(order_id)
     logger.error(f"[fault] {order_id} <- {fault} (stage={r.hget(key, 'stage')} 유지)")
     push_process()
@@ -77,7 +77,7 @@ def clear_fault(order_id):
     """관리자 해제 — stage는 그대로이므로 그 자리에서 이어지고, 시계만 다시 건다."""
     key = f"order:{order_id}"
     r.hdel(key, "fault")
-    _touch(key)
+    _touch_order(order_id)
     watchdog.arm(order_id, r.hget(key, "stage"))
     push_process()
 

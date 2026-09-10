@@ -1,4 +1,4 @@
-"""관리자 경로 — fault 해제.
+"""관리자 경로 — fault 해제 · 라인 초기화.
 
 fault 는 stage 를 그대로 둔 채 주문만 멈춰 세운다. 그래서 해제는 "그 자리에서 이어가기"다.
 새로 밀어주는 건 `fault` 가 빠진 최신 스냅샷 하나뿐이고, 창고·AGV 는
@@ -13,6 +13,7 @@ from config import (QUEUE_KEY,
                    )
 from infra.extensions import r
 from infra.logger import logger
+from services import recovery
 from services.process import clear_fault
 
 bp = Blueprint("admin", __name__)
@@ -117,3 +118,61 @@ def clear_order_fault(order_id):
         "cleared": fault,
         "stage": order.get("stage"),
     }), 200
+
+
+@bp.route("/admin/reset", methods=["POST"])
+def admin_reset():
+    """
+    라인 초기화 — 처음 켤 때 / 사고 복구
+    ---
+    tags:
+      - Admin
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            password:
+              type: string
+              description: 관리자 비밀번호 (STATION_RESET_PASSWORD 와 동일)
+            mode:
+              type: string
+              enum: [zero, mobius]
+              default: zero
+              description: >
+                zero   — 전부 초기값. 재고 36칸을 STOCK_MAX_COUNT 로, 전 설비 idle,
+                         진행 중 주문 전부 삭제. 전시회 첫날 시작 전처럼
+                         '아무것도 진행 중이 아니어야 할 때'.
+                mobius — zero 를 돌린 뒤 Mobius 최신값으로 덮어쓴다. 재고·AGV·
+                         진행 중 주문을 되찾는다. 사고 복구, 2일차 시작 전.
+            keep_queue:
+              type: boolean
+              default: false
+              description: >
+                대기열(order:queue)과 그 주문 해시를 보존할지. 대기열은 Mobius 어디에도
+                없어서 지우면 복구가 불가능하다 (cnt_process 는 조립대에 올라간 주문만 싣는다).
+    responses:
+      200:
+        description: 초기화 완료. 무엇을 지우고 무엇을 복구했는지 보고서를 돌려준다
+      400:
+        description: 비밀번호 불일치 또는 알 수 없는 mode
+      500:
+        description: 초기화 중 오류
+    """
+    data = request.get_json(silent=True) or {}
+    if data.get("password") != STATION_RESET_PASSWORD:
+        return jsonify({"error": "비밀번호가 틀렸습니다"}), 400
+
+    mode = str(data.get("mode") or "zero")
+    if mode not in ("zero", "mobius"):
+        return jsonify({"error": "mode 는 zero 또는 mobius 여야 합니다", "got": mode}), 400
+
+    try:
+        report = recovery.reset(mode=mode, keep_queue=bool(data.get("keep_queue")))
+    except Exception as e:
+        logger.exception("[admin] 초기화 실패")
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"ok": True, **report}), 200

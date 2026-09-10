@@ -17,10 +17,14 @@ Redis·cnt_process 의 stage 는 그대로 unclaimed / completed 를 쓴다 (sta
     stats:color:{date}          hash   색상 분포
 """
 import json
+import time
 from datetime import datetime
 
 from config import (ARCHIVE_PREFIX,
                     ARCHIVE_TTL,
+                    DEADLINE_KEY,
+                    DISCARD_TIMEOUT_SEC,
+                    ORDER_DONE_TTL,
                     STATS_PREFIX,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
@@ -28,6 +32,7 @@ from config import (ARCHIVE_PREFIX,
                     KST,
                    )
 from infra.extensions import r
+from infra.keys import _touch_order
 from infra.logger import logger
 
 
@@ -49,7 +54,18 @@ def finish_order(order_id, final_stage, reason=None):
         r.hset(key, "reason", reason)
     set_stage(order_id, final_stage)                # cnt_process push + 워치독 해제
     _archive(order_id, od, reason)
-    _release_resources(order_id, od)
+    _release_resources(order_id, od, final_stage)
+
+    if final_stage == "unclaimed":
+        # 폐기 마감. set_stage 뒤여야 한다 — unclaimed 는 TERMINAL 이라
+        # set_stage 안의 watchdog.disarm 이 먼저 돌면서 예약을 지운다.
+        r.zadd(DEADLINE_KEY, {order_id: time.time() + DISCARD_TIMEOUT_SEC})
+        logger.info(f"[finish] {order_id} 폐기 대기 — 조립대 {od.get('station_id')} 는 "
+                    f"AGV discarded 까지 잡아 둔다 (마감 {DISCARD_TIMEOUT_SEC}s)")
+    else:
+        # 끝난 주문 해시는 오래 둘 이유가 없다. 기록은 아카이브에 있다.
+        _touch_order(order_id, ORDER_DONE_TTL)
+
     logger.info(f"[finish] {order_id} {final_stage}"
                 + (f" (reason={reason}, stage={od.get('stage')})" if reason else ""))
     return order_id
@@ -99,18 +115,47 @@ def _archive(order_id, od, reason):
         r.expire(skey, ARCHIVE_TTL)
 
 
-def _release_resources(order_id, od):
+def _release_resources(order_id, od, final_stage=None):
     """창고 먼저, 조립대 나중. 각각 다음 배정을 시도한다.
 
     타임아웃으로 끝난 주문은 창고 구간 한복판일 수 있다. 창고를 안 풀면
     그 뒤 주문이 통째로 멈춘다 — 완료 버튼 경로에는 없던 상황이다.
+
+    노쇼(unclaimed)만 예외다. 조립대를 여기서 풀면 station:current_order 가 지워지고,
+    cnt_process 는 조립대에 올라간 주문만 싣기 때문에(process.active_order_ids)
+    **AGV 가 트레이를 아직 들고 있는데 폐기 명령이 스냅샷에서 사라진다.**
+    실측 0.53초 만에 사라졌다. 그래서 조립대는 AGV 가 discarded 를 올릴 때까지 잡아 둔다
+    (callbacks/agv.py). 안 오면 워치독이 DISCARD_TIMEOUT_SEC 뒤에 강제로 푼다.
     """
     from services.dispatch import release_station, release_warehouse
 
     if r.get(WAREHOUSE_ORDER_KEY) == order_id:
         release_warehouse()
 
+    if final_stage == "unclaimed":
+        return                                   # 조립대는 폐기 완료까지 유지
+
     sid = od.get("station_id")
     if sid and r.get(f"{STATION_ORDER_PREFIX}{sid}") == order_id:
         r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
         release_station(sid)
+
+
+def release_station_after_discard(order_id):
+    """AGV 가 폐기를 마쳤다 → 잡아 두던 조립대를 푼다.
+
+    callbacks/agv.py 의 discarded 분기와 워치독의 폐기 마감, 두 곳에서 부른다.
+    어느 쪽이 먼저 와도 되도록 조립대에 그 주문이 남아 있을 때만 움직인다.
+    """
+    from services.dispatch import release_station
+    from services import watchdog
+
+    watchdog.disarm(order_id)
+    od = r.hgetall(f"order:{order_id}")
+    sid = od.get("station_id")
+    if not sid or r.get(f"{STATION_ORDER_PREFIX}{sid}") != order_id:
+        return None                              # 이미 풀렸다
+    r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
+    _touch_order(order_id, ORDER_DONE_TTL)
+    logger.info(f"[finish] {order_id} 폐기 완료 — 조립대 {sid} 해제")
+    return release_station(sid)                  # try_assign_next 까지 돈다

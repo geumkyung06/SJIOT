@@ -24,8 +24,8 @@ from config import (QUEUE_KEY,
 from infra.logger import logger
 
 from infra.extensions import r
-from infra.keys import (_order_counter_key, 
-                        _touch,
+from infra.keys import (_order_counter_key,
+                        _touch_order,
                         _ensure_initial_state,
                       )
 
@@ -57,12 +57,42 @@ def queue_status():
             full:
               type: boolean
               example: false
+            orders:
+              type: array
+              description: 대기 중인 주문 목록 (앞이 먼저 배정될 순서)
+              items:
+                type: object
+              example: [{"order_id": "ord_a1b2c3d4", "order_seq": 7, "position": 1,
+                         "keycap": "ENTP", "colors": ["b","b","r","g"], "board": "blue",
+                         "blocked_by": [["P_b", "count_0"]]}]
     """
-    qlen = r.llen(QUEUE_KEY)
+    queue = r.lrange(QUEUE_KEY, 0, -1)
+    orders = []
+    for i, oid in enumerate(queue, 1):
+        od = r.hgetall(f"order:{oid}")
+        if not od:
+            continue                       # TTL 로 사라진 주문. 배정 때 정리된다
+        # blocked_by 는 재고로 막혀 대기 중이라는 뜻이다 (services/dispatch.try_assign_next).
+        # 관리자 페이지가 "왜 안 나가는지"를 이걸로 표시한다.
+        try:
+            blocked = json.loads(od["blocked_by"]) if od.get("blocked_by") else None
+        except (ValueError, TypeError):
+            blocked = None
+        orders.append({
+            "order_id": oid,
+            "order_seq": int(od["order_seq"]) if od.get("order_seq") else None,
+            "position": i,
+            "keycap": od.get("keycap"),
+            "colors": [c for c in (od.get("colors") or "").split(",") if c],
+            "board": od.get("board"),
+            "blocked_by": blocked,
+        })
+
     return jsonify({
-        'queue_length': qlen,
+        'queue_length': len(queue),
         'max_queue_len': MAX_QUEUE_LEN,
-        'full': qlen >= MAX_QUEUE_LEN,
+        'full': len(queue) >= MAX_QUEUE_LEN,
+        'orders': orders,
     })
 
 @bp.route('/order', methods=['POST'])
@@ -151,8 +181,7 @@ def post_order_list():
             "order_seq": order_seq,
             "created_at": datetime.now(KST).isoformat()
         })
-        r.expire(f"order:{order_id}", ORDER_TTL)
-        _touch(QUEUE_KEY)
+        _touch_order(order_id)          # 주문 스코프 키 6개를 한 묶음으로 (24시간)
 
         # warehouse/station 여유가 있으면 방금 넣은 주문이 바로 배정될 수 있음
         assigned_order_id = try_assign_next()

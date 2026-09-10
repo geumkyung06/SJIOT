@@ -17,7 +17,7 @@ import time
 from infra.extensions import r
 from infra.logger import logger
 
-from config import DEADLINE_KEY, STATION_ORDER_PREFIX
+from config import DEADLINE_KEY, DISCARD_TIMEOUT_SEC, STATION_ORDER_PREFIX
 
 # 명세 7장. 사람·이동이 끼는 셋은 기계 속도로 재면 안 된다.
 STAGE_TIMEOUT = {
@@ -40,9 +40,10 @@ STAGE_TIMEOUT = {
 # 연장은 보고가 올 때만 1건당 1회이므로, 보고가 끊기면 더 안 밀린다 — 무한 연장이 구조적으로 불가능하다.
 AGV_EXTEND_SEC = 10
 
-# unclaimed는 여기 없다. TERMINAL이라 set_stage가 disarm하므로 등록해도 안 걸린다.
-# 노쇼는 그 시점에 이미 정상 종료 경로다 — 조립대는 비었고 다음 주문 배정도 끝났다.
-# AGV가 parked를 안 올리면 그건 AGV 고장이고, cnt_agv broken/타 주문의 마감으로 잡힌다.
+# unclaimed 는 STAGE_TIMEOUT 표에 없다. TERMINAL 이라 set_stage 가 disarm 하기 때문이다.
+# 대신 archive.finish_order 가 set_stage **뒤에** 폐기 마감(DISCARD_TIMEOUT_SEC)을 직접 건다.
+# 노쇼로 끝난 트레이는 AGV 위에 남아 있고, 조립대를 곧바로 풀면 cnt_process 에서
+# 폐기 명령이 사라져 버린다 (실측 0.53초). 그래서 조립대를 잡아 둔 채 폐기를 기다린다.
 
 
 def arm(order_id, stage):
@@ -96,7 +97,15 @@ def _expire(order_id):
     #   pickup_reached(연장 2회 소진) · arrived · received
     #       → 그 자리에서 끝낸다. 벨트는 이미 비어 있어 라인을 계속 돌려도 안전하다.
     #         reason="timeout" 과 끊긴 stage 를 아카이브에 남긴다.
-    if stage == "arrived":
+    if stage == "unclaimed":
+        # 폐기 마감. AGV 가 DISCARD_TIMEOUT_SEC 안에 discarded 를 안 올렸다.
+        # 주문은 이미 종료·아카이브됐으므로 여기서 할 일은 조립대를 되찾는 것뿐이다.
+        # 안 풀면 조립대 한 칸이 영구 점유돼 라인이 그만큼 좁아진다.
+        from services.archive import release_station_after_discard
+        logger.error(f"[watchdog] {order_id} 폐기 미보고 {DISCARD_TIMEOUT_SEC}s — "
+                     f"조립대 강제 해제 (AGV 확인 필요)")
+        release_station_after_discard(order_id)
+    elif stage == "arrived":
         finish_order(order_id, "unclaimed", reason="unclaimed")   # 노쇼 백업 경로
     elif stage == "received":
         finish_order(order_id, "completed", reason="timeout")     # 조립 타임아웃

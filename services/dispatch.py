@@ -27,7 +27,7 @@ from config import (QUEUE_KEY, WAREHOUSE_KEY, STATION_KEY,
                     WAREHOUSE_ORDER_KEY, STATION_ORDER_PREFIX)
 from infra.extensions import r
 from infra.logger import logger
-from infra.keys import _touch, _touch_order, _get_free_station
+from infra.keys import _touch_order, _get_free_station
 from infra.mobius import _dispatch_order, _push_station_snapshot
 
 from services import stock, collector
@@ -86,8 +86,7 @@ def _assign(order_id, station_id):
     collector.arm(order_id, "keycap", stock.parts_of(order_id, "keycap"))
     collector.reset_gate(order_id)
 
-    _touch(WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY, f"{STATION_ORDER_PREFIX}{station_id}")
-    _touch_order(order_id)
+    _touch_order(order_id)          # 상태 키는 TTL 없음. 주문 키만 수명을 갱신한다
 
     # 명령은 cnt_process 하나로만 나간다. 창고·AGV는 그것만 보고 움직이므로
     # '배정이 실제로 전달됐는가'의 판정도 cnt_process push 성공 여부다.
@@ -118,7 +117,6 @@ def _rollback(order_id, station_id):
         r.hset(f"order:{order_id}", "stage", "queued")
         r.hdel(f"order:{order_id}", "station_id")
         r.lpush(QUEUE_KEY, order_id)                 # 큐 맨 앞으로
-    _touch(WAREHOUSE_KEY, STATION_KEY, QUEUE_KEY)
     # cnt_station push는 _assign 성공 후에만 일어난다. 롤백 시점엔 올린 게 없다.
 
 
@@ -126,7 +124,6 @@ def release_warehouse():
     """pickup_reached — 트레이가 픽업대에 도착해 벨트가 비었다. 다음 주문을 받을 수 있다."""
     r.set(WAREHOUSE_KEY, "idle")
     r.delete(WAREHOUSE_ORDER_KEY)
-    _touch(WAREHOUSE_KEY)
     return try_assign_next()
 
 
@@ -140,7 +137,6 @@ def release_station(station_id):
     """
     r.delete(f"{STATION_ORDER_PREFIX}{station_id}")
     r.hset(STATION_KEY, str(station_id), "idle")
-    _touch(STATION_KEY)
     return try_assign_next()
 
 
