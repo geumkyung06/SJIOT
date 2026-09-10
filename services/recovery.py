@@ -37,6 +37,9 @@ from datetime import datetime
 
 from config import (AGV_KEY,
                     AGV_STATUS_KEY,
+                    ARCHIVE_PREFIX,
+                    ORDER_COUNTER_KEY,
+                    STATS_PREFIX,
                     DEADLINE_KEY,
                     KST,
                     QUEUE_KEY,
@@ -82,12 +85,38 @@ _STATE_KEYS += [f"{STATION_VERIFIED_PREFIX}{s}" for s in STATIONS]
 _ORDER_PATTERNS = ["order:ord_*", "order:*:pending", "order:*:wrong", "order:*:gate",
                    "idempotency:*"]
 
+# mode=hard 에서만 지우는 것 — 90일 보관 기록이다.
+_ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", f"{STATS_PREFIX}*", f"{ORDER_COUNTER_KEY}*"]
+
+# 이 서비스가 쓰는 키의 prefix 전부. hard 모드가 '모르는 키' 를 가려낼 때 기준이 된다.
+# 실 Redis 는 배포본과 같은 DB 라 FLUSHDB 를 쓰면 남의 키까지 날아간다.
+_KNOWN_PREFIXES = ("order:", "station:", "warehouse:", "agv:", "process:",
+                   "idempotency:", ARCHIVE_PREFIX, STATS_PREFIX,
+                   "robot:status", "watchdog:lock", "stock:seed:lock")
+
 KEEP_NOTE = ["orders:archive:*", "stats:*", "order:counter:*"]
+KEEP_NOTE_HARD = ["process:seq (reset_seq 로만 삭제)"]
 
 
 # ───────────────────────────────────────────────────────────── 삭제
-def _wipe(keep_queue=False):
-    """상태·주문 키를 지운다. keep_queue 면 큐와 그 큐에 실린 주문 해시는 남긴다."""
+def _unknown_keys(limit=200):
+    """이 서비스가 쓰지 않는 키. hard 모드가 '전부 지웠다' 고 말하기 전에 확인한다."""
+    out = []
+    for key in r.scan_iter("*", count=500):
+        if not key.startswith(_KNOWN_PREFIXES):
+            out.append(key)
+            if len(out) >= limit:
+                break
+    return sorted(out)
+
+
+def _wipe(keep_queue=False, hard=False, reset_seq=False, flush_unknown=False):
+    """상태·주문 키를 지운다. keep_queue 면 큐와 그 큐에 실린 주문 해시는 남긴다.
+
+    hard=True 면 아카이브·집계·일련번호까지 지운다 (90일 기록이 사라진다).
+    reset_seq=True 면 process:seq 까지 — 머신의 'seq 안 오르면 무시' 필터가
+    깨지므로 머신도 같이 재시작해야 한다. 그래서 기본값이 False 다.
+    """
     keep_ids = set(r.lrange(QUEUE_KEY, 0, -1)) if keep_queue else set()
     keep_keys = set()
     for oid in keep_ids:
@@ -101,18 +130,43 @@ def _wipe(keep_queue=False):
     if not keep_queue:
         targets.append(QUEUE_KEY)
 
-    for pat in _ORDER_PATTERNS:
+    patterns = list(_ORDER_PATTERNS)
+    counts = {}
+    if hard:
+        patterns += _ARCHIVE_PATTERNS
+        for pat in _ARCHIVE_PATTERNS:
+            counts[pat] = len(list(r.scan_iter(pat, count=500)))
+    if reset_seq:
+        targets.append("process:seq")
+
+    for pat in patterns:
         for key in r.scan_iter(pat, count=500):
             if key not in keep_keys:
                 targets.append(key)
+
+    unknown = _unknown_keys() if hard else []
+    if hard and flush_unknown and unknown:
+        targets += unknown
 
     deleted = 0
     for i in range(0, len(targets), 200):
         deleted += r.delete(*targets[i:i + 200])
 
     logger.info(f"[reset] 키 {deleted}개 삭제"
+                + (" · hard(아카이브·집계·일련번호 포함)" if hard else "")
+                + (" · process:seq 리셋" if reset_seq else "")
                 + (f" · 큐 {len(keep_ids)}건 보존" if keep_queue else " · 큐 삭제"))
-    return {"deleted": deleted, "kept_queue": sorted(keep_ids)}
+
+    out = {"deleted": deleted, "kept_queue": sorted(keep_ids)}
+    if hard:
+        out["archive"] = counts.get(f"{ARCHIVE_PREFIX}*", 0)
+        out["stats"] = counts.get(f"{STATS_PREFIX}*", 0)
+        out["counters"] = counts.get(f"{ORDER_COUNTER_KEY}*", 0)
+        out["unknown_keys"] = [] if flush_unknown else unknown
+        if unknown and not flush_unknown:
+            out["note"] = ("이 서비스가 쓰지 않는 키다. 배포본과 같은 DB 라 건드리지 않았다. "
+                           "지우려면 flush_unknown:true")
+    return out
 
 
 # ───────────────────────────────────────────────────────────── 초기값
@@ -251,19 +305,32 @@ def _restore_process():
 
 
 # ───────────────────────────────────────────────────────────── 진입점
-def reset(mode="zero", keep_queue=False):
-    """mode = "zero" | "mobius". 결과 보고서를 dict 로 돌려준다."""
-    if mode not in ("zero", "mobius"):
+def reset(mode="zero", keep_queue=False, reset_seq=False, flush_unknown=False):
+    """mode = "zero" | "mobius" | "hard". 결과 보고서를 dict 로 돌려준다.
+
+        zero    상태·주문 키만. 아카이브·집계·일련번호는 남는다
+        mobius  zero 뒤 Mobius 최신값으로 복구
+        hard    zero + 아카이브·집계·일련번호까지. 90일 기록이 사라진다
+    """
+    if mode not in ("zero", "mobius", "hard"):
         raise ValueError(f"알 수 없는 mode: {mode}")
 
     from services.process import push_process
 
+    hard = mode == "hard"
     t0 = time.time()
-    report = {"mode": mode, "keep_queue": bool(keep_queue), "kept": KEEP_NOTE}
-    logger.warning(f"[reset] 시작 mode={mode} keep_queue={keep_queue}")
+    report = {"mode": mode, "keep_queue": bool(keep_queue),
+              "kept": KEEP_NOTE_HARD if hard else KEEP_NOTE}
+    logger.warning(f"[reset] 시작 mode={mode} keep_queue={keep_queue} "
+                   f"reset_seq={reset_seq} flush_unknown={flush_unknown}")
 
-    report["wipe"] = _wipe(keep_queue=keep_queue)
+    report["wipe"] = _wipe(keep_queue=keep_queue, hard=hard,
+                           reset_seq=reset_seq, flush_unknown=flush_unknown)
     report["seed"] = _seed_zero()
+
+    if reset_seq:
+        report["warning"] = ("process:seq 를 리셋했다. 창고·AGV 머신은 'seq 가 안 오르면 무시' 로 "
+                             "재전송을 거르므로, 머신도 같이 재시작해야 새 스냅샷을 받는다.")
 
     if mode == "mobius":
         report["stock"] = _restore_stock()
@@ -279,6 +346,7 @@ def reset(mode="zero", keep_queue=False):
         from services.dispatch import try_assign_next
         report["assigned"] = try_assign_next()
 
+    report["process_seq"] = r.get("process:seq")
     report["elapsed_sec"] = round(time.time() - t0, 2)
     logger.warning(f"[reset] 완료 {json.dumps(report, ensure_ascii=False)}")
     return report
