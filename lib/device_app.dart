@@ -497,8 +497,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
       debugPrint('조립 시작 성공');
       debugPrint('startResult: $startResult');
 
-      // START 성공 응답에 주문 정보가 같이 들어오므로
-      // getOrder()를 다시 호출하지 않음
+      // START 성공 응답에 주문 정보가 같이 들어옴
       final String responseOrderId =
           startResult['order_id']?.toString() ?? scannedOrderId;
 
@@ -512,9 +511,9 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
       debugPrint('응답 order_id: $responseOrderId');
       debugPrint('응답 keycap: $mbti');
+      debugPrint('응답 board: ${startResult['board']}');
       debugPrint('응답 colors: $colors');
       debugPrint('응답 board: ${startResult['board']}');
-      debugPrint('응답 switch: ${startResult['switch']}');
 
       if (!mounted) return;
 
@@ -578,9 +577,11 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
           break;
 
         case 409:
-          debugPrint('409: 이미 조립 진행 중');
+          debugPrint('409: 이미 처리되었거나 현재 조립대 주문이 아님');
 
-          _showMessage('이미 조립이 진행 중인 주문입니다.');
+          final errorMessage = e.data?['error']?.toString() ?? '이미 처리된 주문입니다.';
+
+          _showMessage(errorMessage);
           break;
 
         default:
