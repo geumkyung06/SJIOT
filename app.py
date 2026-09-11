@@ -14,6 +14,7 @@ from infra.keys import _ensure_initial_state
 
 from routes.order import bp as order_bp
 from routes.stock import bp as stock_bp
+<<<<<<< Updated upstream
 from routes.station import bp as station_bp
 from routes.callback import bp as callback_bp
 from routes.admin import bp as admin_bp
@@ -38,6 +39,9 @@ def _boot_background():
 
     threading.Thread(target=seed, name="stock-seed", daemon=True).start()
 
+=======
+from routes.admin import bp as admin_bp
+>>>>>>> Stashed changes
 
 def create_app():
     app = Flask(__name__)
@@ -80,6 +84,7 @@ def create_app():
 
     app.register_blueprint(order_bp)
     app.register_blueprint(stock_bp)
+<<<<<<< Updated upstream
     app.register_blueprint(station_bp)
     app.register_blueprint(callback_bp)
     app.register_blueprint(admin_bp)
@@ -89,6 +94,9 @@ def create_app():
     # 개발 서버 리로더는 프로세스를 두 번 띄운다. 자식에서만 백그라운드를 시작한다.
     if os.environ.get("WERKZEUG_RUN_MAIN") != "false":
         _boot_background()
+=======
+    app.register_blueprint(admin_bp)
+>>>>>>> Stashed changes
 
     return app
 
