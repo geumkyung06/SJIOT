@@ -111,9 +111,9 @@ def _build_body():
 
     body = {"orders": orders}
     # 스냅샷은 전량이므로 수신측은 '키 없음 = 빈 목록'으로 읽어야 한다 
-    key_restock = restock_list("keycap")
-    if key_restock:
-        body["key_restock"] = key_restock
+    keycap_restock = restock_list("keycap")
+    if keycap_restock:
+        body["keycap_restock"] = keycap_restock
 
     board_restock = restock_list("board")
     if board_restock:
@@ -150,7 +150,7 @@ def push_process(periodic=False):
         **body,
     }
     logger.info(f"[process] push seq={seq} orders={list(body['orders'])} "
-                f"key_restock={body.get('key_restock')} board_restock={body.get('board_restock')}")
+                f"keycap_restock={body.get('keycap_restock')} board_restock={body.get('board_restock')}")
     return create_cin("cnt_process", con)
 
 def restock_list(kind):

@@ -137,7 +137,13 @@ def admin_reset():
         required: true
         schema:
           type: object
-          example: {"password": "관리자 비밀번호", "mode": "zero", "keep_queue": false}
+          example:
+            password: "관리자 비밀번호"
+            mode: "zero"
+            confirm: ""
+            keep_queue: false
+            reset_seq: false
+            flush_unknown: false
           properties:
             password:
               type: string
