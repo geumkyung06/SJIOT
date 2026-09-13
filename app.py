@@ -60,7 +60,7 @@ def create_app():
     # 블루프린트 등록
     app.register_blueprint(order_bp)
     app.register_blueprint(stock_bp)
-    app.register_blueprint(dashboard_app) #[대시보드]추가
+    app.register_blueprint(dashboard_bp) #[대시보드]추가
 
     return app
 
