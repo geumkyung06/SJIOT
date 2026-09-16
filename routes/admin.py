@@ -1,10 +1,9 @@
 """관리자 경로 — fault 해제 · 라인 초기화 (기존)
-  + 관리자 페이지 조회용 stock · stations · orders (신규, gsj_backend_dashborad)
-
-fault 는 stage 를 그대로 두고 그 주문만 멈춘다. 그래서 이걸 해제해주면
-"그 자리에서 이어간다" — 새로 만들어주는 게 아니라 `fault` 값이 빈 최신 스냅샷을
-하나 더 얹고, 창고쨌AGV 는 같은 order_id 에 fault 가 없으면 재결로 판정한다 (명세 4-3).
+  + 관리자 페이지 조회/조작용 stock · stations · orders · stock/refill (gsj_backend_dashborad)
 """
+import json
+from datetime import datetime
+
 from flask import Blueprint, jsonify, request
 
 from config import (QUEUE_KEY,
@@ -12,6 +11,8 @@ from config import (QUEUE_KEY,
                     STATION_ORDER_PREFIX,
                     WAREHOUSE_ORDER_KEY,
                     STATION_RESET_PASSWORD,
+                    ARCHIVE_PREFIX,
+                    KST,
                    )
 from infra.extensions import r
 from infra.logger import logger
@@ -21,8 +22,6 @@ from services.stock import get_stocks
 
 bp = Blueprint("admin", __name__)
 
-# mode=hard 는 90일 보관 기록(아카이브쨌집계쨌일련번호)을 지운다.
-# 비밀번호와 별도로 실수로 맞을 수 있으니 문자열을 하나 더 요구한다.
 HARD_RESET_CONFIRM = "HARD-RESET"
 
 STATION_IDS = ("1", "2", "3")
@@ -43,6 +42,28 @@ WAREHOUSE_MAX = {
 }
 
 
+def _to_int(v):
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _max_for_part(part):
+    """
+    STOCK 슬롯 이름(part)에서 최대 수량을 찾는다.
+    보드: "r"·"y"·"g"·"b" (밑줄 없음)
+    키캡: "E_r" 형식 (글자_색상)
+    존재하지 않는 part면 None.
+    """
+    if "_" in part:
+        letter, _, color = part.partition("_")
+        return WAREHOUSE_MAX["keycap"].get(letter, {}).get(color)
+    return WAREHOUSE_MAX["board"].get(part)
+
+
 def _live_order_ids():
     """대기열 + 조립대 + 창고가 지금 들고 있는 주문. 최대 7건."""
     ids = list(r.lrange(QUEUE_KEY, 0, -1))
@@ -57,7 +78,6 @@ def _live_order_ids():
 
 
 def _get_order_summary(order_id):
-    """order:{id} 해시를 관리자 페이지용 dict로 변환. 없으면 None."""
     order_hash = r.hgetall(f"order:{order_id}")
     if not order_hash:
         return None
@@ -71,9 +91,42 @@ def _get_order_summary(order_id):
         "stage": order_hash.get("stage"),
         "fault": order_hash.get("fault") or None,
         "station_id": order_hash.get("station_id"),
-        "order_seq": order_hash.get("order_seq"),
+        "order_seq": _to_int(order_hash.get("order_seq")),
         "created_at": order_hash.get("created_at"),
     }
+
+
+def _today_archive_key():
+    return f"{ARCHIVE_PREFIX}{datetime.now(KST).strftime('%Y%m%d')}"
+
+
+def _get_archived_orders_today():
+    archive = r.hgetall(_today_archive_key())
+    orders = []
+    for order_id, raw in archive.items():
+        try:
+            record = json.loads(raw)
+        except (TypeError, ValueError):
+            logger.warning(f"[admin] 아카이브 레코드 파싱 실패: {order_id}")
+            continue
+
+        colors_raw = record.get("colors", "")
+        colors = colors_raw.split(",") if isinstance(colors_raw, str) and colors_raw else (colors_raw or [])
+
+        orders.append({
+            "order_id": record.get("order_id", order_id),
+            "board": record.get("board"),
+            "keycap": record.get("keycap"),
+            "colors": colors,
+            "stage": record.get("ended_at_stage") or record.get("final_status"),
+            "fault": record.get("fault") or None,
+            "station_id": record.get("station_id"),
+            "order_seq": _to_int(record.get("order_seq")),
+            "created_at": record.get("created_at"),
+            "ended_at": record.get("ended_at"),
+            "reason": record.get("reason"),
+        })
+    return orders
 
 
 @bp.route("/admin/faults", methods=["GET"])
@@ -86,14 +139,6 @@ def list_faults():
     responses:
       200:
         description: 조회 성공
-        schema:
-          type: object
-          properties:
-            faults:
-              type: array
-              items:
-                type: object
-              example: [{"order_id": "ord_a1b2c3d4", "stage": "loaded", "fault": "agv_wrong_station", "station_id": "2"}]
     """
     out = []
     for oid in _live_order_ids():
@@ -104,7 +149,7 @@ def list_faults():
                 "stage": o.get("stage"),
                 "fault": o.get("fault"),
                 "station_id": o.get("station_id"),
-                "order_seq": o.get("order_seq"),
+                "order_seq": _to_int(o.get("order_seq")),
             })
     return jsonify({"faults": out}), 200
 
@@ -121,7 +166,6 @@ def clear_order_fault(order_id):
         name: order_id
         type: string
         required: true
-        example: ord_a1b2c3d4
       - in: body
         name: body
         required: true
@@ -130,10 +174,9 @@ def clear_order_fault(order_id):
           properties:
             password:
               type: string
-              description: 관리자 비밀번호 (STATION_RESET_PASSWORD 와 동일)
     responses:
       200:
-        description: 해제 완료. fault 가 빈 최신 스냅샷을 cnt_process 로 다시 push 한다
+        description: 해제 완료
       400:
         description: 비밀번호 불일치
       404:
@@ -153,7 +196,7 @@ def clear_order_fault(order_id):
     if not fault:
         return jsonify({"error": "fault 가 걸려 있지 않습니다", "stage": order.get("stage")}), 409
 
-    clear_fault(order_id)      # hdel fault + 터치 시각 갱신 + cnt_process push
+    clear_fault(order_id)
     logger.info(f"[admin] {order_id} fault 해제 ({fault}) stage={order.get('stage')} 유지")
 
     return jsonify({
@@ -178,33 +221,9 @@ def admin_reset():
         schema:
           type: object
           example: {"password": "관리자 비밀번호", "mode": "zero", "keep_queue": false}
-          properties:
-            password:
-              type: string
-              description: "관리자 비밀번호 (STATION_RESET_PASSWORD 와 동일)"
-            mode:
-              type: string
-              enum: [zero, mobius, hard]
-              default: zero
-              description: "zero=전부 초기값(재고 36칸을 STOCK_MAX_COUNT 로, 조립대쨌창고쨌AGV idle, 진행 중 주문 전부 삭제) 쨌 mobius=zero 후 Mobius 최신값으로 복구 쨌 hard=zero + 아카이브쨌집계쨌일련번호까지 삭제(confirm 필요)"
-            confirm:
-              type: string
-              description: "mode=hard 전용쨌필수. 정확히 HARD-RESET 을 입력해야 한다."
-            keep_queue:
-              type: boolean
-              default: false
-              description: "대기열(order:queue)과 그 주문 내역을 보존할지."
-            reset_seq:
-              type: boolean
-              default: false
-              description: "mode=hard 전용. process:seq 까지 리셋."
-            flush_unknown:
-              type: boolean
-              default: false
-              description: "mode=hard 전용. 알려지지 않은 키까지 삭제."
     responses:
       200:
-        description: 초기화 완료. 무엇을 지웠고 무엇을 복구했는지 보고서를 돌려준다.
+        description: 초기화 완료
       400:
         description: 비밀번호 불일치쨌지원 안 하는 mode쨌confirm 누락
       500:
@@ -240,7 +259,7 @@ def admin_reset():
     return jsonify({"ok": True, **report}), 200
 
 
-# ── 여기서부터 gsj_backend_dashborad: 관리자 페이지 조회 3종 ──────────────
+# ── 여기서부터 gsj_backend_dashborad: 관리자 페이지 조회 3종 + 재고 채움 ──────
 
 @bp.route('/admin/stock', methods=['GET'])
 def admin_stock():
@@ -255,7 +274,7 @@ def admin_stock():
       503:
         description: 재고 캐시가 아직 없음
     """
-    stocks = get_stocks()  # 예: {"keycap": {"E_r": 50, ...}, "board": {"r": 30, ...}}
+    stocks = get_stocks()
     if stocks is None:
         return jsonify({"error": "재고 정보가 아직 없습니다"}), 503
 
@@ -268,7 +287,6 @@ def admin_stock():
         }
 
     for slot, qty in stocks.get("keycap", {}).items():
-        # slot 예: "E_r" -> letter="E", color="r"
         letter, _, color = slot.partition("_")
         result["keycap"].setdefault(letter, {})
         result["keycap"][letter][color] = {
@@ -277,6 +295,83 @@ def admin_stock():
         }
 
     return jsonify(result), 200
+
+
+@bp.route('/admin/stock/refill', methods=['POST'])
+def admin_stock_refill():
+    """
+    재고 채움 업데이트 (관리자 페이지 "채우기" 버튼)
+    ---
+    tags:
+      - Admin
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            part:
+              type: string
+              description: 재고 칸 이름 — 보드는 "r"쨌"y"쨌"g"쨌"b", 키캡은 "E_r" 형식(글자_색상)
+              example: "E_r"
+            count:
+              type: integer
+              description: >
+                생략하면 해당 칸의 최대치로 자동 채움("채우기" 버튼 기본 동작).
+                값을 보내면 그 수량으로 채우되 최대치를 넘지 못하게 자동으로 잘림.
+              example: 30
+    responses:
+      200:
+        description: 업데이트 완료. 최대치로 잘렸으면 clamped=true.
+      400:
+        description: part 누락쨌존재하지 않는 칸쨌count 형식 오류
+    """
+    data = request.get_json(silent=True) or {}
+    part = data.get("part")
+    raw_count = data.get("count")
+
+    if not part or not isinstance(part, str):
+        return jsonify({"error": "part가 필요합니다 (예: 'E_r' 또는 'r')"}), 400
+
+    max_qty = _max_for_part(part)
+    if max_qty is None:
+        return jsonify({"error": f"존재하지 않는 재고 칸입니다: {part}"}), 400
+
+    existing_raw = r.hget("warehouse:stock", part)
+    if existing_raw is None:
+        return jsonify({"error": f"아직 재고 데이터가 없는 칸입니다: {part}"}), 400
+    existing = json.loads(existing_raw)
+
+    clamped = False
+    if raw_count is None:
+        # count 생략 = "채우기" 버튼 기본 동작 — 자동으로 최대치까지
+        count = max_qty
+    else:
+        if not isinstance(raw_count, int) or raw_count < 0:
+            return jsonify({"error": "count는 0 이상의 정수여야 합니다"}), 400
+        if raw_count > max_qty:
+            count = max_qty
+            clamped = True
+        else:
+            count = raw_count
+
+    # status는 count에 맞춰 자동 조정하되, disable(하드웨어 고장)은 채운다고 해결되는 게
+    # 아니므로 절대 건드리지 않는다 (Redis ERD 6-3장 restock_list 원칙과 동일).
+    if existing.get("status") != "disable":
+        existing["status"] = "idle" if count > 0 else "empty"
+    existing["count"] = count
+    r.hset("warehouse:stock", part, json.dumps(existing))
+
+    logger.info(f"[admin] 재고 채움: {part} -> {count} (max={max_qty}, clamped={clamped})")
+    return jsonify({
+        "ok": True,
+        "part": part,
+        "count": count,
+        "max": max_qty,
+        "clamped": clamped,
+        "status": existing.get("status"),
+    }), 200
 
 
 @bp.route('/admin/stations', methods=['GET'])
@@ -290,12 +385,12 @@ def admin_stations():
       200:
         description: 조립대 3칸의 점유 여부 + 배정된 주문 정보
     """
-    occupancy = r.hgetall(STATION_KEY)  # 예: {"1": "busy", "2": "idle"} (없으면 {})
+    occupancy = r.hgetall(STATION_KEY)
 
     stations = []
     for sid in STATION_IDS:
         status = occupancy.get(sid, "idle")
-        order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")  # 없으면 None
+        order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
 
         order_info = _get_order_summary(order_id) if order_id else None
 
@@ -311,18 +406,21 @@ def admin_stations():
 @bp.route('/admin/orders', methods=['GET'])
 def admin_orders():
     """
-    모든 주문 조회 (관리자 페이지용) — 대기열 + 조립대 + 창고가 들고 있는 주문 전부
+    모든 주문 조회 (관리자 페이지용) — 오늘 접수된 전체
     ---
     tags:
       - Admin
     responses:
       200:
-        description: 현재 살아있는(TTL 만료 전) 주문 전체 목록
+        description: 진행 중 + 오늘 종료된 주문 전체 목록
     """
     orders = []
+
     for order_id in _live_order_ids():
         summary = _get_order_summary(order_id)
-        if summary:  # TTL 만료 등으로 이미 사라졌으면 건너뜀
+        if summary:
             orders.append(summary)
+
+    orders.extend(_get_archived_orders_today())
 
     return jsonify({"orders": orders}), 200
