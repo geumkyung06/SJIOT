@@ -1,0 +1,117 @@
+import os
+from zoneinfo import ZoneInfo
+
+QUEUE_KEY = os.getenv("QUEUE_KEY", "order:queue")
+WAREHOUSE_KEY = os.getenv("WAREHOUSE_KEY", "warehouse:occupancy")
+STATION_KEY = os.getenv("STATION_KEY", "station:occupancy")
+AGV_KEY = os.getenv("AGV_KEY", "agv:occupancy")
+# cnt_agv 가 올린 status 원문을 그대로 보관한다 (loaded·station_arrived·unloaded·parked…).
+# occupancy(idle/busy)만으로는 'AGV가 지금 어디서 뭘 하는 중인지'를 알 수 없어서
+# 워치독이 정상 대기와 고장을 구분하지 못한다.
+AGV_STATUS_KEY = os.getenv("AGV_STATUS_KEY", "agv:status")
+DEADLINE_KEY = os.getenv("DEADLINE_KEY", "order:deadlines")
+
+WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")
+STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order:")
+MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 처리 못 함)
+
+STATION_VERIFIED_PREFIX = os.getenv("STATION_VERIFIED_PREFIX", "station:verified_at:")
+STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
+
+# 노쇼(unclaim) 최소 대기 시간. 프론트가 3분 타이머를 돌리지만 그건 클라이언트 값이라
+# 조작하면 도착 직후에도 unclaim을 때릴 수 있다. 서버가 arrived_at으로 다시 잰다.
+# 프론트 3분(180s)보다 넉넉히 아래로 둔다 — 프론트 요청 실패 시 재시도 여유를 주기 위함.
+STATION_UNCLAIM_MIN_SEC = int(os.getenv("STATION_UNCLAIM_MIN_SEC", "150"))  # 2분 30초
+
+ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
+
+# 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관.
+ARCHIVE_PREFIX = os.getenv("ARCHIVE_PREFIX", "orders:archive:")
+STATS_PREFIX = os.getenv("STATS_PREFIX", "stats:")
+ARCHIVE_TTL = int(os.getenv("ARCHIVE_TTL", str(90 * 24 * 3600)))
+
+ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
+
+STATION_RESET_PASSWORD = os.getenv("STATION_RESET_PASSWORD")
+
+MBTI_AXES = [("E", "I"), ("S", "N"), ("T", "F"), ("J", "P")]
+
+# ── TTL ───────────────────────────────────────────────────────────────
+# 키 성격별로 나눈다. 예전에는 TEST_KEY_TTL 하나로 '건드린 키 전부'에 같은 TTL을 걸었는데,
+# 그러면 warehouse:occupancy 같은 '지금 상태' 키까지 한 시간 조용하면 사라진다.
+# 상태 키(warehouse/station/agv/queue/process)에는 TTL을 걸지 않는다.
+# 그것들을 지우는 경로는 POST /admin/reset 하나뿐이다.
+ORDER_TTL = int(os.getenv("ORDER_TTL", str(24 * 3600)))          # 진행 중 주문 24시간
+ORDER_DONE_TTL = int(os.getenv("ORDER_DONE_TTL", "600"))         # 종료된 주문 10분
+ORDER_COUNTER_TTL = int(os.getenv("ORDER_COUNTER_TTL", str(90 * 24 * 3600)))   # 일련번호 90일
+
+# 카트리지 1칸의 최대 수량. /admin/reset?mode=zero 가 36칸을 이 값으로 채운다.
+# 나중에 env 로 뺄 값이라 전역 하나로 둔다.
+STOCK_MAX_COUNT = int(os.getenv("STOCK_MAX_COUNT", "30"))
+
+# 노쇼 폐기 마감. unclaimed 로 끝난 트레이를 AGV가 discarded 로 보고할 때까지
+# 조립대를 잡아 둔다 — 그래야 폐기 명령이 cnt_process 에서 사라지지 않는다.
+DISCARD_TIMEOUT_SEC = int(os.getenv("DISCARD_TIMEOUT_SEC", "300"))
+
+COLOR_LIST = [c.strip() for c in os.getenv("COLOR_LIST", "r,y,g,b").split(",")]
+BOARD_LIST = [b.strip() for b in os.getenv("BOARD_LIST", "red,yellow,green,blue").split(",")]
+
+MP_URL = os.getenv("MP_URL")  
+CB = os.getenv("CB", "Mobius")
+AE_RN = os.getenv("AE_RN")   
+ORIGIN = os.getenv("MOBIUS_ORIGIN")
+API_KEY = os.getenv("MOBIUS_API_KEY")
+LECTURE_ID = os.getenv("X-AUTH-CUSTOM-LECTURE")
+CREATOR_ID = os.getenv("X-AUTH-CUSTOM-CREATOR")
+
+STAGE_ORDER = ["queued",
+               "assigned",
+               "keycap_mismatched",
+               "keycap_dispensed",
+               "keycap_reached",
+               "keycap_packed",
+               "tray_reached",
+               "board_mismatched",
+               "board_packed",
+               "pickup_reached",
+               "loaded",
+               "arrived",
+               "unclaimed",
+               "verified",
+               "received",
+               "completed"
+               ]
+
+STAGE_BUSY = {
+    "assigned":         ["tray_robot_arm", "keycap_cartridge"],
+    "keycap_mismatched":   ["keycap_cartridge"],
+    "keycap_dispensed": ["keycap_conveyor"],
+    "keycap_reached":   ["keycap_robot_arm"],
+    "keycap_packed":    ["tray_conveyor"],
+    "tray_reached":     ["board_robot_arm"],
+    "board_mismatched": ["board_robot_arm"],
+    "board_packed":     ["tray_conveyor"],
+    "pickup_reached":   ["agv"],
+    "loaded":   ["agv"],
+    "arrived":   ["agv"],
+    "unclaimed":   ["agv"],
+    "verified":   ["agv"],
+    "received":   ["agv"], # agv : parked 보고해야 다음 주문 가능
+    }
+
+SUB_CNT_KEYCAP_PARENT = os.getenv("SUB_CNT_KEYCAP_PARENT", "cnt_keycap_status")
+SUB_CNT_BOARD_PARENT  = os.getenv("SUB_CNT_BOARD_PARENT",  "cnt_board_status")
+
+SUB_CNT_KEYCAP = [c.strip() for c in os.getenv("SUB_CNT_KEYCAP", "").split(",") if c.strip()]
+SUB_CNT_BOARD  = [c.strip() for c in os.getenv("SUB_CNT_BOARD",  "").split(",") if c.strip()]
+
+# Redis warehouse:stock 의 필드명 (cnt_ 뗀 형태)
+KEYCAP_SLOTS = [c.removeprefix("cnt_") for c in SUB_CNT_KEYCAP]   # E_r
+BOARD_SLOTS  = [c.removeprefix("cnt_") for c in SUB_CNT_BOARD]    # r
+ALL_SLOTS    = set(KEYCAP_SLOTS) | set(BOARD_SLOTS)               # 36개, 콜백 유효성 검사용
+
+BOARD_SLOT_MAP = dict(
+    p.split(":", 1) for p in os.getenv("BOARD_SLOT_MAP", "").split(",") if ":" in p
+)
+
+KST = ZoneInfo("Asia/Seoul")

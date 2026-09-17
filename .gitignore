@@ -8,6 +8,7 @@ routes/__pycache__
 __pycache__
 .DS_Store
 services/.DS_Store
+.venv
 
 
 #front
@@ -53,3 +54,6 @@ app.*.map.json
 
 test_subscriptions.py
 .gcloudignore
+
+Claude outputs/
+debug/

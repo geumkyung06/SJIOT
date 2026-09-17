@@ -166,48 +166,40 @@ def get_order_summary():
       400:
         description: 주문 현황 조회 실패
     """
-
     try:
         today = today_key()
 
-        # 1. 총 주문 건수
-        # 전시회 전체 기간의 order:counter 합산
+        # 1. 전시회 전체 주문 건수
         total_orders = 0
 
         for date in get_exhibition_dates():
             count = r.get(f"order:counter:{date}")
             total_orders += int(count or 0)
 
-
         # 2. 오늘 주문 건수
-        # order:counter:{YYYYMMDD}
         today_orders = int(
             r.get(f"order:counter:{today}") or 0
         )
 
-
         # 3. 현재 대기 주문 건수
-        # order:queue List 길이
         waiting_orders = r.llen("order:queue")
 
-
         # 4. 오늘 완료 주문 건수
-        # dashboard:stats:completed:{YYYYMMDD}
         completed_today = int(
             r.get(f"dashboard:stats:completed:{today}") or 0
         )
 
-
-
         return jsonify({
+            "success": True,
             "total_orders": total_orders,
             "today_orders": today_orders,
             "waiting_orders": waiting_orders,
             "completed_today": completed_today
         }), 200
 
-
     except Exception as e:
+        print("[dashboard/orders/stats ERROR]", e)
+
         return jsonify({
             "success": False,
             "error": str(e)
