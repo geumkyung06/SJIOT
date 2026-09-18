@@ -1,5 +1,6 @@
 import redis
 import os
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6380")
 r = redis.from_url(REDIS_URL, decode_responses=True)
+

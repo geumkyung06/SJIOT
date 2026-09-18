@@ -1,24 +1,59 @@
 import json
 import os
+
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import Blueprint, jsonify
-from services.extensions import r
 
-bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
+from infra.extensions import r
+
+
+# =========================================================
+# 기본 설정
+# =========================================================
+
+bp = Blueprint(
+    "dashboard",
+    __name__,
+    url_prefix="/dashboard"
+)
 
 KST = ZoneInfo("Asia/Seoul")
 
-EXHIBITION_START_DATE = os.getenv("EXHIBITION_START_DATE", "20260920")
-EXHIBITION_DAYS = int(os.getenv("EXHIBITION_DAYS", "3"))
+EXHIBITION_START_DATE = os.getenv(
+    "EXHIBITION_START_DATE",
+    "20260917"
+)
+
+EXHIBITION_DAYS = int(
+    os.getenv("EXHIBITION_DAYS", "3")
+)
+
+
+# =========================================================
+# 공통 함수
+# =========================================================
 
 def today_key():
-    """Redis archive/stats 날짜 형식: YYYYMMDD"""
+    """
+    오늘 날짜를 Redis 날짜 형식으로 반환
+    YYYYMMDD
+    """
     return datetime.now(KST).strftime("%Y%m%d")
-  
+
+
 def get_exhibition_dates():
-    """전시회 전체 날짜 리스트 반환"""
+    """
+    전시회 전체 날짜 리스트 반환
+
+    예:
+    EXHIBITION_START_DATE = 20260920
+    EXHIBITION_DAYS = 3
+
+    반환:
+    ["20260920", "20260921", "20260922"]
+    """
 
     start_date = datetime.strptime(
         EXHIBITION_START_DATE,
@@ -29,72 +64,60 @@ def get_exhibition_dates():
 
     for i in range(EXHIBITION_DAYS):
         date = start_date + timedelta(days=i)
-        dates.append(date.strftime("%Y%m%d"))
+
+        dates.append(
+            date.strftime("%Y%m%d")
+        )
 
     return dates
-  
-def update_completed_order_stats(process):
 
-    orders = process.get("orders", {})
 
-    for order_id, order in orders.items():
+def get_completed_archive_orders():
+    """
+    전시 기간의 orders:archive:{YYYYMMDD}를 조회하여
+    정상 완료된 주문만 반환
 
-        # completed가 아닌 주문은 무시
-        if order.get("status") != "completed":
-            continue
+    archive에는 정상 완료뿐 아니라
+    unclaimed / timeout 주문도 들어갈 수 있음.
 
-        # 이미 집계한 주문인지 확인
-        is_new = r.sadd(
-            "dashboard:stats:processed_completed",
-            order_id
+    reason이 존재하는 주문은 정상 완료가 아니므로 제외.
+    """
+
+    completed_orders = []
+
+    for date in get_exhibition_dates():
+
+        archive_key = f"orders:archive:{date}"
+
+        raw_orders = r.hgetall(
+            archive_key
         )
 
-        # 이미 처리한 주문이면 중복 집계 방지
-        if not is_new:
-            continue
+        for order_id, raw_order in raw_orders.items():
 
-        # ==========================================
-        # 완료 주문 건수
-        # ==========================================
-        r.incr(
-            "dashboard:stats:completed_count"
-        )
+            try:
+                order = json.loads(
+                    raw_order
+                )
 
-        # ==========================================
-        # MBTI
-        # ==========================================
-        mbti = order.get("keycap")
+            except (json.JSONDecodeError, TypeError):
 
-        if mbti:
-            r.hincrby(
-                "dashboard:stats:mbti",
-                mbti,
-                1
+                print(
+                    f"[dashboard] "
+                    f"잘못된 archive 데이터: {order_id}"
+                )
+
+                continue
+
+            # unclaimed / timeout 제외
+            if order.get("reason"):
+                continue
+
+            completed_orders.append(
+                order
             )
 
-        # ==========================================
-        # 키캡 색상
-        # ==========================================
-        colors = order.get("colors", [])
-
-        for color in colors:
-            r.hincrby(
-                "dashboard:stats:keycap_color",
-                color,
-                1
-            )
-
-        # ==========================================
-        # 키캡 조합
-        # ==========================================
-        if colors:
-            combo = "-".join(colors)
-
-            r.hincrby(
-                "dashboard:stats:keycap_combo",
-                combo,
-                1
-            )
+    return completed_orders
 
 
 # =========================================================
@@ -104,13 +127,35 @@ def update_completed_order_stats(process):
 
 @bp.route("/stocks", methods=["GET"])
 def get_dashboard_stocks():
+    """
+    대시보드 재고 현황 조회
+    ---
+    tags:
+      - Dashboard
+
+    summary: 대시보드 재고 현황 조회
+
+    responses:
+      200:
+        description: 재고 현황 조회 성공
+
+      400:
+        description: 재고 현황 조회 실패
+    """
+
     try:
-        raw_stock = r.hgetall("warehouse:stock")
+
+        raw_stock = r.hgetall(
+            "warehouse:stock"
+        )
 
         stocks = {}
 
         for cartridge_id, value in raw_stock.items():
-            stock_data = json.loads(value)
+
+            stock_data = json.loads(
+                value
+            )
 
             stocks[cartridge_id] = {
                 "count": stock_data["count"],
@@ -122,8 +167,13 @@ def get_dashboard_stocks():
             "stocks": stocks
         }), 200
 
+
     except Exception as e:
-        print("[dashboard/stocks ERROR]", e)
+
+        print(
+            "[dashboard/stocks ERROR]",
+            e
+        )
 
         return jsonify({
             "success": False,
@@ -131,18 +181,37 @@ def get_dashboard_stocks():
         }), 400
 
 
-# # =========================================================
-# # 2. 주문 건수 KPI
-# # GET /dashboard/orders
-# # =========================================================
+# =========================================================
+# 2. 주문 건수
+# GET /dashboard/orders/stats
+# =========================================================
 
 @bp.route("/orders/stats", methods=["GET"])
 def get_order_summary():
     """
-    주문 현황 조회
+    대시보드 주문 현황 조회
     ---
     tags:
       - Dashboard
+
+    summary: 대시보드 주문 건수 조회
+
+    description: |
+      대시보드 하단의 주문 건수 정보를 반환합니다.
+
+      반환 정보:
+
+      - total_orders
+        - 전시 기간 전체 주문 건수
+
+      - today_orders
+        - 오늘 생성된 주문 건수
+
+      - waiting_orders
+        - 현재 대기열에 있는 주문 건수
+
+      - completed_today
+        - 오늘 정상 완료된 주문 건수
 
     responses:
       200:
@@ -150,44 +219,117 @@ def get_order_summary():
         schema:
           type: object
           properties:
+
+            success:
+              type: boolean
+              example: true
+
             total_orders:
               type: integer
-              example: 30
+              description: 전시 기간 전체 주문 건수
+              example: 59
+
             today_orders:
               type: integer
+              description: 오늘 생성된 주문 건수
               example: 10
+
             waiting_orders:
               type: integer
-              example: 3
+              description: 현재 대기 주문 건수
+              example: 4
+
             completed_today:
               type: integer
+              description: 오늘 정상 완료된 주문 건수
               example: 7
 
       400:
         description: 주문 현황 조회 실패
     """
+
     try:
+
         today = today_key()
 
+
+        # ==========================================
         # 1. 전시회 전체 주문 건수
+        #
+        # order:counter:{YYYYMMDD}
+        # ==========================================
+
         total_orders = 0
 
         for date in get_exhibition_dates():
-            count = r.get(f"order:counter:{date}")
-            total_orders += int(count or 0)
 
+            count = r.get(
+                f"order:counter:{date}"
+            )
+
+            total_orders += int(
+                count or 0
+            )
+
+
+        # ==========================================
         # 2. 오늘 주문 건수
+        # ==========================================
+
         today_orders = int(
-            r.get(f"order:counter:{today}") or 0
+            r.get(
+                f"order:counter:{today}"
+            ) or 0
         )
 
+
+        # ==========================================
         # 3. 현재 대기 주문 건수
-        waiting_orders = r.llen("order:queue")
+        # ==========================================
 
-        # 4. 오늘 완료 주문 건수
-        completed_today = int(
-            r.get(f"dashboard:stats:completed:{today}") or 0
+        waiting_orders = r.llen(
+            "order:queue"
         )
+
+
+        # ==========================================
+        # 4. 오늘 정상 완료 주문 건수
+        #
+        # orders:archive:{today}에서
+        # reason이 없는 주문만 계산
+        # ==========================================
+
+        completed_today = 0
+
+        raw_orders = r.hgetall(
+            f"orders:archive:{today}"
+        )
+
+        for order_id, raw_order in raw_orders.items():
+
+            try:
+                order = json.loads(
+                    raw_order
+                )
+
+            except (json.JSONDecodeError, TypeError):
+
+                print(
+                    f"[dashboard/orders/stats] "
+                    f"잘못된 archive 데이터: {order_id}"
+                )
+
+                continue
+
+            # reason이 없으면 정상 완료
+            if not order.get("reason"):
+
+                completed_today += 1
+
+
+        # ==========================================
+        # 반환
+        # ==========================================
 
         return jsonify({
             "success": True,
@@ -197,12 +339,17 @@ def get_order_summary():
             "completed_today": completed_today
         }), 200
 
+
     except Exception as e:
-        print("[dashboard/orders/stats ERROR]", e)
+
+        print(
+            "[dashboard/orders/stats ERROR]",
+            e
+        )
 
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": "주문 현황을 조회하지 못했습니다."
         }), 400
 
 
@@ -219,29 +366,32 @@ def get_dashboard_statistics():
     tags:
       - Dashboard
 
-    summary: 대시보드 주문 통계 조회
+    summary: 완료 주문 기반 대시보드 통계 조회
 
     description: |
-      완료된 주문을 기준으로 집계된 대시보드 통계 정보를 반환합니다.
+      전시 기간의 orders:archive:{YYYYMMDD} 데이터를
+      직접 조회하여 정상 완료된 주문의 통계를 계산합니다.
 
-      Redis에 저장된 아래 통계 데이터를 조회합니다.
+      reason이 존재하는 unclaimed / timeout 주문은
+      통계에서 제외합니다.
 
-      - `dashboard:stats:mbti`
+      반환 정보:
+
+      - completed_orders
+        - 전시 기간 정상 완료 주문 건수
+
+      - mbti_stats
         - MBTI별 완료 주문 수
-      - `dashboard:stats:keycap_color`
+        - 비율
+        - 순위
+
+      - keycap_color_stats
         - 키캡 색상별 사용 개수
-      - `dashboard:stats:keycap_combo`
-        - 키캡 색상 조합별 완료 주문 수
+        - 색상별 사용 비율
 
-      반환되는 통계 정보는 다음과 같습니다.
-
-      - 전체 완료 주문 건수
-      - MBTI별 완료 주문 수
-      - MBTI별 비율
-      - MBTI 순위
-      - 키캡 색상별 사용 개수
-      - 키캡 색상별 사용 비율
-      - 가장 많이 선택된 키캡 색상 조합
+      - top_keycap_combo
+        - 가장 많이 선택된 키캡 색상 조합
+        - 해당 조합의 주문 수
 
     responses:
       200:
@@ -252,12 +402,11 @@ def get_dashboard_statistics():
 
             success:
               type: boolean
-              description: 요청 성공 여부
               example: true
 
             completed_orders:
               type: integer
-              description: 전체 완료 주문 건수
+              description: 전시 기간 정상 완료 주문 건수
               example: 10
 
             mbti_stats:
@@ -269,176 +418,97 @@ def get_dashboard_statistics():
 
                   rank:
                     type: integer
-                    description: 완료 주문 수 기준 MBTI 순위
                     example: 1
 
                   mbti:
                     type: string
-                    description: MBTI 유형
                     example: ENTP
 
                   count:
                     type: integer
-                    description: 해당 MBTI의 완료 주문 수
                     example: 5
 
                   ratio:
                     type: number
                     format: float
-                    description: 전체 완료 주문 중 해당 MBTI가 차지하는 비율(%)
                     example: 50.0
 
             keycap_color_stats:
               type: object
               description: 키캡 색상별 사용 통계
-              additionalProperties:
-                type: object
-                properties:
-
-                  count:
-                    type: integer
-                    description: 해당 색상의 키캡 사용 개수
-                    example: 15
-
-                  ratio:
-                    type: number
-                    format: float
-                    description: 전체 사용 키캡 중 해당 색상이 차지하는 비율(%)
-                    example: 37.5
-
-              example:
-                r:
-                  count: 15
-                  ratio: 37.5
-                g:
-                  count: 8
-                  ratio: 20.0
-                b:
-                  count: 10
-                  ratio: 25.0
-                y:
-                  count: 7
-                  ratio: 17.5
 
             top_keycap_combo:
               type: object
               nullable: true
               description: 가장 많이 선택된 키캡 색상 조합
-              properties:
-
-                colors:
-                  type: array
-                  description: 키캡 색상 조합
-                  items:
-                    type: string
-                  example:
-                    - r
-                    - r
-                    - b
-                    - g
-
-                count:
-                  type: integer
-                  description: 해당 색상 조합이 선택된 완료 주문 수
-                  example: 4
-
-        examples:
-          application/json:
-            success: true
-            completed_orders: 10
-            mbti_stats:
-              - rank: 1
-                mbti: ENTP
-                count: 5
-                ratio: 50.0
-              - rank: 2
-                mbti: ENFP
-                count: 3
-                ratio: 30.0
-              - rank: 3
-                mbti: ISTJ
-                count: 2
-                ratio: 20.0
-
-            keycap_color_stats:
-              r:
-                count: 15
-                ratio: 37.5
-              g:
-                count: 8
-                ratio: 20.0
-              b:
-                count: 10
-                ratio: 25.0
-              y:
-                count: 7
-                ratio: 17.5
-
-            top_keycap_combo:
-              colors:
-                - r
-                - r
-                - r
-                - r
-              count: 4
 
       400:
         description: 대시보드 통계 조회 실패
-        schema:
-          type: object
-          properties:
-
-            success:
-              type: boolean
-              description: 요청 성공 여부
-              example: false
-
-            error:
-              type: string
-              description: 오류 메시지
-              example: 통계 정보를 조회하지 못했습니다.
     """
 
     try:
+
+        # ==========================================
+        # 전시 기간 정상 완료 주문 가져오기
+        # ==========================================
+
+        orders = get_completed_archive_orders()
+
+        completed_orders = len(
+            orders
+        )
+
+
         # ==========================================
         # 1. MBTI 통계
-        # dashboard:stats:mbti
+        # stats:mbti:{YYYYMMDD} 기반
         # ==========================================
-        raw_mbti = r.hgetall(
-            "dashboard:stats:mbti"
-        )
 
         mbti_counts = {}
 
-        for mbti, count in raw_mbti.items():
-            mbti_counts[mbti] = int(count)
+        for date_str in get_exhibition_dates():
+
+            daily_mbti = r.hgetall(
+                f"stats:mbti:{date_str}"
+            )
+
+            for mbti, count in daily_mbti.items():
+
+                mbti_counts[mbti] = (
+                    mbti_counts.get(mbti, 0)
+                    + int(count)
+                )
 
 
-        # 완료 주문 총 건수
-        completed_orders = sum(
-            mbti_counts.values()
-        )
-
-
-        # MBTI 순위
+        # 주문 수 기준 내림차순
         sorted_mbti = sorted(
             mbti_counts.items(),
             key=lambda x: x[1],
             reverse=True
         )
 
+
         mbti_stats = []
+
+        # MBTI 통계에 기록된 완료 주문 수
+        total_mbti_orders = sum(
+            mbti_counts.values()
+        )
+
 
         for rank, (mbti, count) in enumerate(
             sorted_mbti,
             start=1
         ):
+
             ratio = (
                 round(
-                    count / completed_orders * 100,
+                    count
+                    / total_mbti_orders
+                    * 100,
                     2
                 )
-                if completed_orders > 0
+                if total_mbti_orders > 0
                 else 0
             )
 
@@ -452,21 +522,30 @@ def get_dashboard_statistics():
 
         # ==========================================
         # 2. 키캡 색상별 통계
-        # dashboard:stats:keycap_color
+        # stats:color:{YYYYMMDD} 기반
         # ==========================================
-        raw_colors = r.hgetall(
-            "dashboard:stats:keycap_color"
-        )
 
         color_counts = {}
 
-        for color, count in raw_colors.items():
-            color_counts[color] = int(count)
+        for date_str in get_exhibition_dates():
+
+            daily_colors = r.hgetall(
+                f"stats:color:{date_str}"
+            )
+
+            for color, count in daily_colors.items():
+
+                color_counts[color] = (
+                    color_counts.get(color, 0)
+                    + int(count)
+                )
 
 
+        # 전체 사용 키캡 개수
         total_keycaps = sum(
             color_counts.values()
         )
+
 
         keycap_color_stats = {}
 
@@ -474,7 +553,9 @@ def get_dashboard_statistics():
 
             ratio = (
                 round(
-                    count / total_keycaps * 100,
+                    count
+                    / total_keycaps
+                    * 100,
                     2
                 )
                 if total_keycaps > 0
@@ -488,20 +569,47 @@ def get_dashboard_statistics():
 
 
         # ==========================================
-        # 3. 키캡 조합 통계
-        # dashboard:stats:keycap_combo
+        # 3. 키캡 색상 조합 통계
         # ==========================================
-        raw_combos = r.hgetall(
-            "dashboard:stats:keycap_combo"
-        )
 
         combo_counts = {}
 
-        for combo, count in raw_combos.items():
-            combo_counts[combo] = int(count)
+        for order in orders:
+
+            colors = order.get(
+                "colors",
+                []
+            )
+
+            if (
+                not isinstance(colors, list)
+                or not colors
+            ):
+                continue
 
 
+            # 예:
+            # ["r", "r", "b", "g"]
+            # ↓
+            # "r-r-b-g"
+
+            combo = "-".join(
+                colors
+            )
+
+
+            combo_counts[combo] = (
+                combo_counts.get(
+                    combo,
+                    0
+                ) + 1
+            )
+
+
+        # ==========================================
         # 가장 많이 선택된 조합
+        # ==========================================
+
         top_keycap_combo = None
 
         if combo_counts:
@@ -520,6 +628,7 @@ def get_dashboard_statistics():
         # ==========================================
         # 반환
         # ==========================================
+
         return jsonify({
             "success": True,
             "completed_orders": completed_orders,
@@ -530,9 +639,19 @@ def get_dashboard_statistics():
 
 
     except Exception as e:
-        print("[dashboard/statistics ERROR]", e)
+
+        print(
+            "[dashboard/statistics ERROR]",
+            e
+        )
 
         return jsonify({
             "success": False,
             "error": "통계 정보를 조회하지 못했습니다."
         }), 400
+        
+        
+# =========================================================
+# 4. 주문 통계
+# GET /dashboard/statistics
+# =========================================================
