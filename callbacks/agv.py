@@ -11,15 +11,14 @@ from services.process import set_stage, set_fault, is_at_or_past
 # status → (전이할 stage, 필요한 직전 stage)
 TRANSITIONS = {
     "loaded": ("loaded", "pickup_reached"),
-    "station_arrived": ("arrived", "loaded"),
+    "arrived": ("arrived", "loaded"),
     "unloaded": ("received", "verified"),
 }
 
 FAULTS = {
     "load_failed": "pickup_failed",
     "unload_failed": "drop_failed",
-    "move_accident": "agv_collided",
-    "broken": "agv_broken",
+    "agv_broken": "agv_broken",
 }
 
 
@@ -146,12 +145,12 @@ def on_agv(con):
     if status == "loaded":
         r.set(AGV_KEY, "busy")
 
-    if status == "station_arrived":
+    if status == "arrived":
         # 오배송. cnt_agv 는 order_id·station_id 를 싣기로 했으므로, 그 쌍이 배정과
         # 다르면 AGV가 엉뚱한 조립대에 선 것이다. 되돌릴 채널이 아직 없으므로
         # (명세 10-2 A3 미결) stage 는 전이시키지 않고 fault 로 세워 사람이 보게 한다.
         # 관리자가 /admin/order/{id}/fault/clear 로 풀면 stage 가 loaded 그대로라
-        # AGV가 제 조립대에서 다시 station_arrived 를 올리는 순간 이어진다.
+        # AGV가 제 조립대에서 다시 arrived 를 올리는 순간 이어진다.
         con_sid = str(con.get("station_id") or "")
         assigned_sid = str(r.hget(f"order:{order_id}", "station_id") or "")
         if con_sid and assigned_sid and con_sid != assigned_sid:

@@ -12,9 +12,6 @@ Redis·cnt_process 의 stage 는 그대로 unclaimed / completed 를 쓴다 (sta
 
 저장 (Redis ERD 5장)
     orders:archive:{YYYYMMDD}   hash   field=order_id  value=기록 JSON   TTL 90일
-    stats:{reason|completed}:{date} string 건수
-    stats:mbti:{date}           hash   MBTI 분포
-    stats:color:{date}          hash   색상 분포
 """
 import json
 import time
@@ -25,9 +22,9 @@ from config import (ARCHIVE_PREFIX,
                     DEADLINE_KEY,
                     DISCARD_TIMEOUT_SEC,
                     ORDER_DONE_TTL,
-                    STATS_PREFIX,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
+                    STATION_CALL_PREFIX,
                     WAREHOUSE_ORDER_KEY,
                     KST,
                    )
@@ -96,23 +93,15 @@ def _archive(order_id, od, reason):
         rec["fault"] = od["fault"]
     if od.get("pickup_wait_extends"):
         rec["pickup_wait_extends"] = int(od["pickup_wait_extends"])
+    if od.get("call_count"):
+        rec["call_count"] = int(od["call_count"])       # 관리자를 몇 번 불렀나
 
     r.hset(akey, order_id, json.dumps(rec, ensure_ascii=False))
     r.expire(akey, ARCHIVE_TTL)
 
-    # 집계는 reason 으로 가른다 — 정상 완료 / 노쇼 / 마감 초과
-    ckey = f"{STATS_PREFIX}{reason or 'completed'}:{date}"
-    r.incr(ckey)
-    r.expire(ckey, ARCHIVE_TTL)
-    if od.get("keycap"):
-        mkey = f"{STATS_PREFIX}mbti:{date}"
-        r.hincrby(mkey, od["keycap"], 1)
-        r.expire(mkey, ARCHIVE_TTL)
-    if colors:
-        skey = f"{STATS_PREFIX}color:{date}"
-        for c in colors:
-            r.hincrby(skey, c, 1)
-        r.expire(skey, ARCHIVE_TTL)
+    # stats:* 집계는 폐기했다 (2026-09-18). 쓰는 화면이 없어서 종료 경로마다
+    # INCR 4건을 더 치를 이유가 없다. 필요해지면 아카이브 해시를 날짜별로 세면 된다 —
+    # 같은 값이 orders:archive:{date} 의 레코드에 전부 들어 있다.
 
 
 def _release_resources(order_id, od, final_stage=None):
@@ -138,6 +127,7 @@ def _release_resources(order_id, od, final_stage=None):
     sid = od.get("station_id")
     if sid and r.get(f"{STATION_ORDER_PREFIX}{sid}") == order_id:
         r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
+        r.delete(f"{STATION_CALL_PREFIX}{sid}")      # 남기면 다음 사용자가 부른 것처럼 보인다
         release_station(sid)
 
 
@@ -156,6 +146,7 @@ def release_station_after_discard(order_id):
     if not sid or r.get(f"{STATION_ORDER_PREFIX}{sid}") != order_id:
         return None                              # 이미 풀렸다
     r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
+    r.delete(f"{STATION_CALL_PREFIX}{sid}")
     _touch_order(order_id, ORDER_DONE_TTL)
     logger.info(f"[finish] {order_id} 폐기 완료 — 조립대 {sid} 해제")
     return release_station(sid)                  # try_assign_next 까지 돈다

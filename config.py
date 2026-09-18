@@ -16,6 +16,11 @@ STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order:
 MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 처리 못 함)
 
 STATION_VERIFIED_PREFIX = os.getenv("STATION_VERIFIED_PREFIX", "station:verified_at:")
+
+# 관리자 호출. 조립대 디바이스의 호출 버튼이 누른 '지금 상태'를 담는다.
+# station:occupancy 해시에 필드를 붙이지 않는 이유 — /admin/reset 이 그 해시를
+# hset(mapping={s: "idle"}) 로 덮어써서 늘어난 필드를 지우지 못한다.
+STATION_CALL_PREFIX = os.getenv("STATION_CALL_PREFIX", "station:call:")
 STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
 
 # 노쇼(unclaim) 최소 대기 시간. 프론트가 3분 타이머를 돌리지만 그건 클라이언트 값이라
@@ -27,7 +32,6 @@ ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
 
 # 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관.
 ARCHIVE_PREFIX = os.getenv("ARCHIVE_PREFIX", "orders:archive:")
-STATS_PREFIX = os.getenv("STATS_PREFIX", "stats:")
 ARCHIVE_TTL = int(os.getenv("ARCHIVE_TTL", str(90 * 24 * 3600)))
 
 ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")

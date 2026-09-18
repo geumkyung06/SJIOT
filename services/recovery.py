@@ -39,7 +39,6 @@ from config import (AGV_KEY,
                     AGV_STATUS_KEY,
                     ARCHIVE_PREFIX,
                     ORDER_COUNTER_KEY,
-                    STATS_PREFIX,
                     DEADLINE_KEY,
                     KST,
                     QUEUE_KEY,
@@ -47,6 +46,7 @@ from config import (AGV_KEY,
                     STATION_KEY,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
+                    STATION_CALL_PREFIX,
                     STOCK_MAX_COUNT,
                     WAREHOUSE_KEY,
                     WAREHOUSE_ORDER_KEY,
@@ -81,20 +81,23 @@ _STATE_KEYS = [WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY, AGV_KEY, AGV_STA
                "stock:seed:lock", "watchdog:lock"]
 _STATE_KEYS += [f"{STATION_ORDER_PREFIX}{s}" for s in STATIONS]
 _STATE_KEYS += [f"{STATION_VERIFIED_PREFIX}{s}" for s in STATIONS]
+_STATE_KEYS += [f"{STATION_CALL_PREFIX}{s}" for s in STATIONS]
 
 _ORDER_PATTERNS = ["order:ord_*", "order:*:pending", "order:*:wrong", "order:*:gate",
                    "idempotency:*"]
 
 # mode=hard 에서만 지우는 것 — 90일 보관 기록이다.
-_ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", f"{STATS_PREFIX}*", f"{ORDER_COUNTER_KEY}*"]
+# "stats:*" 는 폐기된 집계 키다 (2026-09-18). 새로 쓰는 코드는 없지만 실 Redis 에
+# 예전 것이 남아 있어서, hard 리셋이 같이 걷어가도록 패턴만 남긴다. 한 번 돌리면 없어진다.
+_ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", "stats:*", f"{ORDER_COUNTER_KEY}*"]
 
 # 이 서비스가 쓰는 키의 prefix 전부. hard 모드가 '모르는 키' 를 가려낼 때 기준이 된다.
 # 실 Redis 는 배포본과 같은 DB 라 FLUSHDB 를 쓰면 남의 키까지 날아간다.
 _KNOWN_PREFIXES = ("order:", "station:", "warehouse:", "agv:", "process:",
-                   "idempotency:", ARCHIVE_PREFIX, STATS_PREFIX,
+                   "idempotency:", ARCHIVE_PREFIX, "stats:",   # stats: 는 레거시
                    "robot:status", "watchdog:lock", "stock:seed:lock")
 
-KEEP_NOTE = ["orders:archive:*", "stats:*", "order:counter:*"]
+KEEP_NOTE = ["orders:archive:*", "order:counter:*"]
 KEEP_NOTE_HARD = ["process:seq (reset_seq 로만 삭제)"]
 
 
@@ -160,7 +163,6 @@ def _wipe(keep_queue=False, hard=False, reset_seq=False, flush_unknown=False):
     out = {"deleted": deleted, "kept_queue": sorted(keep_ids)}
     if hard:
         out["archive"] = counts.get(f"{ARCHIVE_PREFIX}*", 0)
-        out["stats"] = counts.get(f"{STATS_PREFIX}*", 0)
         out["counters"] = counts.get(f"{ORDER_COUNTER_KEY}*", 0)
         out["unknown_keys"] = [] if flush_unknown else unknown
         if unknown and not flush_unknown:
