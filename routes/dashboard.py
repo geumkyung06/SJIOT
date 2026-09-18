@@ -461,23 +461,25 @@ def get_dashboard_statistics():
 
         # ==========================================
         # 1. MBTI 통계
-        # stats:mbti:{YYYYMMDD} 기반
         # ==========================================
 
         mbti_counts = {}
 
-        for date_str in get_exhibition_dates():
+        for order in orders:
 
-            daily_mbti = r.hgetall(
-                f"stats:mbti:{date_str}"
+            mbti = order.get(
+                "keycap"
             )
 
-            for mbti, count in daily_mbti.items():
+            if not mbti:
+                continue
 
-                mbti_counts[mbti] = (
-                    mbti_counts.get(mbti, 0)
-                    + int(count)
-                )
+            mbti_counts[mbti] = (
+                mbti_counts.get(
+                    mbti,
+                    0
+                ) + 1
+            )
 
 
         # 주문 수 기준 내림차순
@@ -490,12 +492,6 @@ def get_dashboard_statistics():
 
         mbti_stats = []
 
-        # MBTI 통계에 기록된 완료 주문 수
-        total_mbti_orders = sum(
-            mbti_counts.values()
-        )
-
-
         for rank, (mbti, count) in enumerate(
             sorted_mbti,
             start=1
@@ -504,11 +500,11 @@ def get_dashboard_statistics():
             ratio = (
                 round(
                     count
-                    / total_mbti_orders
+                    / completed_orders
                     * 100,
                     2
                 )
-                if total_mbti_orders > 0
+                if completed_orders > 0
                 else 0
             )
 
@@ -522,22 +518,30 @@ def get_dashboard_statistics():
 
         # ==========================================
         # 2. 키캡 색상별 통계
-        # stats:color:{YYYYMMDD} 기반
         # ==========================================
 
         color_counts = {}
 
-        for date_str in get_exhibition_dates():
+        for order in orders:
 
-            daily_colors = r.hgetall(
-                f"stats:color:{date_str}"
+            colors = order.get(
+                "colors",
+                []
             )
 
-            for color, count in daily_colors.items():
+            if not isinstance(
+                colors,
+                list
+            ):
+                continue
+
+            for color in colors:
 
                 color_counts[color] = (
-                    color_counts.get(color, 0)
-                    + int(count)
+                    color_counts.get(
+                        color,
+                        0
+                    ) + 1
                 )
 
 
