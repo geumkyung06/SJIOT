@@ -305,6 +305,21 @@ class _AppRootState extends State<AppRoot> {
   // 중복 클릭으로 같은 주문이 두 번 나가는 것을 막습니다.
   bool _submittingOrder = false;
 
+  // ---------------- 대기열 현황 ----------------
+  // [신규] 시작 화면에 머무는 동안 GET /queue/status 를 계속 조회해서,
+  // 대기열이 가득 찬 상태면 주문을 "시작조차" 못 하게 막습니다.
+  // 다 만들고 나서 마지막에 거절당하는 것보다, 시작 전에 알려주는 쪽이
+  // 손님 입장에서 훨씬 낫기 때문입니다.
+  static const Duration _queuePollInterval = Duration(seconds: 1);
+  Timer? _queuePollTimer;
+  // 응답이 늦어질 때 요청이 겹쳐서 쌓이지 않도록 하는 잠금.
+  bool _queuePollInFlight = false;
+  // 서버 응답의 full 값.
+  //   null  — 아직 한 번도 못 받음(또는 조회 실패). 판단 보류 = 시작 허용.
+  //   true  — 가득 참. 시작하기를 막고 안내 문구를 띄웁니다.
+  //   false — 여유 있음. 평소대로 동작.
+  bool? _queueFull;
+
   // ---------------- 영수증 화면 표시용 값 ----------------
   String? _receiptOrderNumber;
   String? _receiptTime;
@@ -358,6 +373,8 @@ class _AppRootState extends State<AppRoot> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
     );
+    // [신규] 시작 화면 대기열 현황 폴링 시작(앱이 살아있는 동안 계속 돕니다).
+    _startQueuePolling();
   }
 
   void _resetLetters() {
@@ -374,6 +391,38 @@ class _AppRootState extends State<AppRoot> {
   void _resetManual() {
     _manualIndex = 0;
     _manualAnswers = List<String?>.filled(4, null);
+  }
+
+  //------------ 대기열 현황 폴링 -------------
+  // 타이머 하나를 앱 시작부터 끝까지 계속 돌리되, 실제 요청은 시작 화면일
+  // 때만 내보냅니다. 이렇게 하면 _restart()/_goBack() 등 홈으로 돌아오는
+  // 모든 경로에 폴링 시작/중지 코드를 일일이 끼워 넣지 않아도 됩니다.
+  void _startQueuePolling() {
+    // [임시] API 연동이 꺼져있으면 서버를 호출하지 않습니다.
+    if (!kApiEnabled) return;
+
+    _queuePollTimer?.cancel();
+    _queuePollTimer = Timer.periodic(_queuePollInterval, (_) async {
+      if (!mounted) return;
+      // 시작 화면이 아닐 때는 건너뜁니다(주문 중에는 /order/{id}/status 폴링이
+      // 따로 돌고 있고, 대기열 현황은 그때 쓸 데가 없습니다).
+      if (_step != AppStep.home) return;
+      // 앞 요청이 아직 안 끝났으면 이번 차례는 거릅니다.
+      if (_queuePollInFlight) return;
+
+      _queuePollInFlight = true;
+      try {
+        final full = await _api.isQueueFull();
+        if (!mounted) return;
+        // null은 "조회 실패 = 판단 보류"라는 뜻이므로 직전 값을 그대로 둡니다.
+        // 네트워크가 잠깐 끊겼다고 시작하기를 막아버리면 안 되기 때문입니다.
+        if (full != null && full != _queueFull) {
+          setState(() => _queueFull = full);
+        }
+      } finally {
+        _queuePollInFlight = false;
+      }
+    });
   }
 
   //------------ 재고 조회 함수 -------------
@@ -718,7 +767,8 @@ class _AppRootState extends State<AppRoot> {
       //   }
       //   break;
       case AppStep.home:
-        if (isEnter && !_stockLoading) {
+        // [수정] 대기열이 가득 찬 동안에는 Enter도 무시합니다.
+        if (isEnter && !_stockLoading && _queueFull != true) {
           _startOrder();
         }
         break;
@@ -1316,15 +1366,29 @@ class _AppRootState extends State<AppRoot> {
         // 원인 파악이 어려웠습니다. 항상 원문을 출력합니다.
         print('>>> [주문] 서버 응답 오류: $message');
 
-        final isQueueFull = message.contains('대기열이 가득');
-        // [신규] 재고/품절 관련 오류인지 판별 — 우리 쪽 사전 점검(재고 조회)
-        // 시점과 실제 주문 생성 시점 사이에 재고가 바뀌었을 때 서버가
-        // 뒤늦게 거절하는 경우입니다. 창고/디바이스 쪽에서 재고를 만지고
-        // 있는 도중이라면 바로 이 케이스일 가능성이 높습니다.
-        final isStockIssue = message.contains('재고') || message.contains('품절');
-
         // 이 시도는 결과가 확정되며 끝났으므로 idempotency 키를 버립니다.
         _orderAttemptId = null;
+
+        // [수정] 재고/품절 관련 오류인지를 "먼저" 판별합니다 — 우리 쪽 사전
+        // 점검(재고 조회) 시점과 실제 주문 생성 시점 사이에 재고가 바뀌었을 때
+        // 서버가 뒤늦게 거절하는 경우입니다. 창고/디바이스 쪽에서 재고를
+        // 만지고 있는 도중이라면 바로 이 케이스일 가능성이 높습니다.
+        // 대기열 조회보다 앞에 두는 이유: 재고 때문에 거절당한 바로 그 순간에
+        // 마침 대기열도 가득 차 있으면, 아래 full 판정이 이 건을 "대기열 가득"
+        // 으로 잘못 분류해서 색 재선택 안내를 못 하게 되기 때문입니다.
+        final isStockIssue = message.contains('재고') || message.contains('품절');
+
+        // [수정] 대기열이 가득 찼는지는 더 이상 에러 문구를 문자열로 뒤지지
+        // 않고, GET /queue/status 응답의 full 값 하나로 판단합니다.
+        // (서버가 안내 문구를 바꿔도 프론트 분기가 따라 깨지지 않습니다.)
+        // 조회 자체가 실패해서 null이 오면 판단할 근거가 없으므로, 그때만
+        // 예전처럼 에러 문구로 폴백합니다.
+        bool isQueueFull = false;
+        if (!isStockIssue) {
+          final full = await _api.isQueueFull();
+          if (!mounted) return;
+          isQueueFull = full ?? message.contains('대기열이 가득');
+        }
 
         if (isQueueFull) {
           setState(() {
@@ -1533,6 +1597,7 @@ class _AppRootState extends State<AppRoot> {
     _autoRestartTimer?.cancel();
     _doneRestartTimer?.cancel();
     _exitDialogTimeoutTimer?.cancel();
+    _queuePollTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -1544,7 +1609,9 @@ class _AppRootState extends State<AppRoot> {
       case AppStep.home:
         screen = HomeScreen(
           onEnter: () => _startOrder(),
-          enabled: !_stockLoading,
+          // [수정] 재고 조회 중이거나 대기열이 가득 찬 동안에는 탭도 막습니다.
+          enabled: !_stockLoading && _queueFull != true,
+          queueFull: _queueFull == true,
         );
         break;
 

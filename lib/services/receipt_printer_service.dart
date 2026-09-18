@@ -135,7 +135,7 @@ class ReceiptPrinterService {
 
               pw.Center(
                 child: pw.Text(
-                  '딸깍 키링 스튜디오',
+                  '나만의 MBTI 키링 만들기',
                   style: pw.TextStyle(
                     font: regularFont,
                     fontSize: 10,

@@ -125,14 +125,60 @@ class ApiService {
     return res.bodyBytes;
   }
 
+  /// GET /queue/status — 대기열 현황 조회.
+  ///
+  /// 응답 예시:
+  ///   {
+  ///     "full": false,          // 대기열이 가득 찼는지 — 이 값만 보면 됨
+  ///     "max_queue_len": 3,     // 대기열 최대 길이
+  ///     "queue_length": 2,      // 현재 대기 중인 주문 수
+  ///     "orders": [             // 대기 중인 주문 목록
+  ///       {
+  ///         "order_id": "ord_a1b2c3d4",
+  ///         "order_seq": 7,
+  ///         "position": 1,
+  ///         "board": "blue",
+  ///         "keycap": "ENTP",
+  ///         "colors": ["b", "b", "r", "g"],
+  ///         "blocked_by": [["P_b", "count_0"]]
+  ///       }
+  ///     ]
+  ///   }
+  ///
+  /// [주의] queue_length < max_queue_len 이어도 서버 쪽 사정(부품 부족 등)으로
+  /// full이 true일 수 있으므로, 길이를 직접 비교하지 말고 full을 그대로 쓰세요.
   Future<Map<String, dynamic>> getQueueStatus() async {
     final client = await _getClient();
-    final res = await client.get(Uri.parse('$baseUrl/queue/status'));
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final res = await client
+        .get(Uri.parse('$baseUrl/queue/status'))
+        // [신규] 키오스크가 오류 처리 도중 멈춰 서지 않도록 짧은 타임아웃을 둡니다.
+        .timeout(const Duration(seconds: 5));
+    // [수정] 한글 에러 메시지가 깨지지 않도록 utf8로 직접 디코딩합니다.
+    final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     if (res.statusCode != 200) {
       throw Exception(body['error'] ?? '대기열 조회 실패 (${res.statusCode})');
     }
     return body;
+  }
+
+  /// [신규] "대기열이 가득 찼는가"만 알면 되는 곳에서 쓰는 헬퍼.
+  /// 위 응답의 full 값 하나만 봅니다.
+  ///
+  /// 반환값:
+  ///   true  — 가득 참
+  ///   false — 여유 있음
+  ///   null  — 판단 보류. 조회 자체가 실패했거나(네트워크/타임아웃/형식 오류)
+  ///           응답에 full이 없거나 bool이 아닌 경우입니다. 호출하는 쪽에서
+  ///           어떻게 처리할지(폴백) 정하세요.
+  Future<bool?> isQueueFull() async {
+    try {
+      final body = await getQueueStatus();
+      final full = body['full'];
+      return full is bool ? full : null;
+    } catch (e) {
+      print('>>> [대기열] 조회 실패: $e');
+      return null;
+    }
   }
 
   // [수정] /stock/out 응답 구조가 "품절 리스트"(List<String>)에서 "색상별

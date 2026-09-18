@@ -30,8 +30,17 @@ import '../theme/app_theme.dart';
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onEnter; // 터치 지원: ENTER 배지를 탭해도 시작되도록
   final bool enabled; // 재고 조회 중일 때는 탭을 막기 위함
+  // [신규] 대기열이 가득 찼는지. true면 시작하기 버튼을 흐리게 만들고
+  // 펄스(깜빡임)를 멈춘 뒤 안내 문구를 띄웁니다. (main.dart가 GET
+  // /queue/status 의 full 값을 1초마다 조회해서 내려줍니다)
+  final bool queueFull;
 
-  const HomeScreen({super.key, this.onEnter, this.enabled = true});
+  const HomeScreen({
+    super.key,
+    this.onEnter,
+    this.enabled = true,
+    this.queueFull = false,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -145,6 +154,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // [신규] 시작하기 버튼 본체. 평소(펄스)와 대기열 가득(흐림) 두 경우에서
+  // 같은 모양을 써야 해서 따로 뺐습니다. enabled가 false면 눌리지 않습니다.
+  Widget _enterButton() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.enabled ? widget.onEnter : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 76,
+          vertical: 28,
+        ),
+        decoration: AppDeco.pushButton(),
+        child: const Text(
+          '시작하기',
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            color: AppColors.ink,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -227,30 +260,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _FadeSlide(
           opacity: _enterOpacity,
           y: _enterY,
-          child: AnimatedBuilder(
-            animation: _pulseOpacity,
-            builder: (context, child) =>
-                Opacity(opacity: _pulseOpacity.value, child: child),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.enabled ? widget.onEnter : null,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 76,
-                  vertical: 28,
+          // [수정] 대기열이 가득 찬 동안에는 펄스를 멈추고 버튼을 흐리게 만든 뒤
+          // 아래에 안내 문구를 붙입니다. (탭/Enter는 이미 막혀 있습니다)
+          child: widget.queueFull
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Opacity(opacity: 0.35, child: _enterButton()),
+                    const SizedBox(height: 28),
+                    const Text(
+                      '지금은 대기열이 가득 찼습니다',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '앞 손님 제작이 끝나면 자동으로 다시 시작할 수 있습니다',
+                      style: AppTextStyles.body,
+                    ),
+                  ],
+                )
+              : AnimatedBuilder(
+                  animation: _pulseOpacity,
+                  builder: (context, child) =>
+                      Opacity(opacity: _pulseOpacity.value, child: child),
+                  child: _enterButton(),
                 ),
-                decoration: AppDeco.pushButton(),
-                child: const Text(
-                  '시작하기',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.ink,
-                  ),
-                ),
-              ),
-            ),
-          ),
         ),
       ],
     );
