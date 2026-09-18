@@ -29,6 +29,9 @@ flutter:
     # [디자인] 화면 하단 로고 푸터에 쓰는 이미지
     - assets/images/logo-sejong.png
     - assets/images/logo-iotcoss.png
+    # [프린터] 영수증 인쇄용 한글 폰트 (receipt_printer_service.dart에서 사용)
+    - assets/fonts/NotoSansKR-Regular.ttf
+    - assets/fonts/NotoSansKR-Bold.ttf
 
   # [디자인] 시안(딸깍 Keyring Studio)과 동일한 글꼴.
   # 키오스크 PC에 어떤 한글 폰트가 깔려 있든 항상 같은 모양으로 보이도록
