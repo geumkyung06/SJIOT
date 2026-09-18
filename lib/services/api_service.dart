@@ -21,7 +21,7 @@ class ApiException implements Exception {
   }
 }
 
-/// Flask 백엔드(POST /order, GET /order/<id>/status) 연동.
+/// Flask 백엔드(POST /order, GET /order/<order_id>/status) 연동.
 /// baseUrl은 실제 EC2 도메인으로 교체해서 쓰세요.
 class ApiService {
   final String baseUrl =
@@ -60,6 +60,43 @@ class ApiService {
 
     throw ApiException(
       action: 'STATION_STATUS',
+      statusCode: res.statusCode,
+      body: res.body,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>> getOrderStatus({required String orderId}) async {
+    final uri = Uri.parse('$baseUrl/order/$orderId/status');
+
+    debugPrint('========== 주문 상태 조회 API ==========');
+    debugPrint('GET $uri');
+    debugPrint('order_id: $orderId');
+
+    final res = await http.get(uri, headers: {'Accept': 'application/json'});
+
+    debugPrint('statusCode: ${res.statusCode}');
+    debugPrint('response body: ${res.body}');
+    debugPrint('======================================');
+
+    Map<String, dynamic>? data;
+
+    try {
+      final decoded = jsonDecode(res.body);
+
+      if (decoded is Map<String, dynamic>) {
+        data = decoded;
+      }
+    } catch (_) {
+      data = null;
+    }
+
+    if (res.statusCode == 200) {
+      return data ?? <String, dynamic>{};
+    }
+
+    throw ApiException(
+      action: 'ORDER_STATUS',
       statusCode: res.statusCode,
       body: res.body,
       data: data,

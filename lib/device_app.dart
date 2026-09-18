@@ -803,7 +803,8 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
       case DeviceStep.waiting:
         screen = WaitingScreen(
           workstationNumber: _workstationNumber ?? '--',
-          onCountdownFinished: () {
+          orderId: _order!.orderId,
+          onReceived: () {
             _moveTo(DeviceStep.assembling);
           },
         );
