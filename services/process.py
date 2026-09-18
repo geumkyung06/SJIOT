@@ -63,20 +63,30 @@ def set_stage(order_id, stage):
     # '창고가 이 주문을 받았는가'의 판정 근거가 이것밖에 없다 (dispatch._assign).
     return push_process()
 
-def set_fault(order_id, fault):
+def set_fault(order_id, fault, section=None):
     """fault만 세우고 stage는 그대로 둔다
-    관리자가 fault를 지우면 그 자리에서 이어진다."""
+    관리자가 fault를 지우면 그 자리에서 이어진다.
+
+    section 은 '어디가 문제냐' — fault 가 '무엇이 고장났나'이므로 두 축을 한 문자열에 섞지 않는다.
+    형식은 part[:scope[:slot]] (services/stock.py::section_of). 없으면 지운다 —
+    앞 fault 의 section 이 남으면 엉뚱한 부품을 가리킨다.
+    """
     key = f"order:{order_id}"
-    r.hset(key, "fault", fault)
+    if section:
+        r.hset(key, mapping={"fault": fault, "fault_section": section})
+    else:
+        r.hset(key, "fault", fault)
+        r.hdel(key, "fault_section")
     _touch_order(order_id)
     watchdog.disarm(order_id)
-    logger.error(f"[fault] {order_id} <- {fault} (stage={r.hget(key, 'stage')} 유지)")
+    logger.error(f"[fault] {order_id} <- {fault}" + (f" @{section}" if section else "")
+                 + f" (stage={r.hget(key, 'stage')} 유지)")
     push_process()
 
 def clear_fault(order_id):
     """관리자 해제 — stage는 그대로이므로 그 자리에서 이어지고, 시계만 다시 건다."""
     key = f"order:{order_id}"
-    r.hdel(key, "fault")
+    r.hdel(key, "fault", "fault_section")
     _touch_order(order_id)
     watchdog.arm(order_id, r.hget(key, "stage"))
     push_process()
@@ -107,6 +117,7 @@ def _build_body():
             "keycap": o.get("keycap"),
             "colors": [c for c in (o.get("colors") or "").split(",") if c],
             "fault": o.get("fault") or None,
+            "fault_section": o.get("fault_section") or None,   # 어느 부품·선반인지
         }
 
     body = {"orders": orders}

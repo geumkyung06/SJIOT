@@ -6,7 +6,7 @@ Cloud Run 은 트래픽에 따라 인스턴스를 새로 띄우므로, 부팅에
 
 두 모드.
 
-    zero    전부 초기값. 재고 36칸은 STOCK_MAX_COUNT, 상태는 idle, 주문은 전부 삭제.
+    zero    전부 초기값. 재고는 칸별 최대치(키캡 40 · 보드 3), 상태는 idle, 주문은 전부 삭제.
             전시회 첫날 시작 전처럼 '아무것도 진행 중이 아니어야 할 때'.
 
     mobius  zero 를 돌린 뒤 Mobius 최신값으로 덮어쓴다. 머신이 실제로 어디 있는지를
@@ -47,9 +47,11 @@ from config import (AGV_KEY,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
                     STATION_CALL_PREFIX,
-                    STOCK_MAX_COUNT,
                     WAREHOUSE_KEY,
                     WAREHOUSE_ORDER_KEY,
+                    WAREHOUSE_DRIVER_KEY,
+                    KEYCAP_STOCK_MAX_COUNT,
+                    BOARD_STOCK_MAX_COUNT,
                    )
 from infra.extensions import r
 from infra.keys import _touch_order
@@ -75,7 +77,8 @@ DISPENSE_LOOKBACK = 8
 # process:seq 는 **지우지 않는다.** 머신은 "seq 가 안 오르면 무시" 로 재전송을 거르는데,
 # seq 를 1부터 다시 시작하면 그 필터에 걸려 복구 뒤 모든 스냅샷이 버려진다.
 # 내용 지문(process:last)만 지워서 복구 직후 한 번은 반드시 나가게 한다.
-_STATE_KEYS = [WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY, AGV_KEY, AGV_STATUS_KEY,
+_STATE_KEYS = [WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, WAREHOUSE_DRIVER_KEY,
+               STATION_KEY, AGV_KEY, AGV_STATUS_KEY,
                DEADLINE_KEY, "process:last",
                "robot:status",                       # 안 쓰는 옛 키. 남아 있으면 같이 정리
                "stock:seed:lock", "watchdog:lock"]
@@ -176,14 +179,17 @@ def _seed_zero():
     """재고는 max, 나머지는 idle. '아무것도 진행 중이 아닌' 상태."""
     slots = list(stock.KEYCAP_SLOTS) + list(stock.BOARD_SLOTS)
     for slot in slots:
-        stock.put(slot, STOCK_MAX_COUNT, "idle")
+        stock.put(slot, stock.max_count(slot), "idle")   # 키캡 40 · 보드 3
 
     r.set(WAREHOUSE_KEY, "idle")
     r.hset(STATION_KEY, mapping={s: "idle" for s in STATIONS})
     r.set(AGV_KEY, "idle")
 
-    logger.info(f"[reset] 초기값 — 재고 {len(slots)}칸 = {STOCK_MAX_COUNT} · 전 설비 idle")
-    return {"stock_slots": len(slots), "stock_count": STOCK_MAX_COUNT}
+    logger.info(f"[reset] 초기값 — 키캡 {len(stock.KEYCAP_SLOTS)}칸={KEYCAP_STOCK_MAX_COUNT} · "
+                f"보드 {len(stock.BOARD_SLOTS)}칸={BOARD_STOCK_MAX_COUNT} · 전 설비 idle")
+    return {"stock_slots": len(slots),
+            "keycap_count": KEYCAP_STOCK_MAX_COUNT,
+            "board_count": BOARD_STOCK_MAX_COUNT}
 
 
 # ───────────────────────────────────────────────────────── Mobius 복구
@@ -268,6 +274,8 @@ def _restore_process():
             mapping["station_id"] = sid
         if o.get("fault"):
             mapping["fault"] = o["fault"]
+            if o.get("fault_section"):
+                mapping["fault_section"] = o["fault_section"]
         # 노쇼 타이머 기준. 원본이 없으므로 지금부터 다시 센다 (보수적).
         if STAGE_ORDER.index(stage) >= STAGE_ORDER.index("arrived"):
             mapping["arrived_at"] = now
@@ -284,7 +292,8 @@ def _restore_process():
             r.set(WAREHOUSE_ORDER_KEY, oid)
             if not _restore_collector(oid, stage):
                 # 근거 없이 짐작하면 배출이 중복된다. 세워놓고 사람이 보게 한다.
-                r.hset(f"order:{oid}", "fault", "restart_unknown")
+                r.hset(f"order:{oid}", mapping={"fault": "restart_unknown",
+                                                "fault_section": "keycap_cartridge"})
                 faulted.append(oid)
                 logger.error(f"[reset] {oid} stage={stage} — 진행분을 알 수 없어 "
                              f"fault=restart_unknown (관리자 확인 후 해제)")

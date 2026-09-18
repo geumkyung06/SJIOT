@@ -67,7 +67,10 @@ def _mismatch(order_id, slot):
     if n > MAX_RETRY:
         logger.error(f"[{slot}] 재출고 {MAX_RETRY}회 초과 — 주문 종료 필요 (부족분 {left})")
         # TODO: finish_order(order_id, "completed", reason=f"{slot}_mismatch") 연결
-        set_fault(order_id, f"{slot}_cartridge_failed")
+        # 못 받은 칸이 문제의 지점이다. 부족분이 여러 개면 첫 칸을 싣고 전체는 위 로그에 남는다.
+        short = left or stock.parts_of(order_id, slot)
+        section = stock.section_of(short[0]) if short else None
+        set_fault(order_id, f"{slot}_cartridge_failed", section=section)
         return
 
     logger.warning(f"[{slot}] 불일치 {n}회차 — 부족분 {left} 재출고")
@@ -171,7 +174,13 @@ def on_cartridge_status(kind, cartridge_id, con):
         # 이게 없으면 재고를 채워도 blocked_by 주문이 다음 종료까지 대기한다.
         # status만 보면 안 된다 — 배출로 count가 0이 된 칸은 status가 idle인 채로 막히므로
         # (blockers는 count<=0도 막는다) 채워 넣어도 복구 트리거가 안 걸린다.
-        if int(count or 0) > 0 and (prev_status in stock.BLOCKING_STATUS or prev_count <= 0):
+        # 그 선반에서 정상 status 가 올라왔다 = 드라이버가 살아났다. 선반 차단을 푼다.
+        shelf = stock.shelf_of(cartridge_id)
+        revived = bool(stock.clear_driver_failed(shelf))
+        if revived:
+            logger.info(f"[{kind}_status] 선반 {shelf} 드라이버 복구 — 8칸 차단 해제")
+        if revived or (int(count or 0) > 0
+                       and (prev_status in stock.BLOCKING_STATUS or prev_count <= 0)):
             from services.dispatch import on_stock_recovered
             on_stock_recovered()
         else:
@@ -180,19 +189,62 @@ def on_cartridge_status(kind, cartridge_id, con):
         return
 
     # disable / empty — 진행 중 주문이 그 칸을 '아직 배출 전'일 때만 fault (명세 6-3)
-    order_id = r.get(WAREHOUSE_ORDER_KEY)
-    if order_id and cartridge_id in stock.parts_of(order_id, kind) and _still_needs(order_id, kind):
-        if status == "empty":
-            set_fault(order_id, f"{kind}_empty")     # 안에서 push_process를 부른다
+    #
+    # disable 의 reason 이 무엇이냐에 따라 범위가 다르다.
+    #   keycap_cartridge_failed : 그 칸(E_r) 하나
+    #   keycap_driver_failed    : 그 선반(E/I) 전체 — 관련 글자의 모든 색이 안 나온다
+    # 지금은 '출고 중에만 문제가 생긴다'고 보고, 대상 주문은 창고가 con 에 실어 보낸 order_id 다.
+    # (진행 주문이 없을 때 죽는 카트리지는 기록만 하고 넘긴다 — 다음 배정에서 blockers 가 막는다.)
+    reason = con.get("reason")
+    shelf = stock.shelf_of(cartridge_id)
+    driver_dead = (kind == "keycap" and status == "disable"
+                   and reason == "keycap_driver_failed" and bool(shelf))
+
+    if driver_dead:
+        # 칸 status 는 CIN 그대로 두고 파생 상태만 따로 기록한다. 8칸에 disable 을 찍으면
+        # 그중 한 칸에 idle CIN 하나만 와도 선반 고장이 조용히 풀린다.
+        stock.mark_driver_failed(shelf, reason, cartridge_id, con.get("order_id"))
+        logger.error(f"[keycap_status] 선반 {shelf} 드라이버 고장 ({cartridge_id}) — "
+                     f"{stock.slots_of_shelf(shelf)} 차단")
+
+    con_oid = con.get("order_id")
+    current = r.get(WAREHOUSE_ORDER_KEY)
+    order_id = con_oid or current
+    if con_oid and current and con_oid != current:
+        # 유령·지연 보고. 우리가 아는 창고 진행 주문을 기준으로 둔다.
+        logger.warning(f"[{kind}_status] con.order_id={con_oid} 가 창고 진행 주문({current})과 "
+                       f"다르다 — 창고 기준으로 처리")
+        order_id = current
+
+    if order_id and _still_needs(order_id, kind):
+        if driver_dead:
+            # 주문의 MBTI 4글자는 선반 1~4 에서 각각 하나씩 나온다. 그래서 죽은 선반이 어느
+            # 것이든 그 주문이 쓰는 칸이 하나 있다 — 칸 id 비교로는 이걸 놓친다.
+            mine = shelf in {stock.shelf_of(s) for s in stock.parts_of(order_id, "keycap")}
+        else:
+            mine = cartridge_id in stock.parts_of(order_id, kind)
+
+        if mine:
+            if status == "empty":
+                set_fault(order_id, f"{kind}_empty",          # 안에서 push_process를 부른다
+                          section=stock.section_of(cartridge_id))
+                return
+            if driver_dead:
+                set_fault(order_id, "keycap_driver_failed",
+                          section=stock.section_of(cartridge_id, shelf_only=True))
+                return
+            if kind == "keycap":
+                if reason not in (None, "", "keycap_cartridge_failed"):
+                    logger.warning(f"[keycap_status] 모르는 reason={reason!r} — "
+                                   f"keycap_cartridge_failed 로 처리")
+                set_fault(order_id, "keycap_cartridge_failed",
+                          section=stock.section_of(cartridge_id))
+                return
+            # 보드는 카트리지가 아니라 보관대다 — 로봇팔이 트레이에 직접 넣으므로
+            # 카트리지 고장이라는 게 없다 (확정본에서 board_cartridge_failed 폐기).
+            logger.error(f"[board_status] {cartridge_id}={status} — 보관대 이상. fault 없음")
+            push_process()
             return
-        if kind == "keycap":
-            set_fault(order_id, "keycap_cartridge_failed")
-            return
-        # 보드는 카트리지가 아니라 보관대다 — 로봇팔이 트레이에 직접 넣으므로
-        # 카트리지 고장이라는 게 없다 (확정본에서 board_cartridge_failed 폐기).
-        logger.error(f"[board_status] {cartridge_id}={status} — 보관대 이상. fault 없음")
-        push_process()
-        return
 
     logger.warning(f"[{kind}_status] {cartridge_id}={status} — 해당 조합 주문 차단")
     push_process()                          # 진행 주문이 없어도 restock 목록은 나가야 한다

@@ -10,9 +10,14 @@
 """
 import json
 from collections import Counter
+from datetime import datetime
 
 from config import (QUEUE_KEY,
                     STATION_ORDER_PREFIX,
+                    WAREHOUSE_DRIVER_KEY,
+                    KEYCAP_STOCK_MAX_COUNT,
+                    BOARD_STOCK_MAX_COUNT,
+                    KST,
                     COLOR_LIST,
                     BOARD_LIST,
                     MBTI_AXES,
@@ -27,6 +32,7 @@ from infra.logger import logger
 from infra.mobius import get_latest_con
 
 STOCK_KEY = "warehouse:stock"
+DRIVER_KEY = WAREHOUSE_DRIVER_KEY
 STATIONS = ("1", "2", "3")
 
 # env(SUB_CNT_*)가 비어 있으면 규칙대로 생성
@@ -49,6 +55,74 @@ BOARD_RESERVED = KEYCAP_RESERVED | {"keycap_dispensed", "keycap_reached",
 
 def is_board(slot):
     return "_" not in slot                      # 보드는 'r', 키캡은 'E_r'
+
+
+# ───────────────────────────────────────────────── 선반(드라이버) 4개
+#
+# 주문의 MBTI 4글자는 선반 1~4 에서 각각 하나씩 나온다. config.MBTI_AXES 순서가 선반 번호와 같다.
+#     keycap1 = E/I · keycap2 = S/N · keycap3 = T/F · keycap4 = J/P
+# 표를 새로 하드코딩하지 않고 파생시킨다 — 두 곳에 두면 갈라진다.
+SHELF_OF_LETTER = {ch: f"keycap{i + 1}" for i, ax in enumerate(MBTI_AXES) for ch in ax}
+SHELVES = tuple(f"keycap{i + 1}" for i in range(len(MBTI_AXES)))
+
+
+def shelf_of(slot):
+    """'E_r' → 'keycap1'. 보드는 선반 개념이 없어 None."""
+    if is_board(slot):
+        return None
+    return SHELF_OF_LETTER.get(slot.split("_", 1)[0])
+
+
+def slots_of_shelf(shelf):
+    """그 선반에 속한 칸 8개."""
+    return [s for s in KEYCAP_SLOTS if shelf_of(s) == shelf]
+
+
+def section_of(slot, shelf_only=False):
+    """fault_section 문자열. 형식은 part[:scope[:slot]] — 왼쪽이 넓고 오른쪽이 좁다.
+
+        section_of("E_r")                   → keycap_cartridge:keycap1:E_r
+        section_of("E_r", shelf_only=True)  → keycap_cartridge:keycap1   (칸 생략 = 선반 전체)
+        section_of("b")                     → board_cartridge:b
+    """
+    if is_board(slot):
+        return f"board_cartridge:{slot}"
+    shelf = shelf_of(slot) or "?"
+    return f"keycap_cartridge:{shelf}" if shelf_only else f"keycap_cartridge:{shelf}:{slot}"
+
+
+def mark_driver_failed(shelf, reason, slot=None, order_id=None):
+    """선반 고장 등록. 이 선반의 8칸을 쓰는 주문은 배정에서 뒤로 밀린다 (blockers)."""
+    r.hset(DRIVER_KEY, shelf, json.dumps({"reason": reason, "slot": slot,
+                                          "order_id": order_id,
+                                          "at": datetime.now(KST).isoformat(timespec="seconds")},
+                                         ensure_ascii=False))
+
+
+def clear_driver_failed(shelf):
+    """그 선반의 칸에서 정상 status 가 올라왔다 = 드라이버가 살아났다. 지운 개수를 반환."""
+    return r.hdel(DRIVER_KEY, shelf) if shelf else 0
+
+
+def driver_failed_shelves():
+    """고장 난 선반 집합. 호출이 잦아 필드 이름만 읽는다."""
+    return set(r.hkeys(DRIVER_KEY) or [])
+
+
+def driver_failed_info():
+    """관리자·조회용 — {shelf: {reason, slot, order_id, at}}."""
+    out = {}
+    for shelf, raw in (r.hgetall(DRIVER_KEY) or {}).items():
+        try:
+            out[shelf] = json.loads(raw)
+        except (TypeError, ValueError):
+            out[shelf] = {"raw": raw}
+    return out
+
+
+def max_count(slot):
+    """그 칸의 최대 수량. 보드 보관대(3)와 키캡 카트리지(40)는 용량이 다르다."""
+    return BOARD_STOCK_MAX_COUNT if is_board(slot) else KEYCAP_STOCK_MAX_COUNT
 
 
 def container_path(slot):
@@ -137,9 +211,14 @@ def get_out_of_stock():
     if not states:
         return None
     code_to_board = {v: k for k, v in BOARD_SLOT_MAP.items()}
+    dead = driver_failed_shelves()
 
     out = {}
     for slot, v in states.items():
+        # 드라이버가 죽은 선반은 칸 status 가 idle 이어도 못 낸다 — 8칸 전부 품절로 내린다.
+        if shelf_of(slot) in dead:
+            out.setdefault("keycap", []).append(slot)
+            continue
         if int(v.get("count") or 0) > 0 and v.get("status") not in BLOCKING_STATUS:
             continue
         if is_board(slot):
@@ -259,7 +338,11 @@ def can_accept(board, keycap, colors):
     '대기'로 흡수한다 — 재고가 채워지면 on_stock_recovered가 그 주문을 다시 집는다.
     """
     short = []
+    dead = driver_failed_shelves()
     for slot in slots_for(board, keycap, colors):
+        if shelf_of(slot) in dead:
+            short.append(slot)
+            continue
         s = get(slot)
         if s is None or s.get("status") in BLOCKING_STATUS:
             short.append(slot)
@@ -277,7 +360,13 @@ def blockers(order_id):
     자기 자신을 예약으로 세면 영원히 배치되지 않는다. 예약은 접수 판정에서만 쓴다.
     """
     out = []
+    dead = driver_failed_shelves()
     for slot in parts_of(order_id):
+        if shelf_of(slot) in dead:
+            # 선반 고장은 칸을 채워도 안 풀린다. SKIP_BLOCKED 로 이 주문은 뒤로 밀리고
+            # blocked_by 에 이유가 남는다 (GET /queue/status).
+            out.append([slot, "driver_failed"])
+            continue
         s = get(slot)
         if s is None:
             out.append([slot, "unknown"])            # 시드도 콜백도 못 받은 칸 — 모르면 막는다

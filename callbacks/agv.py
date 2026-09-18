@@ -117,7 +117,8 @@ def on_agv(con):
         return
 
     if status in FAULTS:
-        set_fault(order_id, FAULTS[status])
+        # 어느 동작에서 실패했는지는 fault 값이 이미 말한다 (pickup_failed·drop_failed…).
+        set_fault(order_id, FAULTS[status], section="agv")
         return
 
     if status not in TRANSITIONS:
@@ -155,7 +156,7 @@ def on_agv(con):
         assigned_sid = str(r.hget(f"order:{order_id}", "station_id") or "")
         if con_sid and assigned_sid and con_sid != assigned_sid:
             logger.error(f"[agv] 오배송 {order_id} 배정={assigned_sid} 도착보고={con_sid}")
-            set_fault(order_id, "drop_failed")
+            set_fault(order_id, "drop_failed", section=f"agv:station{con_sid}")
             return
 
         # 노쇼 타이머의 기준 시각. 프론트도 3분을 세지만 그건 클라이언트 값이라

@@ -91,6 +91,7 @@ def _archive(order_id, od, reason):
         rec["ended_at_stage"] = od.get("stage")      # 어느 단계에서 끊겼는지
     if od.get("fault"):
         rec["fault"] = od["fault"]
+        rec["fault_section"] = od.get("fault_section")      # 어느 부품·선반에서 멈췄나
     if od.get("pickup_wait_extends"):
         rec["pickup_wait_extends"] = int(od["pickup_wait_extends"])
     if od.get("call_count"):

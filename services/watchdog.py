@@ -3,7 +3,7 @@ import time
 from infra.extensions import r
 from infra.logger import logger
 
-from config import (DEADLINE_KEY, DISCARD_TIMEOUT_SEC,
+from config import (DEADLINE_KEY, DISCARD_TIMEOUT_SEC, STAGE_BUSY,
                     STATION_ORDER_PREFIX, STATION_CALL_PREFIX)
 
 # 명세 7장. 사람·이동이 끼는 셋은 기계 속도로 재면 안 된다.
@@ -65,6 +65,17 @@ def arm(order_id, stage):
         logger.info(f"[watchdog] {order_id} {stage} 마감 {ttl}+{bonus}s — 관리자 호출 진행 중")
 
 
+def timeout_section(stage):
+    """마감을 넘긴 stage 에서 '움직여야 했던 설비'. fault_section 으로 나간다.
+
+    표를 새로 만들지 않고 config.STAGE_BUSY 를 그대로 쓴다 — 두 곳에 두면 갈라진다.
+    assigned 만 항목이 2개라(빈 트레이 투입 · 키캡 배출) 마지막 하나를 쓰고,
+    둘 중 어디서 끊겼는지는 _expire 의 collector 로그가 남긴다.
+    """
+    machines = STAGE_BUSY.get(stage) or []
+    return machines[-1] if machines else None
+
+
 def disarm(order_id):
     r.zrem(DEADLINE_KEY, order_id)
 
@@ -109,10 +120,11 @@ def _expire(order_id):
     elif stage == "pickup_reached":
         # 연장을 다 쓰고 내려온 경우에만 여기 온다. AGV가 돌아올 가망이 없다고 본 것이므로
         # 종료는 하되 'AGV 때문에 끝났다'는 사실은 아카이브에 남긴다.
-        r.hset(f"order:{order_id}", "fault", "stage_timeout")
+        r.hset(f"order:{order_id}", mapping={"fault": "stage_timeout",
+                                            "fault_section": "agv"})
         finish_order(order_id, "completed", reason="timeout")
     else:
-        set_fault(order_id, "stage_timeout")
+        set_fault(order_id, "stage_timeout", section=timeout_section(stage))
 
 def _pickup_waiters():
     """픽업대에서 AGV를 기다리는 주문. 조립대에 배정된 주문만 대상이다."""

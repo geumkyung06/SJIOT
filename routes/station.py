@@ -360,6 +360,7 @@ def get_station_status(station_id):
         "colors": [c for c in (order_data.get("colors") or "").split(",") if c],
         "arrived_at": order_data.get("arrived_at"),
         "fault": order_data.get("fault") or None,
+        "fault_section": order_data.get("fault_section") or None,
     }
     if elapsed is not None:
         # 프론트가 자체 타이머 대신 이 값을 써도 되도록 서버 기준 잔여 시간을 같이 준다.

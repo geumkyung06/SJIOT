@@ -55,7 +55,8 @@ def list_faults():
               type: array
               items:
                 type: object
-              example: [{"order_id": "ord_a1b2c3d4", "stage": "loaded", "fault": "agv_wrong_station", "station_id": "2"}]
+              example: [{"order_id": "ord_a1b2c3d4", "stage": "loaded", "fault": "drop_failed",
+                         "fault_section": "agv", "station_id": "2"}]
     """
     out = []
     for oid in _live_order_ids():
@@ -65,6 +66,7 @@ def list_faults():
                 "order_id": oid,
                 "stage": o.get("stage"),
                 "fault": o.get("fault"),
+                "fault_section": o.get("fault_section"),
                 "station_id": o.get("station_id"),
                 "order_seq": o.get("order_seq"),
             })
@@ -154,7 +156,7 @@ def admin_reset():
               type: string
               enum: [zero, mobius, hard]
               default: zero
-              description: "zero=전부 초기값(재고 36칸을 STOCK_MAX_COUNT 로, 전 설비 idle, 진행 중 주문 삭제) · mobius=zero 뒤 Mobius 최신값으로 복구 · hard=zero + 아카이브·집계·일련번호까지 삭제(confirm 필요)"
+              description: "zero=전부 초기값(키캡 32칸=40 · 보드 4칸=3, 전 설비 idle, 진행 중 주문 삭제) · mobius=zero 뒤 Mobius 최신값으로 복구 · hard=zero + 아카이브·집계·일련번호까지 삭제(confirm 필요)"
             confirm:
               type: string
               description: "mode=hard 전용·필수. 정확히 HARD-RESET 이어야 한다. 비밀번호만으로는 오타 한 번에 90일치 기록이 날아가서 한 겹 더 둔다"
