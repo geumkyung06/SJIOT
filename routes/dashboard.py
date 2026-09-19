@@ -23,7 +23,7 @@ KST = ZoneInfo("Asia/Seoul")
 
 EXHIBITION_START_DATE = os.getenv(
     "EXHIBITION_START_DATE",
-    "20260917"
+    "20260918"
 )
 
 EXHIBITION_DAYS = int(
@@ -656,6 +656,147 @@ def get_dashboard_statistics():
         
         
 # =========================================================
-# 4. 주문 통계
-# GET /dashboard/statistics
+# 4. 조립대 현황
+# GET /dashboard/station
 # =========================================================
+
+@bp.route("/station", methods=["GET"])
+def get_dashboard_station():
+    """
+    조립대 현황 조회
+    ---
+    tags:
+      - Dashboard
+
+    summary: 조립대별 현재 주문 및 진행 상태 조회
+
+    description: |
+      조립대 1, 2, 3의 현재 주문 정보를 조회합니다.
+
+      각 조립대의 `station:current_order:{station_id}`에서
+      현재 배정된 `order_id`를 조회한 뒤,
+      `order:{order_id}`에서 `order_seq`와 `stage`를 조회합니다.
+
+      현재 배정된 주문이 없는 조립대는
+      `order_seq`와 `stage`가 null로 반환됩니다.
+
+    responses:
+      200:
+        description: 조립대 현황 조회 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+
+            stations:
+              type: object
+              properties:
+                "1":
+                  type: object
+                  properties:
+                    order_seq:
+                      type: integer
+                      nullable: true
+                      example: 4
+                    stage:
+                      type: string
+                      nullable: true
+                      example: queued
+
+                "2":
+                  type: object
+                  properties:
+                    order_seq:
+                      type: integer
+                      nullable: true
+                      example: 5
+                    stage:
+                      type: string
+                      nullable: true
+                      example: assembling
+
+                "3":
+                  type: object
+                  properties:
+                    order_seq:
+                      type: integer
+                      nullable: true
+                      example: null
+                    stage:
+                      type: string
+                      nullable: true
+                      example: null
+
+        examples:
+          application/json:
+            success: true
+            stations:
+              "1":
+                order_seq: 4
+                stage: queued
+              "2":
+                order_seq: 5
+                stage: assembling
+              "3":
+                order_seq: null
+                stage: null
+
+      400:
+        description: 조립대 현황 조회 실패
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: 조립대 정보를 조회하지 못했습니다.
+
+    """
+    try:
+        stations = {}
+
+        for station_id in ["1", "2", "3"]:
+
+            # 1. 해당 조립대의 현재 order_id 조회
+            order_id = r.get(
+                f"station:current_order:{station_id}"
+            )
+
+            # 현재 주문이 없는 경우
+            if not order_id:
+                stations[station_id] = {
+                    "order_seq": None,
+                    "stage": None
+                }
+                continue
+
+            # 2. order:{order_id}에서 order_seq, stage 조회
+            order_data = r.hmget(
+                f"order:{order_id}",
+                "order_seq",
+                "stage"
+            )
+
+            order_seq, stage = order_data
+
+            stations[station_id] = {
+                "order_seq": int(order_seq) if order_seq else None,
+                "stage": stage
+            }
+
+        return jsonify({
+            "success": True,
+            "stations": stations
+        }), 200
+
+    except Exception as e:
+        print("[dashboard/station ERROR]", e)
+
+        return jsonify({
+            "success": False,
+            "error": "조립대 정보를 조회하지 못했습니다."
+        }), 400
