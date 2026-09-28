@@ -33,10 +33,19 @@ def handle_warehouse(path, con):
 
 # 공통 가드
 def _current_order(con, allow_stages, tag):
-    """(order_id, stage) 또는 None.
+    """(order_id, stage, faulted) 또는 None.
 
-    가드 4단 — 진행 중 주문 있음 / order_id 일치 / fault 없음 / stage 맞음.
-    stage 가드가 재전송·유령 알림을 거른다. 여기서 걸러야 뒤 로직이 단순해진다.
+    가드 3단 — 진행 중 주문 있음 / order_id 일치 / stage 맞음.
+    stage 가드가 재전송·유령 알림을 거른다.
+
+    **fault 는 여기서 거르지 않는다.** 배출 CIN 은 '부품이 물리적으로 나왔다'는 사실이라
+    기록은 언제나 옳고, 위험한 건 그걸 근거로 다음 단계로 넘어가는 쪽이다.
+    fault 라고 통째로 버리면 그 사이 **멀쩡한 선반이 낸 배출까지 사라진다** —
+    driver_failed 는 선반 하나만 죽이므로 나머지 선반은 계속 배출하는데, 그게 유실되면
+    해제 후 pending 이 영원히 안 비워진다 (실측: E·T 고장 중 N_r·P_r 이 통째로 무시됐다).
+
+    faulted=True 면 호출부는 collector 만 갱신하고 stage 전이는 하지 않는다.
+    다 모인 채로 멈춘 경우는 해제 시점에 process.clear_fault 가 이어서 넘긴다.
     """
     order_id = r.get(WAREHOUSE_ORDER_KEY)
     if not order_id:
@@ -49,14 +58,11 @@ def _current_order(con, allow_stages, tag):
         return None
 
     stage, fault = r.hmget(f"order:{order_id}", "stage", "fault")
-    if fault:
-        logger.warning(f"[{tag}] fault={fault} 정지 중 — 무시")
-        return None
     if stage not in allow_stages:
         logger.warning(f"[{tag}] stage={stage} (기대 {sorted(allow_stages)}) — 무시")
         return None
 
-    return order_id, stage
+    return order_id, stage, bool(fault)
 
 
 def _mismatch(order_id, slot):
@@ -87,7 +93,7 @@ def on_keycap_dispense(con):
     got = _current_order(con, KEYCAP_STAGES, "keycap_dispense")
     if got is None:
         return
-    order_id, _ = got
+    order_id, _, faulted = got
 
     keycap = con.get("keycap")
     if not keycap:
@@ -96,6 +102,13 @@ def on_keycap_dispense(con):
 
     result, left = collector.consume(order_id, "keycap", keycap)
     logger.info(f"[keycap_dispense] {order_id} {keycap} → {result} 남은={left}")
+
+    if faulted:
+        # 기록은 위에서 끝났다. fault 중에는 stage 를 움직이지 않는다 —
+        # _mismatch 도 set_stage 를 부르므로 같이 보류한다 (오배출 기록은 consume 이 이미 남겼다).
+        # done 이었다면 해제 시점에 clear_fault 가 keycap_dispensed 로 이어간다.
+        logger.warning(f"[keycap_dispense] {order_id} fault 중 — {result} 기록만, 전이 보류")
+        return
 
     match result:
         case "waiting":
@@ -116,7 +129,7 @@ def on_board_dispense(con):
     got = _current_order(con, BOARD_STAGES, "board_dispense")
     if got is None:
         return
-    order_id, _ = got
+    order_id, _, faulted = got
 
     board = con.get("board")
     if not board:
@@ -126,12 +139,18 @@ def on_board_dispense(con):
     result, left = collector.consume(order_id, "board", BOARD_CODE.get(board, board))
     logger.info(f"[board_dispense] {order_id} {board} → {result}")
 
+    if result == "done":
+        collector.mark(order_id, "board_dispensed")   # 색 대조 성공은 사실이다. 기록은 남긴다
+
+    if faulted:
+        logger.warning(f"[board_dispense] {order_id} fault 중 — {result} 기록만, 전이 보류")
+        return
+
     match result:
         case "waiting":
             return
         case "done":
-            collector.mark(order_id, "board_dispensed")
-            try_board_packed(order_id)
+            try_board_packed(order_id)                # 플래그 2개가 다 모였는지는 여기서 본다
         case "unexpected":
             _mismatch(order_id, "board")
 

@@ -225,36 +225,48 @@ def _dispensed_keycaps(order_id):
     return got
 
 
-def _restore_collector(order_id, stage, tag="reset", arm_empty=True):
+def _restore_collector(order_id, stage, tag="reset", remove_only=False):
     """배출 CIN 을 대조해 미배출 목록을 다시 깐다.
 
     반환은 **미배출 목록(list)**, 대조할 근거가 없으면 None.
     빈 리스트는 '4개 다 나왔다'는 유효한 결과다 — falsy 라고 실패로 읽으면 안 된다.
 
-    arm_empty=False 면 미배출이 없을 때 pending 을 건드리지 않는다. fault 해제 경로가
-    그렇게 쓴다 — 거기서 pending 을 비우면 stage 를 넘길 트리거(cnt_keycap_dispense)가
-    다시 올 일이 없어 그 자리에 멈춘다. 근거만 로그로 남기고 사람이 보게 둔다.
+    기준선(base)이 경로마다 다르다.
+
+      재기동(/admin/reset)  기대 4개.  주문 키가 통째로 날아간 뒤라 처음부터 다시 깐다.
+      fault 해제            **현재 pending**.  Mobius 가 확인해 준 것을 빼기만 하고,
+                            이미 소진된 것을 되살리지 않는다 (remove_only=True).
+
+    fault 해제에서 기대 4개를 기준으로 삼으면 안 되는 이유 — 콜백은 fault 중에도
+    collector 를 갱신하므로 Redis 쪽이 더 정확한데, Mobius 를 못 읽거나 lookback(8건)을
+    넘기면 제대로 소진된 pending 을 통째로 4개로 되돌려 놓는다 (실측).
+    Mobius 조회가 실패하면 dispensed 가 비어 remaining == base 가 되어 아무것도 안 건드린다.
     """
     if stage not in RECOVERABLE_STAGES:
         return None
 
     expected = list(stock.parts_of(order_id, "keycap"))       # 4개
+    base = collector.remaining(order_id, "keycap") if remove_only else list(expected)
+    if remove_only and not base:
+        logger.info(f"[{tag}] {order_id} pending 이 비어 있다 — 재동기화 생략 (기대 {expected})")
+        return []
+
     dispensed = _dispensed_keycaps(order_id)
 
-    remaining = list(expected)
+    remaining = list(base)
     for k in dispensed:
         if k in remaining:
             remaining.remove(k)                                # 중복 배출도 1건씩만 상쇄
 
-    if not remaining and not arm_empty:
-        logger.warning(f"[{tag}] {order_id} 미배출 없음 — 기대 {expected} 가 이미 전부 배출됐다. "
-                       f"pending 유지 (stage={stage} 수동 확인 필요)")
+    if remove_only and remaining == base:
+        logger.info(f"[{tag}] {order_id} 미배출 {remaining} 그대로 (배출확인 {dispensed})")
         return remaining
 
     collector.arm(order_id, "keycap", remaining)
-    collector.reset_gate(order_id)
+    if not remove_only:
+        collector.reset_gate(order_id)      # 재기동 때만. 해제 경로에서 남의 플래그를 지우지 않는다
     logger.info(f"[{tag}] {order_id} 미배출 복구 {remaining} "
-                f"(기대 {expected} · 배출확인 {dispensed})")
+                f"(기준 {base} · 배출확인 {dispensed})")
     return remaining
 
 

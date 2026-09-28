@@ -7,7 +7,7 @@ from infra.keys import _touch_order
 from infra.mobius import create_cin
 
 from config import KST, STAGE_ORDER, STATION_ORDER_PREFIX
-from services import stock, watchdog
+from services import collector, stock, watchdog
 
 _ALIAS = {
     "keycap_mismatched": "assigned",
@@ -148,14 +148,42 @@ def clear_fault(order_id):
     _revive_for(order_id, fault, section)
 
     # 재기동 복구와 같은 문제(배출분을 모르는 채로 pending 재구성)라 구현을 둘로 두지 않는다.
+    # remove_only — 콜백이 소진해 둔 pending 이 기준이고, Mobius 는 빼는 데만 쓴다.
     # recovery 가 process 를 쓰므로 순환 import 회피용 지연 import.
     from services.recovery import _restore_collector
-    _restore_collector(order_id, stage, tag="fault", arm_empty=False)
+    _restore_collector(order_id, stage, tag="fault", remove_only=True)
 
     r.hdel(key, "fault", "fault_section")
     _touch_order(order_id)
+
+    if _resume_stage(order_id, stage):
+        return                          # set_stage 가 시계·push 까지 했다
+
     watchdog.arm(order_id, stage)
     push_process()
+
+
+def _resume_stage(order_id, stage):
+    """fault 중에 이미 다 모였던 단계를 해제 시점에 이어서 넘긴다. 넘겼으면 True.
+
+    콜백은 fault 중에도 collector 를 갱신하지만 stage 는 움직이지 않는다
+    (callbacks/warehouse.py::_current_order). 그래서 마지막 1건이 fault 중에 들어오면
+    '다 모였는데 전이만 안 된' 상태로 남는다 — 창고는 이미 다 냈으니 재배출이 올 일이
+    없고, 여기서 넘기지 않으면 그 자리에 영원히 선다.
+
+    근거는 Mobius 추측이 아니라 **우리가 받은 콜백으로 소진한 pending** 이다.
+    오배출(wrong)이 하나라도 있으면 넘기지 않는다 — 그건 사람이 봐야 한다.
+    """
+    if stage not in ("assigned", "keycap_mismatched"):
+        return False
+    if not stock.parts_of(order_id, "keycap"):
+        return False
+    if collector.remaining(order_id, "keycap") or collector.wrong(order_id, "keycap"):
+        return False
+
+    logger.info(f"[fault] {order_id} 키캡이 이미 다 모였다 — keycap_dispensed 로 이어간다")
+    set_stage(order_id, "keycap_dispensed")
+    return True
 
 
 # cnt_process 스냅샷
