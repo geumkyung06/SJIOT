@@ -104,6 +104,26 @@ def clear_driver_failed(shelf):
     return r.hdel(DRIVER_KEY, shelf) if shelf else 0
 
 
+def revive_slots(slots):
+    """disable 로 막힌 칸만 idle 로 되돌린다. 되돌린 칸 목록을 반환.
+
+    관리자가 fault 를 해제했다 = 그 설비를 고쳤다는 선언이다. 그런데 칸 status 는 창고가
+    보낸 disable 그대로라, 이걸 안 되돌리면 그 칸을 쓰는 다음 주문이 blockers 에서 계속 막힌다.
+
+    두 가지는 일부러 건드리지 않는다.
+      count   창고가 보낸 마지막 값이 맞다. disable 과 함께 0 이 왔으면 count_0 으로
+              계속 막히는 게 맞다 — 그건 채워야 풀리는 것이지 고쳐서 풀리는 게 아니다.
+      empty   재고가 없는 것이지 고장이 아니다. idle 로 덮으면 빈 칸이 정상으로 보인다.
+    """
+    revived = []
+    for slot in slots:
+        s = get(slot)
+        if s and s.get("status") == "disable":
+            put(slot, s.get("count"), "idle")
+            revived.append(slot)
+    return revived
+
+
 def driver_failed_shelves():
     """고장 난 선반 집합. 호출이 잦아 필드 이름만 읽는다."""
     return set(r.hkeys(DRIVER_KEY) or [])
