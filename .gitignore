@@ -56,4 +56,4 @@ test_subscriptions.py
 .gcloudignore
 
 Claude outputs/
-debug/
+debug/.venv/
