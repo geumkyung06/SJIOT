@@ -118,68 +118,112 @@
 
           <!-- 재고 -->
 
-          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:22px 24px;display:flex;flex-direction:column;gap:14px;min-height:0">
+          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:22px 24px 18px;display:flex;flex-direction:column;gap:14px;min-height:0">
 
-            <div style="display:flex;align-items:baseline;justify-content:space-between">
-              <div style="font-size:22px;font-weight:600;color:#34383F">
-                실시간 재고 현황
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div style="display:flex;align-items:baseline;gap:10px;min-width:0">
+                <div style="font-size:22px;font-weight:600;color:#34383F;white-space:nowrap">
+                  실시간 재고 현황
+                </div>
+                <div style="font-size:12px;color:#8B9098;white-space:nowrap">
+                  {{ invCaption }}
+                </div>
               </div>
 
-              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">
-                5s
+              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;white-space:nowrap">
+                <span style="width:7px;height:7px;border-radius:50%;background:#8ECB9A;animation:omPulse 2s ease-in-out infinite"></span>
+                5초
               </div>
             </div>
 
 
-            <div style="display:grid;grid-template-columns:42px repeat(4,1fr);gap:8px;align-items:center">
+            <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px">
 
-              <div></div>
+              <div style="background:#F5F6F8;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:12px;color:#8B9098">총 키캡</span>
+                <span style="display:flex;align-items:baseline;gap:4px;white-space:nowrap">
+                  <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;line-height:1;color:#34383F">{{ invTotal }}</span>
+                  <span style="font-size:12px;color:#8B9098">/ {{ invCapacity }}</span>
+                </span>
+              </div>
 
-              <sc-for list="{{ colorCols }}" as="c" hint-placeholder-count="4">
-                <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
-                  <span style="{{ c.swatch }}"></span>
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8B9098">
-                    {{ c.code }}
+              <div style="background:#F5F6F8;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:12px;color:#8B9098">부족</span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;line-height:1;color:#E48F87">{{ invShort }}</span>
+              </div>
+
+              <div style="background:#F5F6F8;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:12px;color:#8B9098">보충</span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;line-height:1;color:#E5C46B">{{ invLow }}</span>
+              </div>
+
+            </div>
+
+
+            <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(16,minmax(0,1fr));column-gap:20px;min-height:0">
+
+              <sc-for list="{{ invCells }}" as="cell" hint-placeholder-count="32">
+                <div style="{{ cell.wrap }}">
+                  <div style="{{ cell.badge }}">{{ cell.letter }}</div>
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+                    <div style="{{ cell.num }}">{{ cell.text }}</div>
+                    <div style="height:6px;border-radius:3px;background:#EDEFF2;overflow:hidden">
+                      <div style="{{ cell.fill }}"></div>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+
+            </div>
+
+
+            <div style="background:#F5F6F8;border-radius:12px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
+
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:13px;font-weight:600;color:#34383F">보드 랙</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098">{{ boardLabel }}</span>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:12px">
+                <sc-for list="{{ boardCells }}" as="b" hint-placeholder-count="4">
+                  <span style="display:flex;align-items:center;gap:4px">
+                    <span style="{{ b.dot }}"></span>
+                    <span style="{{ b.code }}">{{ b.label }}</span>
+                    <span style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:600;color:#34383F">{{ b.count }}</span>
                   </span>
-                </div>
-              </sc-for>
+                </sc-for>
+              </div>
 
             </div>
 
 
-            <div style="flex:1;display:grid;grid-template-columns:42px repeat(4,1fr);grid-auto-rows:1fr;gap:8px;min-height:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#8B9098">
 
-              <sc-for list="{{ invCells }}" as="cell" hint-placeholder-count="45">
-                <div style="{{ cell.style }}">
-                  {{ cell.text }}
-                </div>
-              </sc-for>
+              <div style="display:flex;gap:10px;white-space:nowrap">
 
-            </div>
-
-
-            <div style="display:flex;align-items:center;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098">
-
-              <div style="display:flex;gap:14px">
-
-                <span style="display:flex;align-items:center;gap:6px">
-                  <span style="width:10px;height:10px;border-radius:3px;background:#99E3BD"></span>
+                <span style="display:flex;align-items:center;gap:5px">
+                  <span style="width:12px;height:4px;border-radius:2px;background:#8ECB9A"></span>
                   충분
                 </span>
 
-                <span style="display:flex;align-items:center;gap:6px">
-                  <span style="width:10px;height:10px;border-radius:3px;background:#FFDF82"></span>
-                  보충
+                <span style="display:flex;align-items:center;gap:5px">
+                  <span style="width:12px;height:4px;border-radius:2px;background:#E5C46B"></span>
+                  보충 {{ invLowMax }} 이하
                 </span>
 
-                <span style="display:flex;align-items:center;gap:6px">
-                  <span style="width:10px;height:10px;border-radius:3px;background:#F39CA9"></span>
-                  부족
+                <span style="display:flex;align-items:center;gap:5px">
+                  <span style="width:12px;height:4px;border-radius:2px;background:#E48F87"></span>
+                  부족 {{ invShortMax }} 이하
+                </span>
+
+                <span style="display:flex;align-items:center;gap:5px">
+                  <span style="width:12px;height:4px;border-radius:2px;background:#E2E5E9"></span>
+                  비활성
                 </span>
 
               </div>
 
-              <span>총 {{ invTotal }}개</span>
+              <span style="font-family:'JetBrains Mono',monospace">{{ invUpdated }}</span>
 
             </div>
 
@@ -713,6 +757,29 @@ const API_BASE_URL =
   'http://127.0.0.1:5000';
 
 
+// =========================================================
+// 디버그 로그 (배포 시 false)
+// =========================================================
+
+const DEBUG = true;
+
+const _dbgLast = {};
+
+function dbg(tag, ...args) {
+  if (!DEBUG) return;
+  console.log(`[${tag}]`, ...args);
+}
+
+// 짧은 주기로 도는 코드용 — 값이 바뀔 때만 출력
+function dbgChanged(tag, value) {
+  if (!DEBUG) return;
+  const key = JSON.stringify(value);
+  if (tag in _dbgLast && _dbgLast[tag] === key) return;
+  _dbgLast[tag] = key;
+  console.log(`[${tag}]`, value);
+}
+
+
 const CAPS = [
   { code: 'R', hex: '#E48F87' },
   { code: 'Y', hex: '#E5C46B' },
@@ -732,6 +799,37 @@ const ROWS = [
   'J',
   'BD'
 ];
+
+
+// =========================================================
+// 재고 현황 기준
+// =========================================================
+
+const INV_MAX = 40;        // 카트리지당 최대 수량
+const INV_LOW = 16;        // 보충 기준 (이하)
+const INV_SHORT = 8;       // 부족 기준 (이하)
+const BOARD_MAX = 3;       // 보드 랙 동시 적재 최대
+
+const CAP_HEX =
+  Object.fromEntries(
+    CAPS.map(c => [c.code.toLowerCase(), c.hex])
+  );
+
+const CAP_PASTEL = {
+  r: P.red,
+  y: P.yellow,
+  g: P.green,
+  b: P.blue
+};
+
+// 카드 배치: 왼쪽 R·G, 오른쪽 Y·B
+const INV_ORDER = ['r', 'y', 'g', 'b'];
+
+const INV_BAR = {
+  ok: CAP_HEX.g,
+  low: CAP_HEX.y,
+  short: CAP_HEX.r
+};
 
 
 const RANK_COLORS = [
@@ -784,6 +882,37 @@ const KEYCAP_COLORS = {
   y: P.yellow,
   g: P.green,
   b: P.blue
+};
+
+
+// =========================================================
+// 조립대 공정 상태
+// GET /dashboard/station 의 stage 값
+// =========================================================
+
+const STAGE_LABEL = {
+  idle: '\ub300\uae30 \u00b7 \ud638\ucd9c \uc5c6\uc74c',
+  queued: '\ub300\uae30\uc5f4 \u00b7 \ubc30\uc815 \ub300\uae30',
+  assigned: '\ubd80\ud488 \ubc30\uc815 \uc644\ub8cc',
+  picking: '\ubd80\ud488 \ucd9c\uace0 \uc911',
+  delivering: 'AGV \uc6b4\ubc18 \uc911',
+  arrived: '\ubd80\ud488 \uc778\uacc4 \uc911',
+  assembling: '\uc870\ub9bd \uc9c4\ud589 \uc911',
+  done: '\uc870\ub9bd \uc644\ub8cc',
+  completed: '\uc870\ub9bd \uc644\ub8cc'
+};
+
+
+const STAGE_COLOR = {
+  idle: P.line,
+  queued: P.yellow,
+  assigned: P.yellow,
+  picking: P.yellow,
+  delivering: P.yellow,
+  arrived: P.yellow,
+  assembling: P.green,
+  done: P.blue,
+  completed: P.blue
 };
 
 
@@ -924,6 +1053,8 @@ class Component extends DCLogic {
 
     stocks: {},
 
+    stocksAt: null,
+
 
     // -----------------------------------------------------
     // 주문 건수
@@ -962,7 +1093,15 @@ class Component extends DCLogic {
 
 
     // -----------------------------------------------------
-    // 기존 조립대 MOCK
+    // 조립대 현황
+    // GET /dashboard/station
+    // -----------------------------------------------------
+
+    stations_api: [],
+
+
+    // -----------------------------------------------------
+    // AGV 애니메이션용 MOCK
     // -----------------------------------------------------
 
     remain: [
@@ -1026,7 +1165,10 @@ class Component extends DCLogic {
         stocks:
           data.stocks
           ||
-          {}
+          {},
+
+        stocksAt:
+          new Date()
 
       });
 
@@ -1242,10 +1384,96 @@ class Component extends DCLogic {
 
 
   // =======================================================
+  // 조립대 현황 API
+  // GET /dashboard/station
+  // =======================================================
+
+  async fetchStations() {
+
+    try {
+
+      const response =
+        await fetch(
+          `${API_BASE_URL}/dashboard/station`
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.error
+          ||
+          '조립대 현황 조회 실패'
+        );
+
+      }
+
+
+      if (
+        data.success === false
+      ) {
+
+        throw new Error(
+          data.error
+          ||
+          '조립대 현황 조회 실패'
+        );
+
+      }
+
+
+      this.setState({
+
+        stations_api:
+          Array.isArray(
+            data.stations
+          )
+            ? data.stations
+            : []
+
+      });
+
+
+      dbgChanged(
+        'dashboard/station',
+        data.stations
+      );
+
+
+
+    } catch (error) {
+
+      console.error(
+        '[조립대 API ERROR]',
+        error
+      );
+
+    }
+
+  }
+
+
+  // =======================================================
   // COMPONENT 시작
   // =======================================================
 
   componentDidMount() {
+
+    dbg('mount', {
+      api: API_BASE_URL,
+      polling: {
+        tick: '0.5s',
+        station: '1s',
+        stocks: '5s',
+        statistics: '5s',
+        orderStats: '10s'
+      }
+    });
+
 
 
     this.timer =
@@ -1262,6 +1490,21 @@ class Component extends DCLogic {
     this.fetchOrderStats();
 
     this.fetchStatistics();
+
+    this.fetchStations();
+
+
+    // 조립대 1초
+
+    this.stationTimer =
+      setInterval(
+        () => {
+
+          this.fetchStations();
+
+        },
+        1000
+      );
 
 
     // 재고 5초
@@ -1311,6 +1554,9 @@ class Component extends DCLogic {
 
   componentWillUnmount() {
 
+    dbg('unmount', '폴링 타이머 5개 해제');
+
+
     clearInterval(
       this.timer
     );
@@ -1325,6 +1571,10 @@ class Component extends DCLogic {
 
     clearInterval(
       this.statisticsTimer
+    );
+
+    clearInterval(
+      this.stationTimer
     );
 
   }
@@ -1411,6 +1661,12 @@ class Component extends DCLogic {
               %
               4;
 
+
+            dbg(
+              'auto-rotate',
+              `page ${s.page} → ${next.page}`
+            );
+
           }
 
           else {
@@ -1465,6 +1721,12 @@ class Component extends DCLogic {
 
   goTo(i) {
 
+    dbg('goTo', {
+      from: this.state.page,
+      to: i
+    });
+
+
     this.setState({
 
       page:
@@ -1479,24 +1741,214 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // 재고 색상
+  // 재고 상태
   // =======================================================
 
-  invStatus(q) {
+  invLevel(count, status) {
 
-    return (
+    if (status === 'disable') return 'off';
 
-      q < 50
+    if (count <= INV_SHORT) return 'short';
 
-        ? P.red
+    if (count <= INV_LOW) return 'low';
 
-        : q < 100
+    return 'ok';
 
-          ? P.yellow
+  }
 
-          : P.green
 
-    );
+  invView(stocks, stocksAt) {
+
+    const letters =
+      ROWS.filter(r => r !== 'BD');
+
+    const cells = [];
+
+    let total = 0;
+    let active = 0;
+    let short = 0;
+    let low = 0;
+
+    const shortIds = [];
+    const lowIds = [];
+    const offIds = [];
+
+
+    letters.forEach(letter => {
+
+      INV_ORDER.forEach((color, i) => {
+
+        const stock =
+          stocks[`${letter}_${color}`];
+
+        const count =
+          Number(stock?.count ?? 0);
+
+        const level =
+          this.invLevel(count, stock?.status);
+
+        const off =
+          level === 'off';
+
+
+        const id = `${letter}_${color}`;
+
+        if (!off) {
+          active += 1;
+          total += count;
+          if (level === 'short') { short += 1; shortIds.push(`${id}:${count}`); }
+          if (level === 'low') { low += 1; lowIds.push(`${id}:${count}`); }
+        } else {
+          offIds.push(id);
+        }
+
+
+        // 한 글자 = 2행 묶음 → 묶음 안쪽으로 살짝 붙여 그룹 구분
+        const topRow = i < 2;
+
+        cells.push({
+
+          letter,
+
+          text:
+            off ? 'OFF' : count,
+
+          wrap: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            minHeight: 0,
+            paddingTop: topRow ? '8px' : '0',
+            paddingBottom: topRow ? '0' : '8px'
+          },
+
+          badge: {
+            width: '28px',
+            height: '28px',
+            flex: 'none',
+            borderRadius: '7px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: "'Chakra Petch',sans-serif",
+            fontSize: '14px',
+            fontWeight: 700,
+            color: off ? P.sub : P.ink,
+            background: off ? P.bg : CAP_PASTEL[color],
+            border: '1px solid ' + (off ? P.line : 'transparent'),
+            boxSizing: 'border-box'
+          },
+
+          num: off
+            ? {
+                fontFamily: "'JetBrains Mono',monospace",
+                fontSize: '11px',
+                fontWeight: 700,
+                lineHeight: '17px',
+                color: P.sub
+              }
+            : {
+                fontFamily: "'Chakra Petch',sans-serif",
+                fontSize: '17px',
+                fontWeight: 600,
+                lineHeight: '17px',
+                color: level === 'short' ? INV_BAR.short : P.ink
+              },
+
+          fill: {
+            height: '100%',
+            borderRadius: '3px',
+            width:
+              off
+                ? '0%'
+                : Math.max(0, Math.min(100, count / INV_MAX * 100)) + '%',
+            background: off ? P.line : INV_BAR[level],
+            transition: 'width .4s ease'
+          }
+
+        });
+
+      });
+
+    });
+
+
+    const boards =
+      INV_ORDER.map(color => ({
+        color,
+        count: Number(stocks[color]?.count ?? 0)
+      }));
+
+    const boardTotal =
+      boards.reduce((sum, b) => sum + b.count, 0);
+
+
+
+    dbgChanged('inventory', {
+      total,
+      capacity: active * INV_MAX,
+      short: shortIds,
+      low: lowIds,
+      off: offIds,
+      boards: Object.fromEntries(boards.map(b => [b.color, b.count])),
+      missing: letters.length * INV_ORDER.length
+        - Object.keys(stocks).filter(k => k.includes('_')).length
+    });
+
+    return {
+
+      invCaption:
+        `카트리지 ${letters.length * INV_ORDER.length} · 각 ${INV_MAX}개`,
+
+      invTotal:
+        total.toLocaleString(),
+
+      invCapacity:
+        (active * INV_MAX).toLocaleString(),
+
+      invShort:
+        short,
+
+      invLow:
+        low,
+
+      invLowMax:
+        INV_LOW,
+
+      invShortMax:
+        INV_SHORT,
+
+      invCells:
+        cells,
+
+      boardLabel:
+        `${boardTotal} / ${BOARD_MAX}`,
+
+      boardCells:
+        boards.map(b => ({
+          label: b.color.toUpperCase(),
+          count: b.count,
+          dot: {
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: CAP_PASTEL[b.color],
+            display: 'inline-block'
+          },
+          code: {
+            fontFamily: "'JetBrains Mono',monospace",
+            fontSize: '11px',
+            fontWeight: 700,
+            color: CAP_HEX[b.color]
+          }
+        })),
+
+      invUpdated:
+        stocksAt
+          ? stocksAt.toTimeString().slice(0, 8)
+          : '--:--:--'
+
+    };
 
   }
 
@@ -1952,6 +2404,11 @@ class Component extends DCLogic {
         );
 
 
+
+    dbgChanged('flowLinks', {
+      paths: paths.length
+    });
+
     return React.createElement(
 
       'svg',
@@ -2066,9 +2523,13 @@ class Component extends DCLogic {
 
       stocks,
 
+      stocksAt,
+
       kpi,
 
       statistics,
+
+      stations_api: stationsApi,
 
       remain,
 
@@ -2080,6 +2541,20 @@ class Component extends DCLogic {
 
     const agv =
       this.agv();
+
+
+    dbgChanged('agv', {
+      state: agv.state,
+      task: agv.task,
+      dock: agv.dock
+    });
+
+    dbgChanged('render', {
+      page,
+      stockKeys: Object.keys(stocks || {}).length,
+      stations: Array.isArray(stationsApi) ? stationsApi.length : 0,
+      mbti: statistics?.mbti_stats?.length ?? 0
+    });
 
 
     const sec =
@@ -2468,244 +2943,10 @@ class Component extends DCLogic {
       // 재고
       // ===================================================
 
-      colorCols:
-
-        CAPS.map(
-          c => ({
-
-            code:
-              c.code,
-
-            swatch: {
-
-              width:
-                '20px',
-
-              height:
-                '20px',
-
-              borderRadius:
-                '6px',
-
-              background:
-                c.hex,
-
-              border:
-                '1px solid '
-                +
-                P.line,
-
-              display:
-                'inline-block'
-
-            }
-
-          })
-        ),
-
-
-      invTotal:
-
-        Object
-          .values(
-            stocks
-          )
-          .reduce(
-            (
-              sum,
-              stock
-            ) =>
-              sum
-              +
-              Number(
-                stock?.count
-                ||
-                0
-              ),
-            0
-          )
-          .toLocaleString(),
-
-
-      invCells:
-
-        (() => {
-
-
-          const cells = [];
-
-
-          ROWS.forEach(
-            rowKey => {
-
-
-              cells.push({
-
-                text:
-                  rowKey,
-
-                style: {
-
-                  display:
-                    'flex',
-
-                  alignItems:
-                    'center',
-
-                  justifyContent:
-                    'center',
-
-                  fontFamily:
-                    "'Chakra Petch',sans-serif",
-
-                  fontSize:
-
-                    rowKey === 'BD'
-
-                      ? '15px'
-
-                      : '19px',
-
-                  fontWeight:
-                    700,
-
-                  color:
-                    P.ink,
-
-                  borderRadius:
-                    '9px',
-
-                  background:
-
-                    rowKey === 'BD'
-
-                      ? P.line
-
-                      : P.bg,
-
-                  border:
-                    '1px solid '
-                    +
-                    P.line
-
-                }
-
-              });
-
-
-              CAPS.forEach(
-                c => {
-
-
-                  const color =
-                    c.code
-                      .toLowerCase();
-
-
-                  const cartridgeId =
-
-                    rowKey === 'BD'
-
-                      ? color
-
-                      : `${rowKey}_${color}`;
-
-
-                  const stock =
-                    stocks[
-                      cartridgeId
-                    ];
-
-
-                  const count =
-                    stock?.count
-                    ??
-                    0;
-
-
-                  const status =
-                    stock?.status
-                    ??
-                    'unknown';
-
-
-                  const stockColor =
-                    this.invStatus(
-                      count
-                    );
-
-
-                  cells.push({
-
-                    text:
-                      count,
-
-                    style: {
-
-                      display:
-                        'flex',
-
-                      alignItems:
-                        'center',
-
-                      justifyContent:
-                        'center',
-
-                      fontFamily:
-                        "'Chakra Petch',sans-serif",
-
-                      fontSize:
-                        '19px',
-
-                      fontWeight:
-                        600,
-
-                      color:
-                        P.ink,
-
-                      borderRadius:
-                        '9px',
-
-                      background:
-                        '#FFFFFF',
-
-                      border:
-                        '1px solid '
-                        +
-                        P.line,
-
-                      borderBottom:
-                        '3px solid '
-                        +
-                        stockColor,
-
-                      boxShadow:
-
-                        status ===
-                        'disable'
-
-                          ? (
-                              'inset 0 0 0 2px '
-                              +
-                              P.red
-                            )
-
-                          : 'none'
-
-                    }
-
-                  });
-
-                }
-              );
-
-            }
-          );
-
-
-          return cells;
-
-        })(),
+      ...this.invView(
+        stocks,
+        stocksAt
+      ),
 
 
       // ===================================================
@@ -2743,7 +2984,8 @@ class Component extends DCLogic {
 
 
       // ===================================================
-      // 조립대 MOCK
+      // 조립대 현황
+      // GET /dashboard/station
       // ===================================================
 
       stations:
@@ -2753,111 +2995,92 @@ class Component extends DCLogic {
             i => {
 
 
-              const meta = [
+              const stationId =
+                i + 1;
 
-                {
-                  name: '조립대 1',
-                  code: 'A-142',
-                  total: 180
-                },
 
-                {
-                  name: '조립대 2',
-                  code: 'A-144',
-                  total: 150
-                },
+              const live =
 
-                {
-                  name: '조립대 3',
-                  code: 'A-143',
-                  total: 200
-                }
+                (
+                  Array.isArray(
+                    stationsApi
+                  )
+                    ? stationsApi
+                    : []
+                )
+                  .find(
+                    s =>
+                      Number(
+                        s.station_id
+                      )
+                      ===
+                      stationId
+                  )
+                ||
+                {};
 
-              ][i];
+
+              const stage =
+                live.stage
+                ||
+                'idle';
+
+
+              const seq =
+
+                (
+                  live.order_seq
+                  ===
+                  null
+                  ||
+                  live.order_seq
+                  ===
+                  undefined
+                )
+
+                  ? null
+
+                  : Number(
+                      live.order_seq
+                    );
 
 
               const docked =
                 agv.dock === i;
 
 
-              const rem =
-                remain[i];
-
-
-              const busy =
-                rem > 0;
-
-
               const color =
-
-                docked
-
-                  ? P.yellow
-
-                  : busy
-
-                    ? P.green
-
-                    : P.line;
-
-
-              const prog =
-
-                busy
-
-                  ? Math.max(
-                      0,
-                      Math.min(
-                        100,
-                        (
-                          1
-                          -
-                          rem
-                          /
-                          meta.total
-                        )
-                        *
-                        100
-                      )
-                    )
-
-                  : 100;
+                STAGE_COLOR[stage]
+                ||
+                P.green;
 
 
               return {
 
                 name:
-                  meta.name,
+                  '조립대 '
+                  +
+                  stationId,
 
                 code:
 
-                  docked
+                  (
+                    seq === null
+                    ||
+                    Number.isNaN(seq)
+                  )
 
-                    ? meta.code
+                    ? '--'
+
+                    : '#'
                       +
-                      ' · 인계'
-
-                    : meta.code,
+                      String(seq)
+                        .padStart(3, '0'),
 
                 status:
-
-                  docked
-
-                    ? '부품 인계 중'
-
-                    : busy
-
-                      ? '조립 진행 중'
-
-                      : '대기 · 호출 없음',
-
-                remain:
-
-                  busy
-
-                    ? this.fmt(rem)
-
-                    : '--:--',
+                  STAGE_LABEL[stage]
+                  ||
+                  stage,
 
                 dot: {
 
@@ -2927,33 +3150,6 @@ class Component extends DCLogic {
 
                   boxShadow:
                     cardShadow
-
-                },
-
-                bar: {
-
-                  height:
-                    '100%',
-
-                  width:
-                    prog.toFixed(0)
-                    +
-                    '%',
-
-                  borderRadius:
-                    '5px',
-
-                  background:
-
-                    docked
-
-                      ? P.yellow
-
-                      : busy
-
-                        ? P.green
-
-                        : P.line
 
                 }
 
