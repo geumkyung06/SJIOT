@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
+import '../widgets/auto_return_countdown.dart';
 import '../widgets/error_badge.dart';
 import '../widgets/screen_canvas.dart';
 
@@ -23,30 +24,13 @@ class NoShowScreen extends StatefulWidget {
   State<NoShowScreen> createState() => _NoShowScreenState();
 }
 
-class _NoShowScreenState extends State<NoShowScreen> {
-  int secondsLeft = 5;
+class _NoShowScreenState extends State<NoShowScreen>
+    with AutoReturnCountdown<NoShowScreen> {
+  @override
+  int get countdownSeconds => 5;
 
   @override
-  void initState() {
-    super.initState();
-    _startCountdown();
-  }
-
-  Future<void> _startCountdown() async {
-    while (secondsLeft > 0 && mounted) {
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-
-      setState(() {
-        secondsLeft--;
-      });
-    }
-
-    if (mounted) {
-      widget.onAutoReturn();
-    }
-  }
+  void onCountdownFinished() => widget.onAutoReturn();
 
   @override
   Widget build(BuildContext context) {

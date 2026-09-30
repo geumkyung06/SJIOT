@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/auto_return_countdown.dart';
 import '../widgets/keycap_board_3d.dart';
 import '../widgets/screen_canvas.dart';
 
@@ -21,10 +22,15 @@ class CompletedScreen extends StatefulWidget {
 }
 
 class _CompletedScreenState extends State<CompletedScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutoReturnCountdown<CompletedScreen> {
   static const int _resetSeconds = 10;
 
-  int secondsLeft = _resetSeconds;
+  @override
+  int get countdownSeconds => _resetSeconds;
+
+  @override
+  void onCountdownFinished() => widget.onRestart();
+
   late final AnimationController _previewController;
   late final Animation<double> _previewScale;
 
@@ -48,24 +54,6 @@ class _CompletedScreenState extends State<CompletedScreen>
     );
 
     _previewController.forward();
-
-    _startCountdown();
-  }
-
-  Future<void> _startCountdown() async {
-    while (secondsLeft > 0 && mounted) {
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-
-      setState(() {
-        secondsLeft--;
-      });
-    }
-
-    if (mounted) {
-      widget.onRestart();
-    }
   }
 
   @override
@@ -198,7 +186,7 @@ class _CompletedScreenState extends State<CompletedScreen>
 
 /// 소지품 안내 — 왼쪽 8px 노란 액센트
 class _BelongingsNotice extends StatelessWidget {
-  const _BelongingsNotice({super.key});
+  const _BelongingsNotice();
 
   @override
   Widget build(BuildContext context) {

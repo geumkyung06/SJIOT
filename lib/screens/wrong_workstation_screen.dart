@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/auto_return_countdown.dart';
 import '../widgets/error_badge.dart';
 import '../widgets/screen_canvas.dart';
 
@@ -20,30 +21,13 @@ class WrongWorkstationScreen extends StatefulWidget {
   State<WrongWorkstationScreen> createState() => _WrongWorkstationScreenState();
 }
 
-class _WrongWorkstationScreenState extends State<WrongWorkstationScreen> {
-  int secondsLeft = 7;
+class _WrongWorkstationScreenState extends State<WrongWorkstationScreen>
+    with AutoReturnCountdown<WrongWorkstationScreen> {
+  @override
+  int get countdownSeconds => 7;
 
   @override
-  void initState() {
-    super.initState();
-    _startCountdown();
-  }
-
-  Future<void> _startCountdown() async {
-    while (secondsLeft > 0 && mounted) {
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-
-      setState(() {
-        secondsLeft--;
-      });
-    }
-
-    if (mounted) {
-      widget.onAutoReturn();
-    }
-  }
+  void onCountdownFinished() => widget.onAutoReturn();
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +69,7 @@ class _WrongWorkstationScreenState extends State<WrongWorkstationScreen> {
             WorkstationBox(
               label: '현재 위치',
               number: widget.currentWorkstation,
-              accentColor: AppColors.pink,
+              accentColor: AppColors.red,
             ),
 
             const Padding(

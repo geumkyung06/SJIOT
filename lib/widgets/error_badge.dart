@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
-/// 오류 배지 — 빨강 대신 분홍 키캡색, 몇 초마다 짧게 흔들립니다.
+/// 오류 배지 — 키캡 red(AppColors.red), 몇 초마다 짧게 흔들립니다.
 class ErrorBadge extends StatefulWidget {
   const ErrorBadge({super.key, this.text = '오류'});
 
@@ -47,7 +47,7 @@ class _ErrorBadgeState extends State<ErrorBadge>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 11),
         decoration: BoxDecoration(
-          color: AppColors.pink,
+          color: AppColors.red,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(

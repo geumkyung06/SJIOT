@@ -84,13 +84,13 @@ class OrderCallScreen extends StatelessWidget {
 
 /// 키캡 4색 바
 class _KeycapColorBar extends StatelessWidget {
-  const _KeycapColorBar({super.key});
+  const _KeycapColorBar();
 
   static const List<Color> _colors = [
     AppColors.green,
     AppColors.yellow,
     AppColors.blue,
-    AppColors.pink,
+    AppColors.red,
   ];
 
   @override

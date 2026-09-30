@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
+import '../debug/app_log.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
 import '../widgets/keycap_board_3d.dart';
@@ -67,12 +68,23 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
 
     _isCheckDialogOpen = true;
 
-    await _alertPlayer.setReleaseMode(ReleaseMode.loop);
-
-    await _alertPlayer.play(
-      AssetSource('sounds/assembly_warning.mp3'),
-      volume: 0.7,
+    AppLog.i(
+      LogTag.timer,
+      '[AssemblingScreen] 조립 시간 ${_assemblyTimeout.inSeconds}초 경과 → 확인 팝업',
     );
+
+    // 경고음이 실패해도 확인 팝업은 반드시 띄운다.
+    // (여기서 예외가 나면 _isCheckDialogOpen이 true로 고정돼 팝업이 다시는 뜨지 않음)
+    try {
+      await _alertPlayer.setReleaseMode(ReleaseMode.loop);
+
+      await _alertPlayer.play(
+        AssetSource('sounds/assembly_warning.mp3'),
+        volume: 0.7,
+      );
+    } catch (e) {
+      AppLog.w(LogTag.screen, '[AssemblingScreen] 경고음 재생 실패, 팝업은 계속 표시: $e');
+    }
 
     if (!mounted) {
       return;
@@ -87,7 +99,11 @@ class _AssemblingScreenState extends State<AssemblingScreen> {
     );
 
     /// 팝업이 닫히면 경고음 정지
-    await _alertPlayer.stop();
+    try {
+      await _alertPlayer.stop();
+    } catch (e) {
+      AppLog.w(LogTag.screen, '[AssemblingScreen] 경고음 정지 실패: $e');
+    }
 
     _isCheckDialogOpen = false;
 

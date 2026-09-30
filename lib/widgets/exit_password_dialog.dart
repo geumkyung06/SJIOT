@@ -122,7 +122,7 @@ class _ExitPasswordDialogState extends State<ExitPasswordDialog> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.pink,
+                          color: AppColors.red,
                         ),
                       )
                     : const SizedBox.shrink(),

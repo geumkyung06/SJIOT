@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../debug/app_log.dart';
 import '../services/api_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/conveyor_belt.dart';
@@ -58,7 +59,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
 
       final stage = data['stage']?.toString();
 
-      debugPrint('[WaitingScreen] order_id=${widget.orderId}, stage=$stage');
+      AppLog.d(
+        LogTag.screen,
+        '[WaitingScreen] order_id=${widget.orderId}, stage=$stage',
+      );
 
       // 부품 도착 완료
       if (stage == 'received') {
@@ -73,12 +77,12 @@ class _WaitingScreenState extends State<WaitingScreen> {
         widget.onReceived();
       }
     } on ApiException catch (e) {
-      debugPrint(
-        '[WaitingScreen] 주문 상태 조회 실패: '
-        '${e.statusCode} / ${e.body}',
+      AppLog.w(
+        LogTag.screen,
+        '[WaitingScreen] 주문 상태 조회 실패 (${e.statusCode})',
       );
     } catch (e) {
-      debugPrint('[WaitingScreen] 주문 상태 조회 오류: $e');
+      AppLog.w(LogTag.screen, '[WaitingScreen] 주문 상태 조회 오류: $e');
     } finally {
       _isChecking = false;
     }

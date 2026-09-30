@@ -73,7 +73,7 @@ class DemoMenu extends StatelessWidget {
           PopupMenuItem(value: DeviceStep.waiting, child: Text('1. 대기 중')),
           PopupMenuItem(
             value: DeviceStep.authenticated,
-            child: Text('2. 인증 완료'),
+            child: Text('2. 인증 완료 (테스트용)'),
           ),
           PopupMenuItem(value: DeviceStep.assembling, child: Text('3. 조립 중')),
           PopupMenuItem(value: DeviceStep.completed, child: Text('4. 조립 완료')),

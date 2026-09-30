@@ -7,6 +7,10 @@ import '../widgets/app_buttons.dart';
 import '../widgets/device_page_layout.dart';
 import '../widgets/keycap_board_3d.dart';
 
+/// (테스트 전용) 인증 완료 화면.
+///
+/// 실제 흐름에서는 QR 인증(start 200) 뒤 바로 부품 도착 대기(waiting)로 가므로
+/// 이 화면을 거치지 않는다. DemoMenu「2. 인증 완료」로만 들어온다.
 class AuthenticatedScreen extends StatefulWidget {
   final String mbti;
   final List<String> colors;

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import 'debug/app_log.dart';
 import 'dev/demo_menu.dart';
 import 'models/device_step.dart';
 import 'models/order_info.dart';
@@ -124,6 +125,14 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
   // 노쇼 취소 요청이 중복 실행되는 것을 막는다.
   bool _isHandlingNoShow = false;
 
+  // QR 인증(start) 요청이 진행 중인지.
+  // 이 사이 노쇼 시간이 끝나면 바로 취소하지 않고 start 결과를 보고 처리한다.
+  bool _isStarting = false;
+  bool _noShowPending = false;
+
+  // 조립 완료(complete) 요청 중복 방지
+  bool _isCompleting = false;
+
   // 관리자 종료 중에는 화면 고정을 다시 걸지 않는다.
   bool _isExiting = false;
 
@@ -169,15 +178,18 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
     _stopStationStatusPolling();
     _stopCallTimers();
 
-    setState(() {
-      _workstationNumber = number;
+    _setStep(
+      DeviceStep.orderCall,
+      '조립대 $number 선택',
+      update: () {
+        _workstationNumber = number;
 
-      // 아직 서버에서 주문을 받기 전
-      _orderCallNumber = null;
-      _calledOrderId = null;
-
-      _currentStep = DeviceStep.orderCall;
-    });
+        // 아직 서버에서 주문을 받기 전
+        _orderCallNumber = null;
+        _calledOrderId = null;
+        _order = null;
+      },
+    );
 
     // 주문 배정 여부 조회 시작
     _startStationStatusPolling();
@@ -223,9 +235,6 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
     try {
       final result = await _api.getStationStatus(stationId: stationId);
 
-      debugPrint('조립대 주문 조회 성공');
-      debugPrint('result: $result');
-
       final String? orderId = result['order_id']?.toString();
 
       final dynamic rawOrderSeq = result['order_seq'];
@@ -235,7 +244,10 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
           : int.tryParse(rawOrderSeq?.toString() ?? '');
 
       if (orderId == null || orderSeq == null) {
-        debugPrint('order_id 또는 order_seq가 없습니다.');
+        AppLog.w(
+          LogTag.api,
+          '조립대 $stationId 응답에 order_id 또는 order_seq 없음: $result',
+        );
         return;
       }
 
@@ -249,8 +261,11 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         _orderCallNumber = orderSeq;
       });
 
-      debugPrint('호출 주문 ID: $_calledOrderId');
-      debugPrint('화면 표시 주문번호: $_orderCallNumber');
+      AppLog.i(
+        LogTag.state,
+        '주문 배정 감지: order=$orderId 대기번호=$orderSeq '
+        '(조립대 $stationId, 음성 호출=${shouldSpeak ? '새 주문' : '이미 호출함'})',
+      );
 
       // 주문을 찾았으므로 더 이상 폴링하지 않음
       _stopStationStatusPolling();
@@ -269,7 +284,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
       if (e.statusCode == 400) {
         // 아직 이 조립대에 주문이 없는 정상적인 대기 상태
-        debugPrint('조립대 $stationId: 아직 배정된 주문 없음');
+        AppLog.d(LogTag.api, '조립대 $stationId: 아직 배정된 주문 없음');
 
         setState(() {
           _calledOrderId = null;
@@ -279,11 +294,11 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         return;
       }
 
-      debugPrint('조립대 주문 조회 오류');
-      debugPrint('statusCode: ${e.statusCode}');
-      debugPrint('body: ${e.body}');
+      AppLog.w(LogTag.api, '조립대 $stationId 주문 조회 오류 (${e.statusCode})');
     } catch (e) {
-      debugPrint('조립대 주문 조회 중 통신 오류: $e');
+      // 타임아웃 · 네트워크 오류. 상세 내용은 [API] 로그에 이미 출력됨.
+      // finally에서 플래그가 풀리므로 다음 주기에 다시 조회한다.
+      AppLog.w(LogTag.api, '조립대 $stationId 주문 조회 실패, 다음 주기에 재시도: $e');
     } finally {
       _isFetchingStationStatus = false;
     }
@@ -305,9 +320,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         '주문번호 $orderNumber번 고객님, '
         '$stationId번 조립대로 와 주세요.';
 
-    debugPrint('========== 음성 호출 ==========');
-    debugPrint(message);
-    debugPrint('==============================');
+    AppLog.i(LogTag.tts, '호출: "$message"');
 
     // 이전 음성이 남아 있으면 정지
     await _tts.stop();
@@ -327,13 +340,17 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
       // 호출 화면이 아니거나 스캐너를 보고 있으면 재호출하지 않음
       if (_currentStep != DeviceStep.orderCall) return;
       if (_isQrScannerOpen) return;
+      if (_isStarting) return;
 
       final int? orderNumber = _orderCallNumber;
       final String? workstationNumber = _workstationNumber;
 
       if (orderNumber == null || workstationNumber == null) return;
 
-      debugPrint('30초 경과 → 주문번호 $orderNumber번 재호출');
+      AppLog.i(
+        LogTag.timer,
+        '${_orderRecallInterval.inSeconds}초 경과 → 주문번호 $orderNumber번 재호출',
+      );
 
       _speakOrderCall(
         orderNumber: orderNumber,
@@ -359,11 +376,23 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
     _stopCallTimers();
 
+    // QR 인증(start) 요청이 가는 중이면 결과를 기다린다.
+    // 성공하면 노쇼 처리를 버리고, 실패하면 그때 처리한다. (_openQrScanner finally)
+    if (_isStarting) {
+      _noShowPending = true;
+
+      AppLog.w(
+        LogTag.timer,
+        '노쇼 시간 만료, 그런데 QR 인증(start) 요청 중 → 결과를 보고 처리',
+      );
+      return;
+    }
+
     final String? orderId = _calledOrderId;
     final String? workstationNumber = _workstationNumber;
 
     if (orderId == null || workstationNumber == null) {
-      debugPrint('노쇼 타이머가 끝났지만 호출 중인 주문이 없음');
+      AppLog.w(LogTag.timer, '노쇼 타이머 만료, 그런데 호출 중인 주문이 없음');
       return;
     }
 
@@ -376,15 +405,19 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
       _isQrScannerOpen = false;
 
       if (mounted) {
+        AppLog.d(LogTag.qr, '노쇼 처리로 열려 있던 스캐너를 닫음');
+
         Navigator.of(context).pop();
       }
     }
 
     final int stationId = int.parse(workstationNumber);
 
-    debugPrint('========== 노쇼 처리 ==========');
-    debugPrint('order_id: $orderId');
-    debugPrint('station_id: $stationId');
+    AppLog.i(
+      LogTag.timer,
+      '노쇼 타임아웃(${_noShowTimeout.inMinutes}분) → 주문 취소 요청 '
+      'order=$orderId station=$stationId',
+    );
 
     try {
       final result = await _api.cancelStation(
@@ -392,32 +425,32 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         orderId: orderId,
       );
 
-      debugPrint('노쇼 취소 API 결과: $result');
+      AppLog.i(LogTag.api, '노쇼 취소 완료: $result');
 
       if (!mounted) return;
 
-      _moveTo(DeviceStep.noShow);
+      _setStep(DeviceStep.noShow, '노쇼 취소 완료 (unclaim 200)');
     } on ApiException catch (e) {
-      debugPrint('노쇼 취소 실패 (${e.statusCode}): ${e.body}');
+      AppLog.w(LogTag.api, '노쇼 취소 실패 (unclaim ${e.statusCode})');
 
       if (!mounted) return;
 
       if (e.statusCode == 404 || e.statusCode == 409) {
         // 이미 다른 경로로 종료·재배정된 주문이므로 조용히 호출 대기로 복귀
-        _reset();
+        _reset('노쇼 취소 ${e.statusCode}: 이미 정리된 주문으로 보고 복귀');
       } else {
         _showMessage('주문 취소 처리에 실패했습니다. (${e.statusCode})');
 
-        _moveTo(DeviceStep.noShow);
+        _setStep(DeviceStep.noShow, '노쇼 취소 실패 (unclaim ${e.statusCode})');
       }
     } catch (e) {
-      debugPrint('노쇼 취소 중 통신 오류: $e');
+      AppLog.w(LogTag.api, '노쇼 취소 요청 실패: $e');
 
       if (!mounted) return;
 
       _showMessage('서버 통신 오류로 주문 취소를 확인하지 못했습니다.');
 
-      _moveTo(DeviceStep.noShow);
+      _setStep(DeviceStep.noShow, '노쇼 취소 통신 오류');
     } finally {
       _isHandlingNoShow = false;
     }
@@ -425,12 +458,23 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
   // 4. QR 인증
   Future<void> _openQrScanner() async {
+    // 버튼 연타로 스캐너가 두 번 열리거나, 인증 중에 다시 스캔하는 것을 막는다.
+    if (_isQrScannerOpen || _isStarting) {
+      AppLog.d(
+        LogTag.qr,
+        '스캐너 열기 무시: ${_isQrScannerOpen ? '이미 열려 있음' : 'QR 인증 요청 중'}',
+      );
+      return;
+    }
+
     if (_orderCallNumber == null || _calledOrderId == null) {
       _showMessage('아직 이 조립대에 배정된 주문이 없습니다.');
       return;
     }
 
     _isQrScannerOpen = true;
+
+    AppLog.d(LogTag.qr, '스캐너 열림 (호출 주문 $_calledOrderId)');
 
     final String? qrValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (context) => const QrScannerScreen()),
@@ -442,60 +486,59 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
     // 스캐너를 보는 사이 노쇼 처리 등으로 화면이 바뀐 경우
     if (_currentStep != DeviceStep.orderCall) {
+      AppLog.w(LogTag.qr, '스캔 결과 무시: 그사이 화면이 ${_currentStep.name}(으)로 바뀜');
       return;
     }
 
     if (qrValue == null) {
+      AppLog.d(LogTag.qr, '스캐너 닫힘 (스캔 없이 돌아가기)');
       return;
     }
 
     final String rawQrValue = qrValue.trim();
 
-    debugPrint('======================================');
-    debugPrint('QR 스캔 완료');
-    debugPrint('QR 원본: $rawQrValue');
-
     final String? scannedOrderId = _extractOrderIdFromQr(rawQrValue);
 
-    debugPrint('추출된 order_id: $scannedOrderId');
-    debugPrint('======================================');
+    AppLog.i(
+      LogTag.qr,
+      '스캔 완료 raw="$rawQrValue" → order_id=${scannedOrderId ?? '추출 실패'}',
+    );
 
     if (scannedOrderId == null) {
-      _moveTo(DeviceStep.invalidQr);
+      _setStep(DeviceStep.invalidQr, 'QR에서 order_id를 찾지 못함');
       return;
     }
 
     if (_calledOrderId != null && scannedOrderId != _calledOrderId) {
-      debugPrint('호출된 주문과 QR 주문 불일치');
-      debugPrint('호출 주문: $_calledOrderId');
-      debugPrint('스캔 주문: $scannedOrderId');
+      AppLog.w(LogTag.qr, '호출 주문과 불일치: 호출=$_calledOrderId 스캔=$scannedOrderId');
 
       _showMessage('현재 호출된 주문번호와 일치하지 않는 QR 코드입니다.');
       return;
     }
 
     if (_workstationNumber == null) {
-      debugPrint('조립대 번호가 설정되지 않음');
+      AppLog.w(LogTag.state, 'QR 인증 중단: 조립대 번호가 설정되지 않음');
       return;
     }
 
     final int stationId = int.parse(_workstationNumber!);
 
+    // start 요청이 끝날 때까지 노쇼 처리와 재호출을 보류한다.
+    _isStarting = true;
+    bool started = false;
+
     try {
-      // 새 백엔드 형식
-      //
-      // POST /station/{station_id}/start
+      // POST /station/{order_id}/start
       // body:
       // {
-      //   "order_id": "ord_xxxxxxxx"
+      //   "station_id": 1
       // }
       final startResult = await _api.startStation(
         orderId: scannedOrderId,
         stationId: stationId,
       );
 
-      debugPrint('조립 시작 성공');
-      debugPrint('startResult: $startResult');
+      started = true;
 
       // START 성공 응답에 주문 정보가 같이 들어옴
       final String responseOrderId =
@@ -509,11 +552,10 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
               .toList() ??
           [];
 
-      debugPrint('응답 order_id: $responseOrderId');
-      debugPrint('응답 keycap: $mbti');
-      debugPrint('응답 board: ${startResult['board']}');
-      debugPrint('응답 colors: $colors');
-      debugPrint('응답 board: ${startResult['board']}');
+      AppLog.i(
+        LogTag.api,
+        '조립 시작 성공: order=$responseOrderId keycap=$mbti colors=$colors',
+      );
 
       if (!mounted) return;
 
@@ -522,62 +564,53 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
       await _tts.stop();
 
-      setState(() {
-        _order = OrderInfo(
-          orderId: responseOrderId,
-          mbti: mbti,
-          colors: colors,
-          assignedWorkstation: stationId,
-        );
-
-        _currentStep = DeviceStep.waiting;
-      });
+      _setStep(
+        DeviceStep.waiting,
+        'QR 인증 성공 (start 200)',
+        update: () {
+          _order = OrderInfo(
+            orderId: responseOrderId,
+            mbti: mbti,
+            colors: colors,
+            assignedWorkstation: stationId,
+          );
+        },
+      );
     } on ApiException catch (e) {
-      debugPrint('');
-      debugPrint('========== START API 오류 ==========');
-      debugPrint('HTTP status: ${e.statusCode}');
-      debugPrint('raw body: ${e.body}');
-      debugPrint('decoded body: ${e.data}');
-      debugPrint('===================================');
-      debugPrint('');
-
       if (!mounted) return;
 
       switch (e.statusCode) {
         case 400:
-          debugPrint('400: 아직 조립대에 배정되지 않은 주문');
+          AppLog.w(LogTag.state, 'start 400: 아직 조립대에 배정되지 않은 주문');
 
           _showMessage('아직 조립대에 배정되지 않은 주문입니다.');
           break;
 
         case 403:
-          debugPrint('403: 다른 조립대에 배정된 주문');
-
           final assignedStationId = e.data?['assigned_station_id'];
 
-          setState(() {
-            if (assignedStationId != null) {
-              _assignedWorkstationNumber = assignedStationId.toString().padLeft(
-                2,
-                '0',
-              );
-            } else {
-              _assignedWorkstationNumber = '--';
-            }
-
-            _currentStep = DeviceStep.wrongWorkstation;
-          });
+          _setStep(
+            DeviceStep.wrongWorkstation,
+            'start 403: 조립대 ${assignedStationId ?? '?'}에 배정된 주문',
+            update: () {
+              if (assignedStationId != null) {
+                _assignedWorkstationNumber = assignedStationId
+                    .toString()
+                    .padLeft(2, '0');
+              } else {
+                _assignedWorkstationNumber = '--';
+              }
+            },
+          );
 
           break;
 
         case 404:
-          debugPrint('404: 존재하지 않거나 만료된 주문');
-
-          _moveTo(DeviceStep.invalidQr);
+          _setStep(DeviceStep.invalidQr, 'start 404: 없거나 만료된 주문');
           break;
 
         case 409:
-          debugPrint('409: 이미 처리되었거나 현재 조립대 주문이 아님');
+          AppLog.w(LogTag.state, 'start 409: 이미 처리되었거나 현재 조립대 주문이 아님');
 
           final errorMessage = e.data?['error']?.toString() ?? '이미 처리된 주문입니다.';
 
@@ -585,16 +618,37 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
           break;
 
         default:
-          debugPrint('처리되지 않은 START 오류: ${e.statusCode}');
+          AppLog.w(LogTag.state, '처리되지 않은 start 오류: ${e.statusCode}');
 
           _showMessage('QR 인증 중 오류가 발생했습니다. (${e.statusCode})');
       }
     } catch (e) {
-      debugPrint('START API 외 오류: $e');
+      AppLog.w(LogTag.api, 'start 요청 실패: $e');
 
       if (!mounted) return;
 
       _showMessage('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      _isStarting = false;
+
+      // start 요청 중에 노쇼 시간이 끝났던 경우
+      if (_noShowPending) {
+        _noShowPending = false;
+
+        if (started) {
+          AppLog.i(LogTag.timer, 'QR 인증 성공 → 보류했던 노쇼 처리 취소');
+        } else if (mounted && _currentStep == DeviceStep.orderCall) {
+          AppLog.i(LogTag.timer, 'QR 인증 실패 → 보류했던 노쇼 처리 진행');
+
+          _handleNoShow();
+        } else {
+          // 404(주문 없음) · 403(다른 조립대) 등으로 이미 다른 화면으로 넘어간 경우
+          AppLog.i(
+            LogTag.timer,
+            'QR 인증 실패 후 화면이 ${_currentStep.name}(으)로 바뀜 → 노쇼 처리 생략',
+          );
+        }
+      }
     }
   }
 
@@ -642,34 +696,44 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
     final int stationId = int.parse(_workstationNumber!);
 
-    debugPrint('조립 완료 처리 시작');
-    debugPrint('station_id: $stationId');
+    final OrderInfo? order = _order;
+
+    if (order == null) {
+      AppLog.w(LogTag.state, '조립 완료 중단: 주문 정보(_order)가 없음');
+      _showMessage('주문 정보가 없어 조립 완료를 처리할 수 없습니다.');
+      return;
+    }
+
+    // 버튼 연타 · 자동 완료가 겹쳐 complete가 두 번 나가는 것을 막는다.
+    if (_isCompleting) {
+      AppLog.d(LogTag.state, '조립 완료 요청 중복 무시 (이미 요청 중)');
+      return;
+    }
+
+    _isCompleting = true;
+
+    AppLog.i(
+      LogTag.state,
+      '조립 완료 요청 station=$stationId order=${order.orderId}',
+    );
 
     try {
       final result = await _api.completeStation(
         stationId: stationId,
-        orderId: _order!.orderId,
+        orderId: order.orderId,
       );
-
-      debugPrint('조립 완료 API 결과: $result');
 
       if (!mounted) return;
 
       if (result['ok'] == true) {
-        debugPrint('조립 완료 처리 성공');
-
-        _moveTo(DeviceStep.completed);
+        _setStep(DeviceStep.completed, '조립 완료 (complete 200)');
       } else {
-        debugPrint('200 응답이지만 ok != true: $result');
+        AppLog.w(LogTag.api, 'complete 200 응답이지만 ok != true: $result');
 
         _showMessage('조립 완료 응답을 확인할 수 없습니다.');
       }
     } on ApiException catch (e) {
-      debugPrint('========== COMPLETE API 오류 ==========');
-      debugPrint('HTTP status: ${e.statusCode}');
-      debugPrint('raw body: ${e.body}');
-      debugPrint('decoded body: ${e.data}');
-      debugPrint('======================================');
+      AppLog.w(LogTag.state, '조립 완료 실패 (complete ${e.statusCode})');
 
       if (!mounted) return;
 
@@ -681,7 +745,10 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         case 409:
           final currentOrderId = e.data?['current_order_id'];
 
-          debugPrint('서버의 현재 order_id: $currentOrderId');
+          AppLog.w(
+            LogTag.state,
+            '주문 불일치: 화면=${order.orderId} 서버=$currentOrderId',
+          );
 
           _showMessage('현재 화면의 주문과 서버의 주문 정보가 일치하지 않습니다.');
           break;
@@ -690,33 +757,106 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
           _showMessage('조립 완료 처리에 실패했습니다. (${e.statusCode})');
       }
     } catch (e) {
-      debugPrint('조립 완료 API 실패: $e');
+      AppLog.w(LogTag.api, 'complete 요청 실패: $e');
 
       if (!mounted) return;
 
       _showMessage('서버 통신 중 오류가 발생했습니다.');
+    } finally {
+      _isCompleting = false;
     }
   }
 
   // 화면 상태 관리
-  void _moveTo(DeviceStep step) {
+
+  /// 화면 전환은 모두 이 함수를 거친다.
+  ///
+  /// `이전 → 다음 (이유)`와 전환 직후의 상태 요약을 터미널에 출력한다.
+  /// [update]에는 화면 전환과 함께 바뀌어야 하는 값을 넣는다.
+  /// (같은 setState 안에서 적용된다)
+  void _setStep(DeviceStep next, String reason, {VoidCallback? update}) {
+    final DeviceStep prev = _currentStep;
+
+    if (!mounted) {
+      AppLog.w(
+        LogTag.state,
+        '${prev.name} → ${next.name} 무시: 화면이 이미 닫힘 ($reason)',
+      );
+      return;
+    }
+
     setState(() {
-      _currentStep = step;
+      update?.call();
+      _currentStep = next;
     });
+
+    AppLog.i(LogTag.state, '${prev.name} → ${next.name} ($reason)');
+    AppLog.d(LogTag.state, '  ${_stateSnapshot()}');
   }
 
-  void _reset() {
+  /// 현재 상태 한 줄 요약 (디버그용)
+  String _stateSnapshot() {
+    final List<String> activeTimers = [
+      if (_stationStatusTimer?.isActive ?? false) 'stationPolling',
+      if (_orderRecallTimer?.isActive ?? false) 'recall',
+      if (_noShowTimer?.isActive ?? false) 'noShow',
+    ];
+
+    return 'station=${_workstationNumber ?? '-'} '
+        'called=${_calledOrderId ?? '-'} '
+        'seq=${_orderCallNumber ?? '-'} '
+        'order=${_order?.orderId ?? '-'} '
+        'assigned=${_assignedWorkstationNumber ?? '-'} '
+        'scanner=${_isQrScannerOpen ? 'open' : 'closed'} '
+        'noShowHandling=$_isHandlingNoShow '
+        'starting=$_isStarting noShowPending=$_noShowPending '
+        'completing=$_isCompleting '
+        'timers=[${activeTimers.join(', ')}]';
+  }
+
+  /// 테스트 메뉴(DemoMenu)로 강제 이동.
+  ///
+  /// 주문 정보가 필요한 화면은 _order가 없으면 build의 `_order!`에서
+  /// 바로 오류가 나므로 이동을 막는다.
+  void _demoMoveTo(DeviceStep step) {
+    const Set<DeviceStep> needsOrder = {
+      DeviceStep.waiting,
+      DeviceStep.authenticated,
+      DeviceStep.assembling,
+      DeviceStep.completed,
+    };
+
+    if (needsOrder.contains(step) && _order == null) {
+      AppLog.w(
+        LogTag.demo,
+        '${step.name} 이동 취소: 주문 정보(_order)가 없음 → QR 인증을 한 번 거친 뒤 사용',
+      );
+      _showMessage('주문 정보가 없어 이 화면을 열 수 없습니다. (QR 인증 후 사용)');
+      return;
+    }
+
+    AppLog.w(LogTag.demo, '테스트 메뉴로 강제 이동: ${step.name}');
+
+    _setStep(step, '테스트 메뉴');
+  }
+
+  void _reset(String reason) {
     _stopStationStatusPolling();
     _stopCallTimers();
 
-    setState(() {
-      _assignedWorkstationNumber = null;
+    _setStep(
+      DeviceStep.orderCall,
+      reason,
+      update: () {
+        _assignedWorkstationNumber = null;
 
-      _orderCallNumber = null;
-      _calledOrderId = null;
+        _orderCallNumber = null;
+        _calledOrderId = null;
 
-      _currentStep = DeviceStep.orderCall;
-    });
+        // 이전 주문 정보가 남아 있지 않게 비운다.
+        _order = null;
+      },
+    );
 
     _startStationStatusPolling();
   }
@@ -744,7 +884,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
       return;
     }
 
-    debugPrint('관리자 비밀번호 확인 → 화면 고정 해제 후 앱 종료');
+    AppLog.i(LogTag.app, '관리자 비밀번호 확인 → 화면 고정 해제 후 앱 종료');
 
     _isExiting = true;
 
@@ -776,7 +916,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
     DeviceStep.assembling => AppColors.yellow,
     DeviceStep.invalidQr ||
     DeviceStep.wrongWorkstation ||
-    DeviceStep.noShow => AppColors.pink,
+    DeviceStep.noShow => AppColors.red,
     DeviceStep.workstationSetup => AppColors.border,
     _ => AppColors.green,
   };
@@ -805,7 +945,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
           workstationNumber: _workstationNumber ?? '--',
           orderId: _order!.orderId,
           onReceived: () {
-            _moveTo(DeviceStep.assembling);
+            _setStep(DeviceStep.assembling, '부품 도착 (stage=received)');
           },
         );
         break;
@@ -815,7 +955,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
           mbti: _order!.mbti,
           colors: _order!.colors,
           onStart: () {
-            _moveTo(DeviceStep.assembling);
+            _setStep(DeviceStep.assembling, '인증 화면에서 조립 시작');
           },
         );
         break;
@@ -833,13 +973,13 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         screen = CompletedScreen(
           mbti: _order!.mbti,
           colors: _order!.colors,
-          onRestart: _reset,
+          onRestart: () => _reset('조립 완료 화면 종료'),
         );
         break;
 
       case DeviceStep.invalidQr:
         screen = InvalidQrScreen(
-          onRetry: _reset,
+          onRetry: () => _reset('QR 오류 화면 종료'),
           onCallStaff: _showStaffDialog,
         );
         break;
@@ -847,7 +987,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
       case DeviceStep.noShow:
         screen = NoShowScreen(
           orderNumber: _orderCallNumber?.toString().padLeft(2, '0'),
-          onAutoReturn: _reset,
+          onAutoReturn: () => _reset('노쇼 화면 종료'),
           onCallStaff: _showStaffDialog,
         );
         break;
@@ -856,7 +996,7 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
         screen = WrongWorkstationScreen(
           currentWorkstation: _workstationNumber ?? '--',
           assignedWorkstation: _assignedWorkstationNumber ?? '--',
-          onAutoReturn: _reset,
+          onAutoReturn: () => _reset('조립대 불일치 화면 종료'),
         );
         break;
     }
@@ -890,14 +1030,15 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
                     right: 24,
                     bottom: 24,
                     child: DemoMenu(
-                      onWaiting: () => _moveTo(DeviceStep.waiting),
-                      onAuthenticated: () => _moveTo(DeviceStep.authenticated),
-                      onAssembling: () => _moveTo(DeviceStep.assembling),
-                      onCompleted: () => _moveTo(DeviceStep.completed),
-                      onInvalidQr: () => _moveTo(DeviceStep.invalidQr),
+                      onWaiting: () => _demoMoveTo(DeviceStep.waiting),
+                      onAuthenticated: () =>
+                          _demoMoveTo(DeviceStep.authenticated),
+                      onAssembling: () => _demoMoveTo(DeviceStep.assembling),
+                      onCompleted: () => _demoMoveTo(DeviceStep.completed),
+                      onInvalidQr: () => _demoMoveTo(DeviceStep.invalidQr),
                       onWrongWorkstation: () =>
-                          _moveTo(DeviceStep.wrongWorkstation),
-                      onNoShow: () => _moveTo(DeviceStep.noShow),
+                          _demoMoveTo(DeviceStep.wrongWorkstation),
+                      onNoShow: () => _demoMoveTo(DeviceStep.noShow),
                     ),
                   ),
                 ],

@@ -17,7 +17,7 @@ class ConveyorBelt extends StatefulWidget {
       AppColors.green,
       AppColors.yellow,
       AppColors.blue,
-      AppColors.pink,
+      AppColors.red,
     ],
   });
 
@@ -278,7 +278,7 @@ class _CapsPainter extends CustomPainter {
 
 /// 글자가 한 글자씩 튀는 문구
 class _BouncingLabel extends StatelessWidget {
-  const _BouncingLabel({super.key, required this.text, required this.t});
+  const _BouncingLabel({required this.text, required this.t});
 
   final String text;
   final double t;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/app_buttons.dart';
+import '../widgets/auto_return_countdown.dart';
 import '../widgets/error_badge.dart';
 import '../widgets/screen_canvas.dart';
 
@@ -19,30 +20,13 @@ class InvalidQrScreen extends StatefulWidget {
   State<InvalidQrScreen> createState() => _InvalidQrScreenState();
 }
 
-class _InvalidQrScreenState extends State<InvalidQrScreen> {
-  int secondsLeft = 7;
+class _InvalidQrScreenState extends State<InvalidQrScreen>
+    with AutoReturnCountdown<InvalidQrScreen> {
+  @override
+  int get countdownSeconds => 7;
 
   @override
-  void initState() {
-    super.initState();
-    _startCountdown();
-  }
-
-  Future<void> _startCountdown() async {
-    while (secondsLeft > 0 && mounted) {
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-
-      setState(() {
-        secondsLeft--;
-      });
-    }
-
-    if (mounted) {
-      widget.onRetry();
-    }
-  }
+  void onCountdownFinished() => widget.onRetry();
 
   @override
   Widget build(BuildContext context) {

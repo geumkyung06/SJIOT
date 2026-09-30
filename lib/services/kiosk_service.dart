@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../debug/app_log.dart';
+
 /// 안드로이드 화면 고정(lock task) 제어.
 ///
 /// 고정 중에는 홈·최근앱 버튼이 동작하지 않아 앱 밖으로 나갈 수 없고,
@@ -21,11 +23,11 @@ class KioskService {
     try {
       final bool? ok = await _channel.invokeMethod<bool>('startLockTask');
 
-      debugPrint('화면 고정 시작: $ok');
+      AppLog.i(LogTag.kiosk, '화면 고정 시작: $ok');
 
       return ok ?? false;
     } catch (e) {
-      debugPrint('화면 고정 실패: $e');
+      AppLog.w(LogTag.kiosk, '화면 고정 실패: $e');
 
       return false;
     }
@@ -38,11 +40,11 @@ class KioskService {
     try {
       final bool? ok = await _channel.invokeMethod<bool>('stopLockTask');
 
-      debugPrint('화면 고정 해제: $ok');
+      AppLog.i(LogTag.kiosk, '화면 고정 해제: $ok');
 
       return ok ?? false;
     } catch (e) {
-      debugPrint('화면 고정 해제 실패: $e');
+      AppLog.w(LogTag.kiosk, '화면 고정 해제 실패: $e');
 
       return false;
     }
@@ -55,7 +57,7 @@ class KioskService {
     try {
       return await _channel.invokeMethod<bool>('isLocked') ?? false;
     } catch (e) {
-      debugPrint('화면 고정 상태 조회 실패: $e');
+      AppLog.w(LogTag.kiosk, '화면 고정 상태 조회 실패: $e');
 
       return false;
     }

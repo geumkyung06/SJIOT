@@ -1,7 +1,14 @@
+/// QR 인증(start 200) 응답으로 받은 주문 정보.
 class OrderInfo {
   final String orderId;
+
+  /// start 응답의 `keycap` (MBTI 4글자)
   final String mbti;
+
+  /// 서버 색상 코드 r · y · b · g
   final List<String> colors;
+
+  /// 이 단말의 조립대 번호 (서버 ③번 검사로 배정 조립대와 같음이 보장됨)
   final int assignedWorkstation;
 
   const OrderInfo({
@@ -10,17 +17,4 @@ class OrderInfo {
     required this.colors,
     required this.assignedWorkstation,
   });
-
-  /// QR 코드의 JSON 데이터를 OrderInfo 객체로 변환
-  factory OrderInfo.fromJson(Map<String, dynamic> json) {
-    return OrderInfo(
-      orderId: json['order_id'] as String,
-      mbti: json['mbti'] as String,
-      colors: List<String>.from(json['colors'] as List),
-      assignedWorkstation: json['assembly_station'] as int,
-    );
-  }
-
-  /// 조립대 번호를 화면에 01, 02, 03 형식으로 표시
-  String get workstationLabel => assignedWorkstation.toString().padLeft(2, '0');
 }
