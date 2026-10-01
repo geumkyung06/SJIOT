@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -109,20 +110,87 @@ class ApiService {
     return body;
   }
 
-  /// GET /order/{order_id}/qr — 주문 상태 페이지 QR 코드 생성.
-  /// [주의] 서버가 QR 이미지(PNG 등)를 응답 바디에 그대로 실어 보내는
-  /// 경우를 기준으로 작성했습니다. 만약 실제로는 JSON
-  /// (예: {"qr_base64": "..."} 또는 {"qr_url": "..."})으로 온다면
-  /// 그 형태를 알려주시면 파싱 방식을 맞춰 수정하겠습니다.
-  Future<Uint8List> getOrderQr(String orderId) async {
+  /// GET /order/{order_id}/qr — 주문 상태 페이지 QR 코드(PNG 이미지) 조회.
+  /// 서버는 PNG 이미지를 응답 바디에 그대로 실어 보냅니다.
+  ///
+  /// [수정] 예전에는 main.dart에서 5초 한 번만 기다리고 끝냈기 때문에,
+  /// 서버가 QR을 만드는 데 조금만 오래 걸려도(Cloud Run 인스턴스가 새로
+  /// 뜨는 경우 등) 영수증에 QR이 빠졌습니다. 이제 아래처럼 재시도합니다.
+  ///   - 한 번 요청에 최대 [perAttemptTimeout]까지 기다림
+  ///   - 타임아웃 / 연결 실패 / 404(주문이 아직 조회되지 않음) / 429 / 5xx 이면
+  ///     잠깐 쉬고 다시 요청 (최대 [maxAttempts]번)
+  ///   - 전체 대기 시간은 [totalBudget]을 넘지 않음 (영수증이 너무 늦게
+  ///     나오지 않도록)
+  ///   - 그 외 응답(400 등)은 다시 요청해도 결과가 같으므로 바로 실패 처리
+  Future<Uint8List> getOrderQr(
+    String orderId, {
+    int maxAttempts = 3,
+    Duration perAttemptTimeout = const Duration(seconds: 7),
+    Duration totalBudget = const Duration(seconds: 15),
+  }) async {
     final client = await _getClient();
-    final res = await client.get(Uri.parse('$baseUrl/order/$orderId/qr'));
+    final uri = Uri.parse('$baseUrl/order/$orderId/qr');
+    final stopwatch = Stopwatch()..start();
+    Object? lastError;
 
-    if (res.statusCode != 200) {
-      throw Exception('QR 코드 조회 실패 (${res.statusCode})');
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      final remaining = totalBudget - stopwatch.elapsed;
+      if (remaining <= Duration.zero) break;
+      final timeout =
+          remaining < perAttemptTimeout ? remaining : perAttemptTimeout;
+
+      try {
+        final res = await client.get(uri).timeout(timeout);
+
+        if (res.statusCode == 200) {
+          final bytes = res.bodyBytes;
+          // 200인데 PNG가 아닌 내용(에러 페이지 등)이 오면 PDF 생성 자체가
+          // 실패해서 영수증이 통째로 안 나오므로, 여기서 미리 걸러냅니다.
+          if (!_isPng(bytes)) {
+            throw Exception(
+              'QR 응답이 PNG 이미지가 아닙니다 '
+              '(${bytes.length} bytes, content-type: ${res.headers['content-type']})',
+            );
+          }
+          print('>>> [QR] 조회 성공 — $attempt번째 시도, '
+              '${stopwatch.elapsedMilliseconds}ms, ${bytes.length} bytes');
+          return bytes;
+        }
+
+        final retryable = res.statusCode == 404 ||
+            res.statusCode == 429 ||
+            res.statusCode >= 500;
+        lastError = Exception('QR 코드 조회 실패 (${res.statusCode})');
+        print('>>> [QR] 응답 ${res.statusCode} — $attempt/$maxAttempts번째 시도');
+        if (!retryable) break;
+      } on TimeoutException {
+        lastError = TimeoutException(
+          'QR 응답 없음 (${timeout.inMilliseconds}ms 초과)',
+        );
+        print('>>> [QR] 응답 없음(타임아웃) — $attempt/$maxAttempts번째 시도');
+      } on http.ClientException catch (e) {
+        lastError = e;
+        print('>>> [QR] 네트워크 연결 실패 — $attempt/$maxAttempts번째 시도: $e');
+      }
+
+      // 다음 시도 전 잠깐 대기 (1초, 2초 ...)
+      if (attempt < maxAttempts) {
+        final wait = Duration(seconds: attempt);
+        if (stopwatch.elapsed + wait >= totalBudget) break;
+        await Future.delayed(wait);
+      }
     }
 
-    return res.bodyBytes;
+    throw lastError ?? TimeoutException('QR 조회 시간 초과');
+  }
+
+  static bool _isPng(Uint8List bytes) {
+    const signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    if (bytes.length < signature.length) return false;
+    for (var i = 0; i < signature.length; i++) {
+      if (bytes[i] != signature[i]) return false;
+    }
+    return true;
   }
 
   /// GET /queue/status — 대기열 현황 조회.

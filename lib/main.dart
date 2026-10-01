@@ -1323,31 +1323,38 @@ class _AppRootState extends State<AppRoot> {
         // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
         // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
         final orderId = _orderId;
+
+        // [수정] QR을 기다리는 동안(최대 15초) 화면이 8초 뒤 처음으로 돌아가면
+        // 주문번호/MBTI 등 영수증 값이 초기화됩니다. 그래서 출력할 내용을
+        // 지금 시점에 미리 고정해 두고, QR이 오면 그 내용으로 출력합니다.
+        final receipt = _captureReceipt();
         Uint8List? qrBytes;
 
         if (orderId != null) {
+          final qrWatch = Stopwatch()..start();
           try {
-            // QR 서버가 응답하지 않아도 영수증 출력이 무한정 밀리지 않도록
-            // 5초까지만 기다립니다. (화면은 8초 뒤 자동으로 처음으로 돌아갑니다)
-            qrBytes = await _api
-                .getOrderQr(orderId)
-                .timeout(const Duration(seconds: 5));
+            // [수정] 예전에는 5초 한 번만 기다려서, 서버가 조금만 늦어도 QR이
+            // 빠졌습니다. 이제 getOrderQr 안에서 타임아웃/404/5xx 시 재시도하고
+            // 전체 최대 15초까지 기다립니다. (api_service.dart 참고)
+            qrBytes = await _api.getOrderQr(orderId);
 
             // 화면에 사용할 QR 저장
-            if (mounted) {
+            // 그 사이 처음 화면으로 돌아갔거나 다음 손님 주문이 시작됐으면
+            // (= _orderId가 바뀌었으면) 이전 손님 QR을 화면에 넣지 않습니다.
+            if (mounted && _orderId == orderId) {
               setState(() {
                 _receiptQrBytes = qrBytes;
               });
             }
           } catch (e) {
-            print('>>> QR 조회 실패: $e');
+            print('>>> QR 조회 실패 (${qrWatch.elapsedMilliseconds}ms): $e');
           }
         }
 
         // [수정] 영수증 화면이 뜨면 QR 조회가 성공했는지와 상관없이 영수증을
         // 출력합니다. QR이 없으면 프린터 서비스가 "QR 정보를 불러오지
         // 못했습니다." 문구를 대신 찍습니다.
-        await _printReceipt(qrBytes: qrBytes);
+        await _printReceipt(qrBytes: qrBytes, receipt: receipt);
 
         return; // 성공했으므로 재시도 루프 종료
       } on TimeoutException {
@@ -1487,23 +1494,39 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
+  // [신규] 지금 화면에 있는 영수증 내용을 그대로 복사해 둡니다.
+  _ReceiptSnapshot _captureReceipt() {
+    return _ReceiptSnapshot(
+      orderNumber: _receiptOrderNumber ?? '-',
+      time: _receiptTime ?? _formatNowHHmm(),
+      mbti: _mbtiResult ?? '----',
+      keycapLabels: List.generate(
+        _boardCount,
+        (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
+      ),
+    );
+  }
+
   // [영수증 출력] 영수증 화면이 뜬 직후에 호출됩니다.
   // qrBytes가 null이어도 출력합니다. 출력이 실패해도 화면 진행에는 영향이 없고
   // 콘솔(그리고 kShowPrintDebugOverlay가 켜져 있으면 화면 우측 상단)에
   // 실패 이유가 남습니다.
-  Future<void> _printReceipt({Uint8List? qrBytes}) async {
+  // [수정] receipt를 넘기면 그 내용으로 출력합니다(QR을 기다리는 사이 화면이
+  // 초기화돼도 원래 손님 내용이 찍히도록). 안 넘기면 지금 화면 값으로 출력합니다.
+  Future<void> _printReceipt({
+    Uint8List? qrBytes,
+    _ReceiptSnapshot? receipt,
+  }) async {
+    final data = receipt ?? _captureReceipt();
     final job = ++_printJobSeq;
     _setPrintDebug(job, '출력 중...', null);
 
     try {
       await ReceiptPrinterService.printReceipt(
-        orderNumber: _receiptOrderNumber ?? '-',
-        time: _receiptTime ?? _formatNowHHmm(),
-        mbti: _mbtiResult ?? '----',
-        keycapLabels: List.generate(
-          _boardCount,
-          (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
-        ),
+        orderNumber: data.orderNumber,
+        time: data.time,
+        mbti: data.mbti,
+        keycapLabels: data.keycapLabels,
         qrBytes: qrBytes,
       );
 
@@ -1512,7 +1535,7 @@ class _AppRootState extends State<AppRoot> {
       final detail = ReceiptPrinterService.lastPrintInfo;
       _setPrintDebug(
         job,
-        '출력 요청 성공\n'
+        '출력 요청 성공 (QR ${qrBytes != null ? '포함' : '없음'})\n'
         '${detail != null ? '$detail\n' : ''}'
         '프린터에서 용지가 나오는지 확인하세요',
         true,
@@ -2445,4 +2468,19 @@ class _OfflineModeBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// [신규] 영수증에 찍을 내용을 한 시점에 고정해 둔 값.
+class _ReceiptSnapshot {
+  final String orderNumber;
+  final String time;
+  final String mbti;
+  final List<String> keycapLabels;
+
+  const _ReceiptSnapshot({
+    required this.orderNumber,
+    required this.time,
+    required this.mbti,
+    required this.keycapLabels,
+  });
 }

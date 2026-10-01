@@ -1,23 +1,54 @@
 name: Build Windows EXE
 
+# 키오스크(Flutter) Windows 실행 파일을 빌드해서 Actions 아티팩트로 올립니다.
+# - 아래 브랜치에 Flutter 관련 파일이 바뀐 커밋을 push하면 자동 실행
+# - Actions 탭 > Build Windows EXE > "Run workflow" 로 수동 실행
+#   (수동 실행 버튼은 이 파일이 기본 브랜치(main)에도 있어야 보입니다)
+# - v로 시작하는 태그(예: v1.0.0)를 push하면 GitHub Release에 zip도 첨부
 on:
   workflow_dispatch:
   push:
     branches:
+      - awj
       - front_kiosk
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'windows/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/build-windows.yml'
+
+# 같은 브랜치에 연달아 push하면 이전 빌드는 취소하고 최신 것만 빌드
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # 태그 빌드 때 Release 생성용
 
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 로컬 개발 환경과 같은 Flutter 버전으로 고정 (pubspec.lock 요구: >=3.41.0)
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.44.8
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
 
       - name: Get dependencies
         run: flutter pub get
@@ -25,8 +56,29 @@ jobs:
       - name: Build Windows Release
         run: flutter build windows --release
 
-      - name: Upload Windows build
+      - name: Artifact name
+        id: meta
+        shell: pwsh
+        run: |
+          $short = "${{ github.sha }}".Substring(0, 7)
+          "name=SJIOT-kiosk-windows-${{ github.ref_name }}-$short" >> $env:GITHUB_OUTPUT
+
+      # Release 폴더 전체(exe + dll + data 폴더)가 있어야 실행되므로 통째로 올립니다.
+      # 다운로드하면 zip 하나로 받아집니다.
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-release
+          name: ${{ steps.meta.outputs.name }}
           path: build/windows/x64/runner/Release/
+          retention-days: 14
+
+      - name: Zip for Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "${{ steps.meta.outputs.name }}.zip"
+
+      - name: Attach to GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.meta.outputs.name }}.zip
