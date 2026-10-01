@@ -9,6 +9,13 @@ AGV_KEY = os.getenv("AGV_KEY", "agv:occupancy")
 # occupancy(idle/busy)만으로는 'AGV가 지금 어디서 뭘 하는 중인지'를 알 수 없어서
 # 워치독이 정상 대기와 고장을 구분하지 못한다.
 AGV_STATUS_KEY = os.getenv("AGV_STATUS_KEY", "agv:status")
+AGV_COORD_KEY = os.getenv("AGV_COORD_KEY", "agv:coord")
+# 대시보드 AGV 이동경로 (services/agv_trail.py).
+# agv:coord 는 마지막 점(JSON), agv:trail 은 현재 구간의 점 목록, agv:leg 는 구간 번호.
+# agv:coord:seq 는 점마다 오르는 순번 — 대시보드가 ?since= 로 새 점만 받아 간다.
+AGV_TRAIL_KEY = os.getenv("AGV_TRAIL_KEY", "agv:trail")
+AGV_SEQ_KEY = os.getenv("AGV_SEQ_KEY", "agv:coord:seq")
+AGV_LEG_KEY = os.getenv("AGV_LEG_KEY", "agv:leg")
 DEADLINE_KEY = os.getenv("DEADLINE_KEY", "order:deadlines")
 
 WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")

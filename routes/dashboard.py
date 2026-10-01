@@ -1,9 +1,10 @@
 import json
-from flask import Blueprint, jsonify
+from flask import Blueprint, request, jsonify
 
 from infra.logger import logger
 from infra.extensions import r
 from services.dashboard import today_key, get_exhibition_dates, get_completed_archive_orders
+from services import agv_trail
 
 bp = Blueprint("dashboard",__name__, url_prefix="/dashboard")
 
@@ -450,4 +451,81 @@ def get_dashboard_station():
         return jsonify({
             "success": False,
             "error": "조립대 정보를 조회하지 못했습니다."
+        }), 400
+
+@bp.route("/mark/movement", methods=["GET"])
+def get_dashboard_agv_coord():
+    """
+    AGV 이동경로 조회
+    ---
+    tags:
+      - Dashboard
+    summary: AGV 현재 위치와 새로 생긴 좌표 조회
+    description: |
+      콜백(cnt_agv)이 쌓은 좌표 중 since 이후의 점만 반환합니다.
+      프론트는 받은 점을 ts 기준으로 폴링 주기만큼 늦춰 재생하면 끊기지 않습니다.
+
+      구간은 장소 도착(agv:status 기준)에서 끊깁니다.
+      - arrived → checkpoint "station:{id}"
+      - parked → "parking"
+      - discarded → "discard"
+
+      프론트 규칙
+      - resync=true → 그린 경로를 지우고 points 로 다시 그림
+      - leg 가 바뀐 점이 오면 → 경로를 지우고 직전 도착점에서 새로 그림
+      - checkpoint 가 붙은 점까지 재생하면 거기서 멈춤
+      - current 가 null → 위치 모름(AGV 초기화 직후 등) → 마커 숨김
+    parameters:
+      - name: since
+        in: query
+        type: integer
+        required: false
+        default: 0
+        description: 마지막으로 받은 점의 seq. 첫 로드는 0
+    responses:
+      200:
+        description: 조회 성공
+        examples:
+          application/json:
+            success: true
+            resync: false
+            current: {seq: 13, leg: 3, coord: [1, 4], ts: 1759280001500, checkpoint: null}
+            points:
+              - {seq: 12, leg: 3, coord: [1, 3], ts: 1759280000000, checkpoint: null}
+              - {seq: 13, leg: 3, coord: [1, 4], ts: 1759280001500, checkpoint: null}
+      400:
+        description: 조회 실패
+    """
+    try:
+        since = request.args.get("since", default=0, type=int) or 0
+        points = agv_trail.trail()
+        current = agv_trail.current()
+        latest = points[-1]["seq"] if points else 0
+
+        # 첫 로드 · Redis 초기화(since 가 최신보다 큼) · 오래 비운 탭(목록 밖으로 밀려남)
+        resync = since <= 0 or since > latest or points[0]["seq"] > since + 1
+
+        if resync:
+            if not current:
+                new_points = []                  # 위치 모름 -> 마커 숨김
+            elif current.get("checkpoint"):
+                new_points = [current]           # 장소에 서 있음 -> 점 하나
+            else:
+                new_points = points              # agv:trail 엔 현재 구간(+출발점)만 있다
+        else:
+            new_points = [p for p in points if p["seq"] > since]
+
+        return jsonify({
+            "success": True,
+            "current": current,
+            "points": new_points,
+            "resync": resync,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"[dashboard/mark/movement ERROR] {e}")
+
+        return jsonify({
+            "success": False,
+            "error": "AGV 위치를 조회하지 못했습니다."
         }), 400

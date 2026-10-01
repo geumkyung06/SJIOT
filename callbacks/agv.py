@@ -5,7 +5,7 @@ from config import AGV_KEY, AGV_STATUS_KEY, STATION_ORDER_PREFIX, KST
 from infra.extensions import r
 from infra.logger import logger
 
-from services import watchdog
+from services import agv_trail, watchdog
 from services.process import set_stage, set_fault, is_at_or_past
 
 # status → (전이할 stage, 필요한 직전 stage)
@@ -79,9 +79,17 @@ def _current_order(con, status=None):
 
 
 def on_agv(con):
+    coord = list(con.get("coord") or [])
     status = str(con.get("status") or "")
 
-    # 올라온 status 를 그대로 보관한다. 진단·로그용이다.
+    # 대시보드 이동경로. parked·discarded 의 조기 return 보다 위에 둔다 — 그 둘도 구간 끝이다.
+    # 궤적 쪽 오류가 아래 stage 전이를 막으면 안 된다 (예전에 list 를 r.set 해서
+    # DataError 로 loaded·arrived 처리가 통째로 죽었다).
+    try:
+        agv_trail.record(coord, status, con.get("station_id"))
+    except Exception as e:
+        logger.error(f"[agv] 궤적 기록 실패 (전이는 계속) con={con} err={e}")
+
     if status:
         r.set(AGV_STATUS_KEY, status)
 
