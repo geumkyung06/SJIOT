@@ -6,16 +6,8 @@ import qrcode
 from flask import Blueprint, jsonify, request, send_file
 
 from config import (QUEUE_KEY,
-                    WAREHOUSE_KEY,
-                    STATION_KEY,
-                    AGV_KEY,
-                    WAREHOUSE_ORDER_KEY,
-                    STATION_ORDER_PREFIX,
                     MAX_QUEUE_LEN,
-                    STATION_VERIFIED_PREFIX,
                     ORDER_PAGE_BASE,
-                    ORDER_TTL,
-                    STATION_RESET_PASSWORD,
                     COLOR_LIST,
                     BOARD_LIST,
                     KST,
@@ -31,7 +23,7 @@ from infra.keys import (_order_counter_key,
 
 from services.order_service import _is_valid_mbti
 from services.dispatch import try_assign_next
-from services.process import is_at_or_past
+from services.line import require_open, is_open as line_is_open
 
 bp = Blueprint('order', __name__)
 
@@ -57,6 +49,10 @@ def queue_status():
             full:
               type: boolean
               example: false
+            open:
+              type: boolean
+              description: 주문 접수 중인지. false 면 마감 — POST /order 가 503 을 준다
+              example: true
             orders:
               type: array
               description: 대기 중인 주문 목록 (앞이 먼저 배정될 순서)
@@ -92,10 +88,12 @@ def queue_status():
         'queue_length': len(queue),
         'max_queue_len': MAX_QUEUE_LEN,
         'full': len(queue) >= MAX_QUEUE_LEN,
+        'open': line_is_open(),
         'orders': orders,
     })
 
 @bp.route('/order', methods=['POST'])
+@require_open
 def post_order_list():
     """
     키캡 주문 생성
@@ -127,6 +125,8 @@ def post_order_list():
         description: 요청 값 오류
       409:
         description: 대기열 초과 (재시도 필요)
+      503:
+        description: 주문 접수 마감 (영업 상태 closed). 응답 body 에 "line" = "closed"
     """
     idem_key = request.headers.get("Idempotency-Key")
 

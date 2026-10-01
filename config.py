@@ -18,6 +18,11 @@ AGV_SEQ_KEY = os.getenv("AGV_SEQ_KEY", "agv:coord:seq")
 AGV_LEG_KEY = os.getenv("AGV_LEG_KEY", "agv:leg")
 DEADLINE_KEY = os.getenv("DEADLINE_KEY", "order:deadlines")
 
+# 영업 상태 (services/line.py). open 일 때만 POST /order 를 받는다 — 다른 API 는 막지 않는다.
+# 키가 없으면 closed 로 본다. 리셋 직후·Redis 유실 뒤 아무도 확인 안 한 상태로 주문이 들어오지 않게.
+LINE_STATUS_KEY = os.getenv("LINE_STATUS_KEY", "line:status")
+LINE_CHANGED_AT_KEY = os.getenv("LINE_CHANGED_AT_KEY", "line:changed_at")
+
 WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")
 
 # 키캡 드라이버(선반) 고장. 선반 하나가 죽으면 그 축 8칸(2글자 × 4색)을 전부 못 쓴다.
