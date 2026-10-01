@@ -3,8 +3,9 @@ import '../theme/app_theme.dart';
 
 /// STEP 00 — 시작 화면(인트로)
 ///
-/// 피그마(Figma Make) `IntroScreen`의 모션을 1:1로 이식합니다.
-/// (참고: src/app/App.tsx > function IntroScreen())
+/// [디자인 교체] "딸깍 Keyring Studio" 시안 톤으로 다시 칠했습니다.
+/// 애니메이션 타임라인(딜레이·지속시간·이동 픽셀)과 동작은 이전과 100% 동일하고,
+/// 색·글꼴 크기·모양(둥근 모서리, 입체 키캡, 하드 섀도 버튼)만 바뀌었습니다.
 ///
 /// 구현 방식(중요, v2):
 /// 이전 버전은 Timer.delayed로 각 요소의 `visible` bool을 따로 켜고
@@ -21,14 +22,25 @@ import '../theme/app_theme.dart';
 ///
 /// 피그마 delay/duration 매핑 (모두 opacity 0→1과 함께):
 ///   로고 타일 0~3 : delay 60/130/200/270ms, y −20px→0,  duration 300ms
-///   타이틀(딸깍)   : delay 180ms,            y  16px→0,  duration 300ms
 ///   서브타이틀     : delay 260ms,            (이동 없음), duration 300ms
 ///   구분선(scaleX) : delay 320ms,            scaleX 0→1, duration 400ms
 ///   본문 문구      : delay 380ms,            (이동 없음), duration 300ms
 ///   ENTER 배지 그룹: delay 460ms,            y   8px→0,  duration 300ms
 ///                    (배지 자체의 무한 펄스는 별도 컨트롤러로 계속 유지)
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onEnter; // 터치 지원: ENTER 배지를 탭해도 시작되도록
+  final bool enabled; // 재고 조회 중일 때는 탭을 막기 위함
+  // [신규] 대기열이 가득 찼는지. true면 시작하기 버튼을 흐리게 만들고
+  // 펄스(깜빡임)를 멈춘 뒤 안내 문구를 띄웁니다. (main.dart가 GET
+  // /queue/status 의 full 값을 1초마다 조회해서 내려줍니다)
+  final bool queueFull;
+
+  const HomeScreen({
+    super.key,
+    this.onEnter,
+    this.enabled = true,
+    this.queueFull = false,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -42,9 +54,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // 각 요소의 opacity / 이동(px) 애니메이션
   late final List<Animation<double>> _tileOpacity;
   late final List<Animation<double>> _tileY;
-
-  late final Animation<double> _titleOpacity;
-  late final Animation<double> _titleY;
 
   late final Animation<double> _subtitleOpacity;
 
@@ -106,10 +115,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       slideY(270, 570, -20),
     ];
 
-    // 타이틀 "딸깍": delay .18 / duration 300ms / y 16px→0
-    _titleOpacity = fadeIn(180, 480);
-    _titleY = slideY(180, 480, 16);
-
     // 서브타이틀: delay .26 / duration 300ms / 이동 없음(opacity만)
     _subtitleOpacity = fadeIn(260, 560);
 
@@ -149,6 +154,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // [신규] 시작하기 버튼 본체. 평소(펄스)와 대기열 가득(흐림) 두 경우에서
+  // 같은 모양을 써야 해서 따로 뺐습니다. enabled가 false면 눌리지 않습니다.
+  Widget _enterButton() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.enabled ? widget.onEnter : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 76,
+          vertical: 28,
+        ),
+        decoration: AppDeco.pushButton(),
+        child: const Text(
+          '시작하기',
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            color: AppColors.ink,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -160,86 +189,106 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _FadeSlide(
               opacity: _tileOpacity[0],
               y: _tileY[0],
-              child: const _LogoTile(color: AppColors.coral, label: '딸'),
+              child: const _LogoTile(color: KeycapColors.green, label: 'K'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[1],
               y: _tileY[1],
-              child: const _LogoTile(color: AppColors.orange, label: '깍'),
+              child: const _LogoTile(color: KeycapColors.yellow, label: 'E'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[2],
               y: _tileY[2],
-              child: const _LogoTile(color: AppColors.yellow, label: 'KEY'),
+              child: const _LogoTile(color: KeycapColors.blue, label: 'Y'),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 20),
             _FadeSlide(
               opacity: _tileOpacity[3],
               y: _tileY[3],
-              child: const _LogoTile(color: AppColors.green, icon: Icons.auto_awesome),
+              child: const _LogoTile(
+                color: KeycapColors.red,
+                icon: Icons.auto_awesome,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 32),
-        _FadeSlide(
-          opacity: _titleOpacity,
-          y: _titleY,
-          child: const Text(
-            '딸깍',
-            style: TextStyle(fontSize: 88, fontWeight: FontWeight.w900, color: AppColors.ink),
-          ),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 44),
         AnimatedBuilder(
           animation: _subtitleOpacity,
-          builder: (context, child) => Opacity(opacity: _subtitleOpacity.value, child: child),
+          builder: (context, child) =>
+              Opacity(opacity: _subtitleOpacity.value, child: child),
           child: const Text(
             'CLICKY KEYRING STUDIO',
-            style: TextStyle(fontSize: 18, letterSpacing: 6, color: AppColors.muted, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 24,
+              letterSpacing: 9,
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 22),
         AnimatedBuilder(
           animation: _dividerScaleX,
           builder: (context, child) => Transform.scale(
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.center,
             scaleX: _dividerScaleX.value,
             child: child,
           ),
-          child: Container(width: 260, height: 2, color: AppColors.ink),
+          child: Container(
+            width: 360,
+            height: 3,
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 34),
         AnimatedBuilder(
           animation: _bodyOpacity,
-          builder: (context, child) => Opacity(opacity: _bodyOpacity.value, child: child),
-          child: const Text('나만의 MBTI 키링을 만들어 보세요', style: AppTextStyles.body),
+          builder: (context, child) =>
+              Opacity(opacity: _bodyOpacity.value, child: child),
+          child: const Text(
+            '나만의 MBTI 키링을 만들어 보세요',
+            style: AppTextStyles.body,
+          ),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 54),
         _FadeSlide(
           opacity: _enterOpacity,
           y: _enterY,
-          child: AnimatedBuilder(
-            animation: _pulseOpacity,
-            builder: (context, child) => Opacity(opacity: _pulseOpacity.value, child: child),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: AppColors.muted,
-                    child: const Text('ENTER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 16),
-                  const Text('시작하기', style: TextStyle(fontSize: 18)),
-                ],
-              ),
-            ),
-          ),
+          // [수정] 대기열이 가득 찬 동안에는 펄스를 멈추고 버튼을 흐리게 만든 뒤
+          // 아래에 안내 문구를 붙입니다. (탭/Enter는 이미 막혀 있습니다)
+          child: widget.queueFull
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Opacity(opacity: 0.35, child: _enterButton()),
+                    const SizedBox(height: 28),
+                    const Text(
+                      '지금은 대기열이 가득 찼습니다',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '앞 손님 제작이 끝나면 자동으로 다시 시작할 수 있습니다',
+                      style: AppTextStyles.body,
+                    ),
+                  ],
+                )
+              : AnimatedBuilder(
+                  animation: _pulseOpacity,
+                  builder: (context, child) =>
+                      Opacity(opacity: _pulseOpacity.value, child: child),
+                  child: _enterButton(),
+                ),
         ),
       ],
     );
@@ -279,6 +328,7 @@ class _FadeSlide extends StatelessWidget {
   }
 }
 
+/// [디자인] 시안의 입체 키캡을 그대로 쓴 로고 타일.
 class _LogoTile extends StatelessWidget {
   final Color color;
   final String? label;
@@ -287,14 +337,32 @@ class _LogoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 84,
-      height: 84,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: color, border: Border.all(color: AppColors.ink, width: 2)),
-      child: icon != null
-          ? Icon(icon, color: Colors.white, size: 26)
-          : Text(label ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20)),
+    if (icon != null) {
+      return SizedBox(
+        width: 116,
+        height: 130,
+        child: Stack(
+          children: [
+            Keycap(
+              color: color,
+              letter: '',
+              width: 116,
+              height: 130,
+            ),
+            Center(
+              child: Icon(icon, color: AppColors.ink, size: 40),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Keycap(
+      color: color,
+      letter: label ?? '',
+      width: 116,
+      height: 130,
+      fontSize: label != null && label!.length > 1 ? 26 : 40,
     );
   }
 }

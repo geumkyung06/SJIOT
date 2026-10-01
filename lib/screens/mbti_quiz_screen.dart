@@ -2,12 +2,19 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// STEP 02A — MBTI 퀴즈
-/// 피그마 `App.tsx > MbtiQuizScreen` 모션 1:1 이식.
+/// [디자인 교체] 시안 톤(흰 카드 · 연한 테두리 보기 · 잉크 번호 뱃지).
+/// 문항/선택 처리 동작과 애니메이션 타이밍은 이전과 동일합니다.
 class MbtiQuizScreen extends StatefulWidget {
   final int questionIndex; // 0~3
   final int totalQuestions;
   final String question;
   final List<String> optionTexts; // 4개
+  // [신규] 각 보기가 가리키는 글자(E/I/N/S/F/T/J/P)의 모든 색상이 품절이면
+  // true. mbti_manual_screen.dart에는 있었는데 이 화면엔 빠져있던 것을
+  // 추가함 — 안 그러면 관람객이 품절된 보기를 눌러도 왜 안 되는지
+  // 알 방법이 없었음.
+  final List<bool> optionSoldOut; // 4개
+  final void Function(int digit)? onSelect; // 터치 지원: 1~4번 보기 선택
 
   const MbtiQuizScreen({
     super.key,
@@ -15,6 +22,8 @@ class MbtiQuizScreen extends StatefulWidget {
     required this.totalQuestions,
     required this.question,
     required this.optionTexts,
+    this.optionSoldOut = const [false, false, false, false],
+    this.onSelect,
   });
 
   @override
@@ -85,54 +94,70 @@ class _MbtiQuizScreenState extends State<MbtiQuizScreen> with TickerProviderStat
             style: AppTextStyles.label,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
         _FadeSlideY(
           opacity: _titleOpacity,
           y: _titleY,
           child: SizedBox(
-            width: 560,
+            width: 1040,
             child: Text(widget.question, textAlign: TextAlign.center, style: AppTextStyles.heading),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         _Fade(
           opacity: _subtitleOpacity,
           child: const Text('숫자 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 40),
         Column(
           children: List.generate(widget.optionTexts.length, (i) {
+            final soldOut = i < widget.optionSoldOut.length && widget.optionSoldOut[i];
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: 8),
               child: _FadeSlideX(
                 opacity: _optOpacity[i],
                 x: _optX[i],
-                child: Container(
-                  width: 560,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        alignment: Alignment.center,
-                        color: AppColors.ink,
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: (widget.onSelect == null || soldOut) ? null : () => widget.onSelect!(i + 1),
+                  child: Container(
+                    width: 1000,
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 22),
+                    decoration: AppDeco.outlined(
+                      radius: 20,
+                      borderColor: soldOut ? AppColors.disabledLine : AppColors.border,
+                      fill: soldOut ? AppColors.disabledBg : AppColors.surface,
+                    ),
+                    child: Row(
+                      children: [
+                        KeyNumBadge(
+                          label: '${i + 1}',
+                          filled: !soldOut,
+                          disabled: soldOut,
+                          size: 50,
+                          fontSize: 24,
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(child: Text(widget.optionTexts[i], style: AppTextStyles.body)),
-                    ],
+                        const SizedBox(width: 28),
+                        Expanded(
+                          child: Text(
+                            widget.optionTexts[i],
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w500,
+                              color: soldOut ? AppColors.disabledText : AppColors.ink,
+                            ),
+                          ),
+                        ),
+                        if (soldOut) const SoldOutPill(),
+                      ],
+                    ),
                   ),
                 ),
               ),
             );
           }),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 30),
         _ProgressDots(total: widget.totalQuestions, current: widget.questionIndex),
       ],
     );
@@ -192,6 +217,7 @@ class _FadeSlideX extends StatelessWidget {
   }
 }
 
+/// [디자인] 시안의 사각 점 인디케이터 (9x9 · radius 2 → 캔버스 배율 적용)
 class _ProgressDots extends StatefulWidget {
   final int total;
   final int current;
@@ -240,12 +266,15 @@ class _ProgressDotsState extends State<_ProgressDots> with SingleTickerProviderS
           children: List.generate(widget.total, (i) {
             final isCurrent = i == widget.current;
             return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: 14,
-              height: 14,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              width: 18,
+              height: 18,
               transform: isCurrent ? (Matrix4.identity()..scale(_pulseScale.value)) : Matrix4.identity(),
               transformAlignment: Alignment.center,
-              color: i <= widget.current ? AppColors.green : AppColors.tileEmpty,
+              decoration: BoxDecoration(
+                color: i <= widget.current ? AppColors.accent : AppColors.border,
+                borderRadius: BorderRadius.circular(5),
+              ),
             );
           }),
         );

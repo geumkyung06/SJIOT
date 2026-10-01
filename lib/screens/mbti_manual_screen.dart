@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// STEP 02B — MBTI 직접 입력
-/// 피그마 `App.tsx > MbtiDirectScreen` 모션 1:1 이식.
+/// [디자인 교체] 시안 톤(둥근 잉크 테두리 알파벳 버튼 · 사각 점 인디케이터).
+/// 선택 처리 동작과 애니메이션 타이밍은 이전과 동일합니다.
 class MbtiManualScreen extends StatefulWidget {
   final int questionIndex; // 0~3
   final int totalQuestions;
   final String letterA;
   final String letterB;
+
+  final bool letterASoldOut;
+  final bool letterBSoldOut;
+  final void Function(String letter)? onSelect; // 터치 지원: A/B 배지를 탭
 
   const MbtiManualScreen({
     super.key,
@@ -15,13 +20,17 @@ class MbtiManualScreen extends StatefulWidget {
     required this.totalQuestions,
     required this.letterA,
     required this.letterB,
+    required this.letterASoldOut,
+    required this.letterBSoldOut,
+    this.onSelect,
   });
 
   @override
   State<MbtiManualScreen> createState() => _MbtiManualScreenState();
 }
 
-class _MbtiManualScreenState extends State<MbtiManualScreen> with TickerProviderStateMixin {
+class _MbtiManualScreenState extends State<MbtiManualScreen>
+    with TickerProviderStateMixin {
   static const int _durationMs = 700;
 
   late final AnimationController _controller;
@@ -36,17 +45,36 @@ class _MbtiManualScreenState extends State<MbtiManualScreen> with TickerProvider
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: _durationMs));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: _durationMs),
+    );
 
     Animation<double> fadeIn(double s, double e) => CurvedAnimation(
-          parent: _controller,
-          curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut),
+      parent: _controller,
+      curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut),
+    );
+    Animation<double> slideY(double s, double e, double from) =>
+        Tween<double>(begin: from, end: 0).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Interval(
+              s / _durationMs,
+              e / _durationMs,
+              curve: Curves.easeOut,
+            ),
+          ),
         );
-    Animation<double> slideY(double s, double e, double from) => Tween<double>(begin: from, end: 0).animate(
-          CurvedAnimation(parent: _controller, curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOut)),
-        );
-    Animation<double> springScale(double s, double e, double from) => Tween<double>(begin: from, end: 1.0).animate(
-          CurvedAnimation(parent: _controller, curve: Interval(s / _durationMs, e / _durationMs, curve: Curves.easeOutBack)),
+    Animation<double> springScale(double s, double e, double from) =>
+        Tween<double>(begin: from, end: 1.0).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Interval(
+              s / _durationMs,
+              e / _durationMs,
+              curve: Curves.easeOutBack,
+            ),
+          ),
         );
 
     _labelOpacity = fadeIn(40, 340);
@@ -88,48 +116,92 @@ class _MbtiManualScreenState extends State<MbtiManualScreen> with TickerProvider
             style: AppTextStyles.label,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _FadeSlideY(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('MBTI를 직접 입력하세요', style: AppTextStyles.heading),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드에서 해당하는 알파벳을 눌러주세요', style: AppTextStyles.body),
+          child: const Text('해당하는 알파벳을 눌러주세요', style: AppTextStyles.body),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 76),
         Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _FadeScale(
               opacity: _badgeOpacity[0],
               scale: _badgeScale[0],
-              child: Row(
-                children: [
-                  _LetterBadge(letter: widget.letterA),
-                  const SizedBox(width: 20),
-                  const Text('입니까?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-                ],
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (widget.onSelect == null || widget.letterASoldOut)
+                    ? null
+                    : () => widget.onSelect!(widget.letterA),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _LetterBadge(
+                      letter: widget.letterA,
+                      soldOut: widget.letterASoldOut,
+                    ),
+                    const SizedBox(width: 26),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 54),
+                      child: Text(
+                        '입니까?',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 40),
+            const SizedBox(width: 110),
             _FadeScale(
               opacity: _badgeOpacity[1],
               scale: _badgeScale[1],
-              child: Row(
-                children: [
-                  _LetterBadge(letter: widget.letterB),
-                  const SizedBox(width: 20),
-                  const Text('입니까?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-                ],
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (widget.onSelect == null || widget.letterBSoldOut)
+                    ? null
+                    : () => widget.onSelect!(widget.letterB),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _LetterBadge(
+                      letter: widget.letterB,
+                      soldOut: widget.letterBSoldOut,
+                    ),
+                    const SizedBox(width: 26),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 54),
+                      child: Text(
+                        '입니까?',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 40),
-        _ProgressDots(total: widget.totalQuestions, current: widget.questionIndex),
+        const SizedBox(height: 56),
+        _ProgressDots(
+          total: widget.totalQuestions,
+          current: widget.questionIndex,
+        ),
       ],
     );
   }
@@ -144,7 +216,8 @@ class _Fade extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: opacity,
-      builder: (context, child) => Opacity(opacity: opacity.value.clamp(0.0, 1.0), child: child),
+      builder: (context, child) =>
+          Opacity(opacity: opacity.value.clamp(0.0, 1.0), child: child),
       child: child,
     );
   }
@@ -154,7 +227,11 @@ class _FadeSlideY extends StatelessWidget {
   final Animation<double> opacity;
   final Animation<double> y;
   final Widget child;
-  const _FadeSlideY({required this.opacity, required this.y, required this.child});
+  const _FadeSlideY({
+    required this.opacity,
+    required this.y,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +250,11 @@ class _FadeScale extends StatelessWidget {
   final Animation<double> opacity;
   final Animation<double> scale;
   final Widget child;
-  const _FadeScale({required this.opacity, required this.scale, required this.child});
+  const _FadeScale({
+    required this.opacity,
+    required this.scale,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -188,22 +269,48 @@ class _FadeScale extends StatelessWidget {
   }
 }
 
+/// [디자인] 시안의 알파벳 버튼 — 흰 배경 + 잉크 테두리 + 둥근 모서리
 class _LetterBadge extends StatelessWidget {
   final String letter;
-  const _LetterBadge({required this.letter});
+  final bool soldOut;
+
+  const _LetterBadge({required this.letter, required this.soldOut});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 100,
-      height: 100,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 3)),
-      child: Text(letter, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: AppColors.ink)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 150,
+          height: 150,
+          alignment: Alignment.center,
+          decoration: AppDeco.outlined(
+            radius: 24,
+            borderColor: soldOut ? AppColors.disabledLine : AppColors.ink,
+            fill: soldOut ? AppColors.disabledBg : AppColors.surface,
+            width: 3,
+          ),
+          child: Text(
+            letter,
+            style: TextStyle(
+              fontSize: 68,
+              fontWeight: FontWeight.w800,
+              color: soldOut ? AppColors.disabledText : AppColors.ink,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (soldOut)
+          const SoldOutPill(text: '재고없음', fontSize: 19)
+        else
+          const SizedBox(height: 36),
+      ],
     );
   }
 }
 
+/// [디자인] 시안의 사각 점 인디케이터
 class _ProgressDots extends StatefulWidget {
   final int total;
   final int current;
@@ -213,18 +320,24 @@ class _ProgressDots extends StatefulWidget {
   State<_ProgressDots> createState() => _ProgressDotsState();
 }
 
-class _ProgressDotsState extends State<_ProgressDots> with SingleTickerProviderStateMixin {
+class _ProgressDotsState extends State<_ProgressDots>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulseController;
   late final Animation<double> _pulseScale;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _pulseScale = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 1),
-    ]).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeOut));
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _pulseScale = TweenSequence<double>(
+      [
+        TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 1),
+        TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 1),
+      ],
+    ).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeOut));
     _pulseController.forward();
   }
 
@@ -252,12 +365,19 @@ class _ProgressDotsState extends State<_ProgressDots> with SingleTickerProviderS
           children: List.generate(widget.total, (i) {
             final isCurrent = i == widget.current;
             return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: 14,
-              height: 14,
-              transform: isCurrent ? (Matrix4.identity()..scale(_pulseScale.value)) : Matrix4.identity(),
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              width: 18,
+              height: 18,
+              transform: isCurrent
+                  ? (Matrix4.identity()..scale(_pulseScale.value))
+                  : Matrix4.identity(),
               transformAlignment: Alignment.center,
-              color: i <= widget.current ? AppColors.green : AppColors.tileEmpty,
+              decoration: BoxDecoration(
+                color: i <= widget.current
+                    ? AppColors.accent
+                    : AppColors.border,
+                borderRadius: BorderRadius.circular(5),
+              ),
             );
           }),
         );

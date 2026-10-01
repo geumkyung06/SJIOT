@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// STEP 03 — MBTI 결과
-/// 피그마 `App.tsx > MbtiResultScreen` 모션 1:1 이식.
+/// [디자인 교체] 시안 톤(흰 배경 · 잉크 테두리 · 큰 글자 박스).
+/// 애니메이션 타이밍과 콜백 동작은 이전과 동일합니다.
 class MbtiResultScreen extends StatefulWidget {
   final String mbti;
+  final VoidCallback? onNext; // 터치 지원: ENTER(다음으로) 배지 탭
 
-  const MbtiResultScreen({super.key, required this.mbti});
+  const MbtiResultScreen({super.key, required this.mbti, this.onNext});
 
   @override
   State<MbtiResultScreen> createState() => _MbtiResultScreenState();
@@ -79,57 +81,51 @@ class _MbtiResultScreenState extends State<MbtiResultScreen> with TickerProvider
           opacity: _labelOpacity,
           child: const Text('STEP 03 / 06', style: AppTextStyles.label),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _Fade(
           opacity: _leadOpacity,
           child: const Text('당신의 MBTI는', style: AppTextStyles.body),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 52),
         _FadeScale(
           opacity: _badgeOpacity,
           scale: _badgeScale,
-          child: Stack(
-            children: [
-              Positioned(left: -8, top: -8, child: Container(width: 320, height: 140, color: AppColors.yellow)),
-              Container(
-                width: 320,
-                height: 140,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 3)),
-                child: Text(
-                  widget.mbti,
-                  style: const TextStyle(
-                    fontSize: 52,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                    letterSpacing: 4,
-                  ),
-                ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 108, vertical: 56),
+            decoration: AppDeco.outlined(radius: 28, borderColor: AppColors.ink, width: 4),
+            child: Text(
+              widget.mbti,
+              style: const TextStyle(
+                fontSize: 108,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+                letterSpacing: 6,
+                height: 1.1,
               ),
-            ],
+            ),
           ),
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 64),
         _FadeSlideY(
           opacity: _buttonOpacity,
           y: _buttonY,
           child: AnimatedBuilder(
             animation: _pulseOpacity,
             builder: (context, child) => Opacity(opacity: _pulseOpacity.value, child: child),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(border: Border.all(color: AppColors.ink, width: 2)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: AppColors.muted,
-                    child: const Text('ENTER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onNext,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 68, vertical: 26),
+                decoration: AppDeco.outlined(radius: 18, borderColor: AppColors.ink, width: 2),
+                child: const Text(
+                  '다음으로',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
                   ),
-                  const SizedBox(width: 16),
-                  const Text('다음으로', style: TextStyle(fontSize: 18)),
-                ],
+                ),
               ),
             ),
           ),

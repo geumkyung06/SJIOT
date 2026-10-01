@@ -4,7 +4,14 @@ import '../theme/app_theme.dart';
 /// STEP 04 — 축(스위치) 선택 (보드 선택 단계 제외로 05→04)
 /// 피그마 `App.tsx > SwitchSelectScreen` 모션 1:1 이식.
 class AxisSelectScreen extends StatefulWidget {
-  const AxisSelectScreen({super.key});
+  final Set<String> soldOutAxes;
+  final void Function(int digit)? onSelect; // 터치 지원: 1~4번 축 선택
+
+  const AxisSelectScreen({
+    super.key,
+    required this.soldOutAxes,
+    this.onSelect,
+  });
 
   @override
   State<AxisSelectScreen> createState() => _AxisSelectScreenState();
@@ -56,11 +63,11 @@ class _AxisSelectScreenState extends State<AxisSelectScreen> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    const options = [
-      (keyLabel: '1', color: Color(0xFF3E7CE0), title: '청축'),
-      (keyLabel: '2', color: Color(0xFF9C6B3F), title: '갈축'),
-      (keyLabel: '3', color: Color(0xFFD5473C), title: '적축'),
-      (keyLabel: '4', color: Color(0xFF2B2B2B), title: '흑축'),
+    final options = [
+      (keyLabel: '1', color: const Color(0xFF3E7CE0), title: '청축', key: 'blue'),
+      (keyLabel: '2', color: const Color(0xFF9C6B3F), title: '갈축', key: 'brown'),
+      (keyLabel: '3', color: const Color(0xFFD5473C), title: '적축', key: 'red'),
+      (keyLabel: '4', color: const Color(0xFF2B2B2B), title: '흑축', key: 'black'),
     ];
 
     return Column(
@@ -79,7 +86,7 @@ class _AxisSelectScreenState extends State<AxisSelectScreen> with TickerProvider
         const SizedBox(height: 8),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드 1~4 를 눌러 선택하세요', style: AppTextStyles.body),
+          child: const Text('키보드 1~4 를 눌러 선택하세요 (또는 탭)', style: AppTextStyles.body),
         ),
         const SizedBox(height: 40),
         Wrap(
@@ -88,10 +95,20 @@ class _AxisSelectScreenState extends State<AxisSelectScreen> with TickerProvider
           alignment: WrapAlignment.center,
           children: List.generate(options.length, (i) {
             final o = options[i];
+            final soldOut = widget.soldOutAxes.contains(o.key);
             return _FadeSlideY(
               opacity: _optOpacity[i],
               y: _optY[i],
-              child: _AxisOption(keyLabel: o.keyLabel, color: o.color, title: o.title),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: (widget.onSelect == null || soldOut) ? null : () => widget.onSelect!(i + 1),
+                child: _AxisOption(
+                  keyLabel: o.keyLabel,
+                  color: o.color,
+                  title: o.title,
+                  soldOut: soldOut,
+                ),
+              ),
             );
           }),
         ),
@@ -138,8 +155,14 @@ class _AxisOption extends StatelessWidget {
   final String keyLabel;
   final Color color;
   final String title;
+  final bool soldOut;
 
-  const _AxisOption({required this.keyLabel, required this.color, required this.title});
+  const _AxisOption({
+    required this.keyLabel,
+    required this.color,
+    required this.title,
+    required this.soldOut,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -149,14 +172,29 @@ class _AxisOption extends StatelessWidget {
           width: 110,
           height: 110,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: color, border: Border.all(color: AppColors.ink, width: 2)),
+          decoration: BoxDecoration(
+            color: soldOut ? Colors.grey.shade400 : color,
+            border: Border.all(
+              color: soldOut ? Colors.grey.shade600 : AppColors.ink,
+              width: 2,
+            ),
+          ),
           child: Text(
-            keyLabel,
-            style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: Colors.white),
+            soldOut ? '재고없음' : keyLabel,
+            style: TextStyle(
+              fontSize: soldOut ? 17 : 40,
+              fontWeight: FontWeight.w900,
+              color: soldOut ? Colors.grey.shade800 : Colors.white,
+            ),
           ),
         ),
         const SizedBox(height: 12),
-        Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+        Text(title,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: soldOut ? Colors.grey : AppColors.ink,
+            )),
       ],
     );
   }

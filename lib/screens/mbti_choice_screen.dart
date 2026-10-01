@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// STEP 01 — MBTI를 알고 계신가요?
-/// 피그마 `App.tsx > MbtiKnowScreen`의 모션을 1:1 이식.
+/// [디자인 교체] 시안 톤(흰 카드 · 얇은 테두리 · 큰 숫자)으로 다시 칠했습니다.
+/// 애니메이션 타이밍과 콜백 동작은 이전과 동일합니다.
 class MbtiChoiceScreen extends StatefulWidget {
-  const MbtiChoiceScreen({super.key});
+  final void Function(int digit)? onSelect; // 터치 지원: 1=몰라요, 2=알아요
+
+  const MbtiChoiceScreen({super.key, this.onSelect});
 
   @override
   State<MbtiChoiceScreen> createState() => _MbtiChoiceScreenState();
@@ -80,40 +83,46 @@ class _MbtiChoiceScreenState extends State<MbtiChoiceScreen> with TickerProvider
           opacity: _labelOpacity,
           child: const Text('STEP 01 / 06', style: AppTextStyles.label),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         _FadeSlide(
           opacity: _titleOpacity,
           y: _titleY,
           child: const Text('MBTI를 알고 계신가요?', style: AppTextStyles.heading),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
         _Fade(
           opacity: _subtitleOpacity,
-          child: const Text('키보드 1 또는 2 를 눌러 선택하세요', style: AppTextStyles.body),
+          child: const Text('1 또는 2 를 눌러 선택하세요', style: AppTextStyles.body),
         ),
-        const SizedBox(height: 48),
+        const SizedBox(height: 72),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             _FadeSlide(
               opacity: _optionOpacity[0],
               y: _optionY[0],
-              child: const _ChoiceOption(
-                accent: AppColors.yellow,
-                keyLabel: '1',
-                title: 'MBTI 몰라요',
-                subtitle: '간단한 질문으로 찾아드릴게요',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onSelect == null ? null : () => widget.onSelect!(1),
+                child: const _ChoiceOption(
+                  keyLabel: '1',
+                  title: 'MBTI 몰라요',
+                  subtitle: '간단한 질문으로 찾아드릴게요',
+                ),
               ),
             ),
-            const SizedBox(width: 56),
+            const SizedBox(width: 100),
             _FadeSlide(
               opacity: _optionOpacity[1],
               y: _optionY[1],
-              child: const _ChoiceOption(
-                accent: AppColors.coral,
-                keyLabel: '2',
-                title: 'MBTI 알아요',
-                subtitle: '직접 입력할게요',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onSelect == null ? null : () => widget.onSelect!(2),
+                child: const _ChoiceOption(
+                  keyLabel: '2',
+                  title: 'MBTI 알아요',
+                  subtitle: '직접 입력할게요',
+                ),
               ),
             ),
           ],
@@ -160,14 +169,13 @@ class _FadeSlide extends StatelessWidget {
   }
 }
 
+/// [디자인] 시안의 선택 카드 — 흰 배경 + 잉크 테두리 + 큰 숫자
 class _ChoiceOption extends StatelessWidget {
-  final Color accent;
   final String keyLabel;
   final String title;
   final String subtitle;
 
   const _ChoiceOption({
-    required this.accent,
     required this.keyLabel,
     required this.title,
     required this.subtitle,
@@ -177,28 +185,30 @@ class _ChoiceOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Stack(
-          children: [
-            Positioned(
-              left: -8,
-              top: -8,
-              child: Container(width: 260, height: 150, color: accent),
+        Container(
+          width: 340,
+          height: 208,
+          alignment: Alignment.center,
+          decoration: AppDeco.outlined(radius: 24, borderColor: AppColors.ink, width: 3),
+          child: Text(
+            keyLabel,
+            style: const TextStyle(
+              fontSize: 92,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
             ),
-            Container(
-              width: 260,
-              height: 150,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.ink, width: 2)),
-              child: Text(
-                keyLabel,
-                style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w900, color: AppColors.ink),
-              ),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 16),
-        Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
+        const SizedBox(height: 28),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(height: 10),
         Text(subtitle, style: AppTextStyles.body),
       ],
     );
