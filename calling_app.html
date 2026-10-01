@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>callingApp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+KR:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== AppColors ===== */
+  :root {
+    --background: #f5f6f8;   /* 60% 바탕 */
+    --surface:    #ffffff;   /* 30% 카드 */
+    --text:       #34383f;   /* 번호·제목·구분선 */
+    --text-sub:   #8b9098;   /* 부가 정보 (24px 이상만) */
+    --border:     #e2e5e9;   /* 테두리 */
+    --yellow:     #ffdf82;   /* 호출 */
+    --red:        #f39ca9;   /* 오류 */
+
+    --font-num:  "Barlow Condensed", "Roboto Condensed", "Arial Narrow", sans-serif;
+    --font-sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+
+    --space-2: 8px; --space-4: 16px; --space-6: 24px; --space-12: 48px;
+    --radius-sm: 12px; --radius-md: 20px; --radius-pill: 999px;
+    --slide-time: 700ms;
+  }
+
+  html, body { margin: 0; height: 100%; background: var(--background); overflow: hidden; cursor: none; }
+
+  /* 1080×1920 무대를 화면에 맞춰 축소/확대 */
+  .stage {
+    position: absolute; left: 50%; top: 50%; width: 1080px; height: 1920px;
+    transform-origin: center center; background: var(--background); color: var(--text);
+    font-family: var(--font-sans); display: flex; flex-direction: column;
+  }
+
+  .offline { display: none; margin-right: 20px; font-size: 24px; font-weight: 700; color: var(--text); background: var(--red);
+             padding: 8px 20px; border-radius: var(--radius-pill); }
+  .offline.show { display: inline-block; }
+
+  .sec-label { display: flex; align-items: center; gap: 20px; font-size: 52px; line-height: 1.15; font-weight: 800; color: var(--text-sub); margin: 0 0 var(--space-6); }
+  .sec-label .dot { width: 26px; height: 26px; border-radius: var(--radius-pill); background: var(--yellow); }
+  .badge { margin-left: auto; font-size: 32px; font-weight: 700; color: var(--text); background: var(--surface);
+           border: 2px solid var(--border); padding: 6px 20px; border-radius: var(--radius-pill); }
+
+  /* 호출 영역 */
+  .calls { flex: none; padding: 48px var(--space-12) 32px; }
+  .slots { display: flex; flex-direction: column; gap: var(--space-6); }
+  .slot {
+    height: 220px; border-radius: var(--radius-md); background: var(--surface); border: 2px solid var(--border);
+    display: flex; align-items: center; padding: 0 var(--space-12); box-sizing: border-box; overflow: hidden;
+  }
+  .slot .st { font-size: 44px; font-weight: 800; width: 260px; flex: none; }
+  .slot .st small { display: block; font-size: 24px; font-weight: 500; color: var(--text-sub); margin-top: 6px; }
+  .slot .num { margin-left: auto; font-family: var(--font-num); font-size: 200px; line-height: .9; font-weight: 700;
+               letter-spacing: -2px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .slot.idle .num { color: var(--border); }
+  .slot.assembling .num { color: var(--text-sub); }
+  .slot.assembling .st small::after { content: ''; display: inline-block; width: 1.2em; text-align: left; animation: dots 1.5s steps(4) infinite; }
+  @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+  .slot.calling { border: 6px solid var(--yellow); }
+  .slot.flash { background: var(--yellow); border-color: var(--yellow); animation: flash 1s steps(1) 5; }
+  .slot.flash .st, .slot.flash .st small { color: var(--text); }
+  .slot.enter .num { animation: pop .6s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes flash { 50% { background: var(--surface); } }
+  @keyframes pop { from { transform: translateY(40%); opacity: 0; } }
+
+  /* 가로선 */
+  .divider { flex: none; margin: 0 var(--space-12); height: 6px; border-radius: var(--radius-pill); background: var(--text); }
+
+  /* 대기 영역 */
+  .waiting { flex: 1; padding: 32px var(--space-12) 0; display: flex; flex-direction: column; min-height: 0; }
+  .viewport { overflow: hidden; flex: none; height: 724px; }
+  .track { display: flex; height: 100%; transition: transform var(--slide-time) cubic-bezier(.6,0,.2,1); }
+  .page { flex: 0 0 100%; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); gap: var(--space-4); }
+  .tile {
+    background: var(--surface); border: 2px solid var(--border); box-sizing: border-box; border-radius: var(--radius-sm);
+    display: grid; place-items: center; font-family: var(--font-num); font-size: 76px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .tile.next { box-shadow: inset 0 0 0 3px var(--text); }
+  .empty { flex: 0 0 100%; display: grid; place-items: center; color: var(--text-sub); font-size: 32px; }
+  .pager { display: flex; justify-content: center; align-items: center; gap: var(--space-2); height: 64px; }
+  .pager i { width: 14px; height: 14px; border-radius: var(--radius-pill); background: var(--border); transition: width .4s, background .4s; }
+  .pager i.on { width: 44px; background: var(--text); }
+  .pager span { margin-left: 16px; font-size: 24px; color: var(--text-sub); font-family: var(--font-num); font-weight: 600; }
+
+  /* 알림음 켜기 안내 (브라우저가 소리를 막고 있을 때만 표시) */
+  .unlock { position: absolute; inset: 0; z-index: 10; display: none; flex-direction: column; align-items: center; justify-content: center;
+            gap: var(--space-6); background: rgba(52, 56, 63, .82); color: var(--surface); text-align: center; }
+  .unlock.show { display: flex; }
+  .unlock b { font-size: 64px; font-weight: 800; }
+  .unlock span { font-size: 32px; font-weight: 500; }
+
+  .ftr { height: 96px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 500;
+         color: var(--text-sub); border-top: 2px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <section class="calls">
+    <div class="sec-label"><span class="dot"></span>호출 중</div>
+    <div class="slots" id="slots"></div>
+  </section>
+
+  <div class="divider" role="separator"></div>
+
+  <section class="waiting">
+    <div class="sec-label">대기 중 <span class="badge" id="count">0명</span></div>
+    <div class="viewport"><div class="track" id="track"></div></div>
+    <div class="pager" id="pager"></div>
+  </section>
+
+  <div class="unlock" id="unlock"><b>화면을 터치해 시작</b><span>호출 알림음을 켜려면 한 번 터치해 주세요</span></div>
+
+  <footer class="ftr"><span class="offline" id="offline">연결 끊김</span>번호가 호출되면 해당 조립대로 와주세요</footer>
+</div>
+
+<script>
+/* =====================================================================
+   설정
+   ===================================================================== */
+const CONFIG = {
+  // id = GET /station/{station_id}/status 에 들어갈 값
+  STATIONS: [
+    { id: 1, name: '조립대 1' },
+    { id: 2, name: '조립대 2' },
+    { id: 3, name: '조립대 3' },
+  ],
+  PER_PAGE: 20,          // 4열 × 5행
+  PAGE_MS: 6000,         // 페이지 머무는 시간
+  FLASH_MS: 10000,       // 새 호출 강조 시간
+  // ▼ API 서버 주소 — 프로토콜·포트 포함, 끝에 / 없이  (예: 'http://192.168.0.10:5000')
+  API_BASE: 'https://sjiot-backend-294910862364.asia-northeast1.run.app',
+  POLL_MS: 2000,         // 상태 조회 주기
+  FETCH_TIMEOUT_MS: 5000, // 요청 하나가 이보다 오래 걸리면 실패 처리 (폴링 멈춤 방지)
+  OFFLINE_AFTER: 3,      // 연속 이 횟수만큼 조회 실패해야 '연결 끊김' 표시
+};
+
+/* =====================================================================
+   API 연동
+   1) GET {API_BASE}/station/{station_id}/status
+        배정 있음 → { "order_id": "ord_a1b2c3d4", "order_seq": 12 }
+        배정 없음 → { "error": "이 조립대에 배정된 주문이 없습니다" }  (200·4xx 모두 '비어 있음'으로 처리, 실서버는 400)
+   2) GET {API_BASE}/order/{order_id}/status
+        성공 → { "order_id": "ord_a1b2c3d4", "position_in_queue": 2, "stage": "assigned", "station_id": 1 }
+        실패 → { "error": "존재하지 않는 주문입니다" }  → 슬롯 비움
+        이중 확인: order_id 가 1)과 같고 station_id 가 이 조립대인지 → 다르면 화면 갱신 안 함
+        stage  verified 전(assigned ~ arrived) → 호출 중
+               verified, received              → 조립 중
+               completed, unclaimed            → 슬롯 비움 (TERMINAL)
+        화면 번호는 1)의 order_seq 사용
+   3) GET {API_BASE}/queue/status
+        → { "orders": [ { "order_id": "...", "order_seq": 7, "position": 1, ... }, ... ], "queue_length": 2, ... }
+        orders 를 position 순으로 정렬해 order_seq 를 대기 번호로 표시
+   ===================================================================== */
+
+/* 조립대 응답 { "order_id", "order_seq" } → { no: order_seq, orderId: order_id }
+   둘 중 하나라도 없으면 배정 없음으로 봄 */
+function parseStation(data) {
+  if (!data || typeof data !== 'object' || data.error != null) return null;   // 배정된 주문 없음
+  const no = data.order_seq, orderId = data.order_id;
+  return no == null || no === '' || orderId == null || orderId === '' ? null : { no, orderId };
+}
+
+/* 주문 응답에서 stage / order_id / station_id 꺼내기 */
+function parseOrder(data) {
+  const o = data && typeof data === 'object' ? data : {};
+  return { stage: String(o.stage ?? '').trim().toLowerCase(), orderId: o.order_id, stationId: o.station_id };
+}
+
+/* stage → 화면 상태. 'calling' | 'assembling' | null(슬롯 비움)
+   표에 없는 stage면 BadStage 를 던져 직전 화면 유지 */
+const CALLING_STAGES    = ['queued', 'assigned', 'keycap_mismatched', 'keycap_dispensed', 'keycap_reached', 'keycap_packed',
+                           'tray_reached', 'board_mismatched', 'board_packed', 'pickup_reached', 'loaded', 'arrived'];
+const ASSEMBLING_STAGES = ['verified', 'received'];
+const DONE_STAGES       = ['completed', 'unclaimed'];
+class BadStage extends Error {}
+function stageToStatus(stage) {
+  if (DONE_STAGES.includes(stage)) return null;
+  if (ASSEMBLING_STAGES.includes(stage)) return 'assembling';
+  if (CALLING_STAGES.includes(stage)) return 'calling';
+  throw new BadStage(`알 수 없는 stage: "${stage}"`);
+}
+
+/* 번호 비교 (숫자 38 과 문자열 "038" 도 같은 번호로 봄) */
+function sameSeq(a, b) {
+  if (a == null || b == null) return false;
+  const na = Number(a), nb = Number(b);
+  return Number.isFinite(na) && Number.isFinite(nb) ? na === nb : String(a).trim() === String(b).trim();
+}
+
+/* 이중 확인 실패: 주문 조회 결과가 이 조립대의 주문이 아님 */
+class SeqMismatch extends Error {}
+
+/* 대기열 응답 → [order_seq, ...] (position 순)
+   orders 가 배열이 아니면 형식 오류로 보고 예외 → 직전 목록 유지 */
+function parseQueue(data) {
+  const orders = data && typeof data === 'object' ? data.orders : null;
+  if (!Array.isArray(orders)) throw new Error('/queue/status: orders 배열 없음');
+  return orders
+    .filter(o => o && o.order_seq != null && o.order_seq !== '')
+    .map((o, i) => ({ seq: o.order_seq, pos: Number.isFinite(Number(o.position)) ? Number(o.position) : Infinity, i }))
+    .sort((a, b) => a.pos - b.pos || a.i - b.i)
+    .map(o => o.seq);
+}
+
+async function fetchQueue() {
+  return parseQueue(await getJSON('/queue/status'));
+}
+
+async function getJSON(path) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CONFIG.FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(CONFIG.API_BASE + path, { cache: 'no-store', signal: ctrl.signal });
+    const txt = (await res.text()).trim();
+    let data; try { data = JSON.parse(txt); } catch { data = txt; }
+    if (!res.ok) { const e = new Error(`${path} → ${res.status}`); e.status = res.status; e.data = data; throw e; }
+    return data;
+  } finally { clearTimeout(timer); }
+}
+
+/* 주문 stage 조회 → 'calling' | 'assembling' | null(completed)
+   조회 실패·이중 확인 실패·표에 없는 stage면 예외 */
+async function fetchOrderStatus(st, cur) {
+  const data = await getJSON(`/order/${encodeURIComponent(cur.orderId)}/status`);
+  if (data && typeof data === 'object' && data.error != null) throw new SeqMismatch(`주문 ${cur.orderId}: ${data.error}`);
+  const order = parseOrder(data);
+  if (String(order.orderId) !== String(cur.orderId))
+    throw new SeqMismatch(`조립대 ${st.id}: 주문 ${cur.orderId} 조회했는데 ${order.orderId} 응답`);
+  if (order.stationId != null && !sameSeq(order.stationId, st.id))
+    throw new SeqMismatch(`조립대 ${st.id}: 주문 ${cur.orderId} 은 조립대 ${order.stationId} 소속`);
+  return stageToStatus(order.stage);
+}
+
+/* 조립대 하나의 화면 상태 → { value: { no, status } | null, err? }
+   1) 호출 번호가 뜨면 바로 '호출 중'
+   2) 주문 stage가 verified / received 면 '조립 중'
+   3) completed 면 '대기'(빈 칸)
+   4) 조립 중이어도 호출 번호는 계속 조회 → 번호가 바뀌면 이전 번호는 끝난 것으로 보고 새 번호 바로 호출
+      (번호 비교·차임은 QueueBoard.update 에서 처리)
+   조립대 조회 자체가 실패하면 예외 → 직전 화면 유지 */
+const doneNo = CONFIG.STATIONS.map(() => null);     // 조립대별로 completed 확인된 번호
+async function fetchStation(st, i) {
+  let raw;
+  try { raw = await getJSON(`/station/${encodeURIComponent(st.id)}/status`); }
+  catch (e) {
+    // 4xx(서버는 400) + { "error": ... } = 배정된 주문 없음 → 정상적인 '대기'
+    if (e.status >= 400 && e.status < 500 && e.data && typeof e.data === 'object' && e.data.error != null) {
+      if (e.status !== 404 && e.status !== 400) console.warn(`조립대 ${st.id}:`, e.status, e.data.error);
+      return { value: null };
+    }
+    throw e;                                         // 그 외(500, 네트워크 등)는 조회 실패
+  }
+  const cur = parseStation(raw);
+  if (!cur) return { value: null };
+
+  let status;
+  try { status = await fetchOrderStatus(st, cur); }
+  catch (err) {
+    // 주문 조회가 안 돼도 번호는 띄움:
+    //  이미 completed 확인한 번호 → 계속 '대기' / 같은 번호 → 직전 상태 유지 / 새 번호 → '호출 중'
+    const prev = state.calls[i];
+    const fallback = sameSeq(doneNo[i], cur.no) ? null
+      : prev && sameSeq(prev.no, cur.no) ? prev.status : 'calling';
+    return { value: fallback ? { no: cur.no, status: fallback } : null, err };
+  }
+  if (status === null) { doneNo[i] = cur.no; return { value: null }; }   // completed → '대기'
+  return { value: { no: cur.no, status } };          // 화면 번호는 조립대 응답의 order_seq
+}
+
+let failStreak = 0;                                  // 연속 실패 횟수
+const seen = CONFIG.STATIONS.map(() => false);       // 조립대별 첫 조회 성공 여부
+async function poll() {
+  try {
+    const [queue, ...results] = await Promise.allSettled([fetchQueue(), ...CONFIG.STATIONS.map(fetchStation)]);
+    const errs = [queue, ...results].map(r => r.status === 'rejected' ? r.reason : r.value && r.value.err).filter(Boolean);
+    errs.forEach(e => console.warn('poll failed', e));
+    // 번호 불일치·이상한 stage는 통신 문제가 아니므로 '연결 끊김' 표시는 네트워크/서버 오류일 때만
+    const ok = errs.every(e => e instanceof SeqMismatch || e instanceof BadStage);
+    failStreak = ok ? 0 : failStreak + 1;
+    QueueBoard.setOnline(failStreak < CONFIG.OFFLINE_AFTER);   // 한두 번 실패로는 표시 안 함
+    // 조회 실패·번호 불일치인 조립대는 직전 화면 유지 (다음 조회에서 다시 확인)
+    const calls = results.map((r, i) => {
+      if (r.status !== 'fulfilled') return state.calls[i];
+      const v = r.value.value;
+      // 처음 켰을 때 이미 떠 있던 호출은 새 호출이 아니므로 차임·깜빡임 없이 표시
+      if (!seen[i]) { seen[i] = true; if (v) return { ...v, silent: true }; }
+      return v;
+    });
+    // 대기열 조회 실패 시 직전 목록 유지
+    const waiting = queue.status === 'fulfilled' ? queue.value : state.waiting;
+    QueueBoard.update({ calls, waiting });
+  } catch (e) {
+    console.error('poll error', e);              // 화면 갱신 중 예외가 나도
+  } finally {
+    setTimeout(poll, CONFIG.POLL_MS);            // 폴링은 계속
+  }
+}
+
+/* =====================================================================
+   화면 상태
+   calls[i] = { no, at, status: 'calling' | 'assembling' } | null
+   waiting  = [번호, ...]  (QueueBoard.update({ waiting }) 로 넣을 수 있음)
+   ===================================================================== */
+const state = { calls: CONFIG.STATIONS.map(() => null), waiting: [] };
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(3, '0');
+
+/* ---------- 화면 맞춤 ---------- */
+const stage = $('stage');
+function fit() {
+  const s = Math.min(innerWidth / 1080, innerHeight / 1920);
+  stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+/* ---------- 호출 슬롯 ---------- */
+let calmTimer = null;
+function renderSlots(enterIdx = []) {
+  const box = $('slots');
+  const now = Date.now(); let nextCalm = Infinity;
+  CONFIG.STATIONS.forEach(({ name }, i) => {
+    const c = state.calls[i];
+    const age = c ? now - c.at : Infinity;
+    const assembling = c && c.status === 'assembling';
+    const fresh = !assembling && age < CONFIG.FLASH_MS;
+    if (fresh) nextCalm = Math.min(nextCalm, CONFIG.FLASH_MS - age);
+    const kind = !c ? 'idle' : assembling ? 'assembling' : fresh ? 'flash' : 'calling';
+    const sig = `${kind}|${c ? c.no : ''}`;
+    const old = box.children[i];
+    // 내용이 그대로면 손대지 않음 → 깜빡임·등장 애니메이션이 중간에 다시 시작되지 않음
+    if (old && old.dataset.sig === sig && !enterIdx.includes(i)) return;
+    const el = document.createElement('div');
+    el.dataset.sig = sig;
+    el.className = 'slot ' + kind + (enterIdx.includes(i) ? ' enter' : '');
+    el.innerHTML = `<div class="st">${name}<small>${!c ? '대기' : assembling ? '조립 중' : fresh ? '지금 호출' : '호출 중'}</small></div>
+                    <div class="num">${c ? pad(c.no) : '—'}</div>`;
+    old ? old.replaceWith(el) : box.appendChild(el);
+  });
+  clearTimeout(calmTimer);
+  if (nextCalm !== Infinity) calmTimer = setTimeout(() => renderSlots(), nextCalm + 50);
+}
+
+/* ---------- 대기 번호 페이지 ---------- */
+let page = 0, pages = 1;
+function renderWaiting() {
+  const list = state.waiting, track = $('track');
+  $('count').textContent = `${list.length}명`;
+  pages = Math.max(1, Math.ceil(list.length / CONFIG.PER_PAGE));
+  page = Math.min(page, pages - 1);
+  track.innerHTML = '';
+  if (!list.length) track.innerHTML = '<div class="empty">대기 중인 번호가 없습니다</div>';
+  for (let p = 0; p < pages && list.length; p++) {
+    const pg = document.createElement('div'); pg.className = 'page';
+    list.slice(p * CONFIG.PER_PAGE, (p + 1) * CONFIG.PER_PAGE).forEach((n, i) => {
+      const t = document.createElement('div');
+      t.className = 'tile' + (p === 0 && i === 0 ? ' next' : '');
+      t.textContent = pad(n); pg.appendChild(t);
+    });
+    track.appendChild(pg);
+  }
+  renderPager(); move();
+}
+function renderPager() {
+  const el = $('pager'); el.innerHTML = '';
+  if (pages < 2) return;
+  for (let i = 0; i < pages; i++) { const d = document.createElement('i'); if (i === page) d.className = 'on'; el.appendChild(d); }
+  const s = document.createElement('span'); s.textContent = `${page + 1} / ${pages}`; el.appendChild(s);
+}
+function move() { $('track').style.transform = `translateX(-${page * 100}%)`; }
+setInterval(() => { if (pages < 2) return; page = (page + 1) % pages; move(); renderPager(); }, CONFIG.PAGE_MS);
+
+/* ---------- 차임 (새 호출 시) ---------- */
+// 브라우저는 사용자가 화면을 한 번 누르기 전까지 소리를 막음(자동재생 정책).
+// 막혀 있으면 '화면을 터치해 시작' 안내를 띄우고, 터치하면 소리를 켬.
+// (크롬을 --autoplay-policy=no-user-gesture-required 로 띄우면 안내 없이 바로 재생)
+let audio = null;
+try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+function unlockAudio() {
+  if (audio && audio.state === 'suspended') audio.resume().catch(() => {});
+  $('unlock').classList.remove('show');
+}
+if (audio && audio.state !== 'running') $('unlock').classList.add('show');
+['pointerdown', 'touchstart', 'keydown'].forEach(ev => addEventListener(ev, unlockAudio));
+
+function chime() {
+  try {
+    if (!audio) return;
+    if (audio.state === 'suspended') audio.resume().catch(() => {});
+    [880, 660].forEach((f, i) => {
+      const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i * 0.35;
+      o.frequency.value = f; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      o.start(t); o.stop(t + 0.65);
+    });
+  } catch (e) {}
+}
+
+/* =====================================================================
+   외부에서 호출하는 함수:  QueueBoard.update({ calls, waiting })
+   ===================================================================== */
+window.QueueBoard = {
+  update(next) {
+    const entered = [];
+    if (Array.isArray(next.calls)) {
+      CONFIG.STATIONS.forEach((_, i) => {
+        const n = next.calls[i] || null, o = state.calls[i];
+        const status = n && n.status === 'assembling' ? 'assembling' : 'calling';
+        if (n && (!o || !sameSeq(o.no, n.no))) {   // 41 과 "041" 은 같은 번호로 봄 (차임 중복 방지)
+          state.calls[i] = { no: n.no, at: n.silent ? 0 : (n.at || Date.now()), status };
+          if (status === 'calling' && !n.silent) entered.push(i);
+        } else if (n) state.calls[i].status = status;      // 같은 번호, 상태만 변경 (호출 중 → 조립 중)
+        else state.calls[i] = null;
+      });
+    }
+    let waitingChanged = false;
+    if (Array.isArray(next.waiting)) {
+      waitingChanged = next.waiting.join(',') !== state.waiting.join(',');
+      state.waiting = next.waiting.slice();
+    }
+    renderSlots(entered);
+    if (waitingChanged) renderWaiting();      // 목록이 바뀌었을 때만 다시 그림
+    if (entered.length) chime();
+  },
+  setOnline(ok) { $('offline').classList.toggle('show', !ok); },
+};
+
+renderSlots(); renderWaiting();
+poll();
+</script>
