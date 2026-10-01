@@ -241,26 +241,26 @@ class _AppRootState extends State<AppRoot> {
       'options': [
         {'text': '전체적인 흐름과 가능성을 먼저 본다', 'letter': 'N'},
         {'text': '떠오르는 아이디어와 상상을 즐긴다', 'letter': 'N'},
-        {'text': '구체적인 사실과 세부사항을 본다', 'letter': 'S'},
-        {'text': '경험하고 검증된 것을 믿는다', 'letter': 'S'},
+        {'text': '구체적인 사실과 세부사항을 먼저 본다', 'letter': 'S'},
+        {'text': '경험하거나 검증된 정보를 더 믿는다', 'letter': 'S'},
       ],
     },
     {
       'question': '결정을 내릴 때 나는?',
       'options': [
-        {'text': '사람들의 감정과 관계를 먼저 고려한다', 'letter': 'F'},
-        {'text': '공감과 조화를 중요하게 생각한다', 'letter': 'F'},
+        {'text': '모두가 만족할 방향을 생각한다', 'letter': 'F'},
+        {'text': '모두가 만족할 수 있는 방향을 생각한다', 'letter': 'F'},
         {'text': '논리와 원칙을 기준으로 판단한다', 'letter': 'T'},
-        {'text': '객관적인 사실에 따라 결정한다', 'letter': 'T'},
+        {'text': '사실과 근거를 기준으로 판단한다', 'letter': 'T'},
       ],
     },
     {
       'question': '일정을 관리할 때 나는?',
       'options': [
         {'text': '미리 계획을 세우고 그대로 실행한다', 'letter': 'J'},
-        {'text': '정리하고 마감을 철저히 지킨다', 'letter': 'J'},
-        {'text': '즉흥적으로 상황에 맞춰 움직인다', 'letter': 'P'},
-        {'text': '유연하게 계획을 바꾸는 걸 좋아한다', 'letter': 'P'},
+        {'text': '해야 할 일을 정리하고 기한에 맞춰 끝낸다', 'letter': 'J'},
+        {'text': '상황에 따라 그때그때 조정하는 편이다', 'letter': 'P'},
+        {'text': '필요하면 계획을 유연하게 바꾼다', 'letter': 'P'},
       ],
     },
   ];
@@ -663,12 +663,25 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.home;
           break;
         case AppStep.mbtiQuiz:
-          _resetQuiz();
-          _step = AppStep.mbtiChoice;
+          // [수정] 2번째 문항부터는 바로 앞 문항으로만 돌아감 (앞 답변은 지워서 다시 고르게 함)
+          // 첫 문항에서 누를 때만 선택 화면으로 나감
+          if (_quizIndex > 0) {
+            _quizIndex--;
+            _quizAnswers[_quizIndex] = null;
+          } else {
+            _resetQuiz();
+            _step = AppStep.mbtiChoice;
+          }
           break;
         case AppStep.mbtiManual:
-          _resetManual();
-          _step = AppStep.mbtiChoice;
+          // [수정] 직접 입력도 동일하게 한 단계씩 뒤로
+          if (_manualIndex > 0) {
+            _manualIndex--;
+            _manualAnswers[_manualIndex] = null;
+          } else {
+            _resetManual();
+            _step = AppStep.mbtiChoice;
+          }
           break;
         case AppStep.mbtiResult:
           _step = AppStep.mbtiChoice;
