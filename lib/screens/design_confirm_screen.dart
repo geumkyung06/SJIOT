@@ -598,17 +598,18 @@ class _DesignConfirmScreenState extends State<DesignConfirmScreen>
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: widget.onConfirm,
-                      child: _TapButton(text: '접수하기', accent: AppColors.green),
-                    ),
-                    const SizedBox(width: 44),
+                    // [수정] 버튼 순서 변경: 다시 만들기(왼쪽) - 접수하기(오른쪽)
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: widget.onCancel,
                       child:
                           _TapButton(text: '다시 만들기', accent: AppColors.coral),
+                    ),
+                    const SizedBox(width: 44),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onConfirm,
+                      child: _TapButton(text: '접수하기', accent: AppColors.green),
                     ),
                   ],
                 ),

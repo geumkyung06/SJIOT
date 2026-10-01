@@ -73,14 +73,14 @@ const bool kApiEnabled = true;
 // 백엔드/조립대 작업이 끝나서 주문이 정상적으로 만들어지면 false로 바꾸세요.
 // (true인 채로 행사에 나가면 주문이 안 만들어진 손님에게도 주문번호 '-'와
 // QR 없음 안내만 찍힌 영수증이 나와서 종이만 낭비됩니다.)
-const bool kPrintReceiptWithoutOrder = true;
+const bool kPrintReceiptWithoutOrder = false;
 
 // [임시/프린터 연동 확인용] 콘솔을 볼 수 없는 exe 실행에서도 영수증 출력이
 // 됐는지/안 됐다면 왜인지 화면 우측 상단에 표시합니다.
 // 영수증 화면에서 출력하고, 처음 화면으로 돌아온 뒤에도 다음 주문을 시작할
 // 때까지 남아있습니다. 확인이 끝나면 false로 바꾸고 exe를 다시 빌드하세요.
 // (false면 화면에 아무것도 표시되지 않고 원래 화면 그대로입니다.)
-const bool kShowPrintDebugOverlay = true;
+const bool kShowPrintDebugOverlay = false;
 
 enum AppStep {
   home,
