@@ -56,7 +56,9 @@ def on_keycap_robot_arm(con):
             continue
         if value == "failed":
             logger.error(f"[keycap_robot_arm] {order_id} {slot} 적재 실패")
-            set_fault(order_id, "keycap_pack_failed")     # W2 — 재시도 여부 창고팀 확인 중
+            # slot 은 keycap1~4 = 선반 번호와 같은 축이다 (services/stock.py 의 SHELVES).
+            set_fault(order_id, "keycap_pack_failed",     # W2 — 재시도 여부 창고팀 확인 중
+                      section=f"keycap_robot_arm:{slot}")
             return
 
         # keycap_reached에 처음 들어올 때 목록이 없으면 여기서 깐다
@@ -80,7 +82,7 @@ def on_board_robot_arm(con):
 
     if con.get("board") == "failed":
         logger.error(f"[board_robot_arm] {order_id} 보드 적재 실패")
-        set_fault(order_id, "board_pack_failed")
+        set_fault(order_id, "board_pack_failed", section="board_robot_arm")
         return
     if con.get("board") != "done":
         return
@@ -97,6 +99,6 @@ def on_tray_robot_arm(con):
 
     if con.get("status") == "failed":
         logger.error(f"[tray_robot_arm] {order_id} 빈 트레이 투입 실패")
-        set_fault(order_id, "tray_load_failed")
+        set_fault(order_id, "tray_load_failed", section="tray_robot_arm")
         return
     logger.info(f"[tray_robot_arm] {order_id} 빈 트레이 투입 확인")

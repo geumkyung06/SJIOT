@@ -7,7 +7,7 @@ from infra.keys import _touch_order
 from infra.mobius import create_cin
 
 from config import KST, STAGE_ORDER, STATION_ORDER_PREFIX
-from services import stock, watchdog
+from services import collector, stock, watchdog
 
 _ALIAS = {
     "keycap_mismatched": "assigned",
@@ -63,23 +63,127 @@ def set_stage(order_id, stage):
     # '창고가 이 주문을 받았는가'의 판정 근거가 이것밖에 없다 (dispatch._assign).
     return push_process()
 
-def set_fault(order_id, fault):
+def set_fault(order_id, fault, section=None):
     """fault만 세우고 stage는 그대로 둔다
-    관리자가 fault를 지우면 그 자리에서 이어진다."""
+    관리자가 fault를 지우면 그 자리에서 이어진다.
+
+    section 은 '어디가 문제냐' — fault 가 '무엇이 고장났나'이므로 두 축을 한 문자열에 섞지 않는다.
+    형식은 part[:scope[:slot]] (services/stock.py::section_of). 없으면 지운다 —
+    앞 fault 의 section 이 남으면 엉뚱한 부품을 가리킨다.
+    """
     key = f"order:{order_id}"
-    r.hset(key, "fault", fault)
+    if section:
+        r.hset(key, mapping={"fault": fault, "fault_section": section})
+    else:
+        r.hset(key, "fault", fault)
+        r.hdel(key, "fault_section")
     _touch_order(order_id)
     watchdog.disarm(order_id)
-    logger.error(f"[fault] {order_id} <- {fault} (stage={r.hget(key, 'stage')} 유지)")
+    logger.error(f"[fault] {order_id} <- {fault}" + (f" @{section}" if section else "")
+                 + f" (stage={r.hget(key, 'stage')} 유지)")
     push_process()
 
+# 해제할 때 재고 상태까지 되돌려야 하는 fault. 나머지는 fault 필드만 지우면 된다.
+_REVIVABLE = {"keycap_driver_failed", "keycap_cartridge_failed"}
+
+
+def _shelves_to_revive(order_id, section):
+    """되살릴 선반 집합.
+
+    order 해시에는 fault 가 한 칸뿐이라 선반 둘이 연달아 죽으면 뒤엣것이 앞엣것을 덮는다
+    (ENTP 주문에서 E 드라이버와 P 드라이버가 같이 죽는 경우가 그렇다). fault_section 만
+    믿으면 P 만 살리고 E 는 차단된 채로 남는다. 그래서 warehouse:driver_failed 에 아직
+    남아 있는 선반 중 **이 주문이 쓰는 것**을 같이 본다 — 남의 주문 때문에 죽은 선반은
+    교집합에서 빠지므로 건드리지 않는다.
+    """
+    parts = (section or "").split(":")
+    shelves = {parts[1]} if len(parts) > 1 and parts[1] in stock.SHELVES else set()
+    mine = {stock.shelf_of(s) for s in stock.parts_of(order_id, "keycap")}
+    return shelves | (mine & stock.driver_failed_shelves())
+
+
+def _revive_for(order_id, fault, section):
+    """해제한 fault 가 막아둔 칸만 되살린다. 관계없는 disable 은 그대로 둔다."""
+    if fault not in _REVIVABLE:
+        return
+
+    if fault == "keycap_driver_failed":
+        shelves = _shelves_to_revive(order_id, section)
+        if not shelves:
+            logger.warning(f"[fault] {order_id} {fault} 인데 되살릴 선반을 못 찾았다 "
+                           f"(section={section!r}) — 재고 상태는 그대로 둔다")
+            return
+        for shelf in sorted(shelves):
+            revived = stock.revive_slots(stock.slots_of_shelf(shelf))
+            stock.clear_driver_failed(shelf)
+            logger.info(f"[fault] {order_id} 선반 {shelf} 차단 해제 · disable→idle {revived}")
+        return
+
+    # keycap_cartridge_failed — 칸 하나. section 의 세 번째 토큰이 그 칸이다
+    # (keycap_cartridge:keycap1:E_r · services/stock.py::section_of).
+    parts = (section or "").split(":")
+    slot = parts[2] if len(parts) > 2 else None
+    if not slot:
+        logger.warning(f"[fault] {order_id} {fault} 인데 section 에 칸이 없다 "
+                       f"(section={section!r}) — 재고 상태는 그대로 둔다")
+        return
+    logger.info(f"[fault] {order_id} disable→idle {stock.revive_slots([slot])}")
+
+
 def clear_fault(order_id):
-    """관리자 해제 — stage는 그대로이므로 그 자리에서 이어지고, 시계만 다시 건다."""
+    """관리자 해제 — stage는 그대로이므로 그 자리에서 이어지고, 시계만 다시 건다.
+
+    해제는 '고쳤다'는 선언이다. fault 필드만 지우면 두 가지가 어긋난 채로 남는다.
+
+      1) fault 가 걸려 있는 동안 들어온 배출 콜백을 가드(_current_order)가 전부 버렸다.
+         collector 의 pending 이 실제 배출과 달라서, 해제해도 consume 이 done 에 닿지
+         못하고 그 stage 에 그대로 선다.
+      2) 그 fault 가 남긴 칸 disable · 선반 차단이 그대로라 다음 주문이 blockers 에서 막힌다.
+
+    둘 다 fault 를 지우기 **전에** 되돌린다 — 지우고 나면 어느 칸이었는지 알 방법이 없다.
+    """
     key = f"order:{order_id}"
-    r.hdel(key, "fault")
+    fault, section, stage = r.hmget(key, "fault", "fault_section", "stage")
+
+    _revive_for(order_id, fault, section)
+
+    # 재기동 복구와 같은 문제(배출분을 모르는 채로 pending 재구성)라 구현을 둘로 두지 않는다.
+    # remove_only — 콜백이 소진해 둔 pending 이 기준이고, Mobius 는 빼는 데만 쓴다.
+    # recovery 가 process 를 쓰므로 순환 import 회피용 지연 import.
+    from services.recovery import _restore_collector
+    _restore_collector(order_id, stage, tag="fault", remove_only=True)
+
+    r.hdel(key, "fault", "fault_section")
     _touch_order(order_id)
-    watchdog.arm(order_id, r.hget(key, "stage"))
+
+    if _resume_stage(order_id, stage):
+        return                          # set_stage 가 시계·push 까지 했다
+
+    watchdog.arm(order_id, stage)
     push_process()
+
+
+def _resume_stage(order_id, stage):
+    """fault 중에 이미 다 모였던 단계를 해제 시점에 이어서 넘긴다. 넘겼으면 True.
+
+    콜백은 fault 중에도 collector 를 갱신하지만 stage 는 움직이지 않는다
+    (callbacks/warehouse.py::_current_order). 그래서 마지막 1건이 fault 중에 들어오면
+    '다 모였는데 전이만 안 된' 상태로 남는다 — 창고는 이미 다 냈으니 재배출이 올 일이
+    없고, 여기서 넘기지 않으면 그 자리에 영원히 선다.
+
+    근거는 Mobius 추측이 아니라 **우리가 받은 콜백으로 소진한 pending** 이다.
+    오배출(wrong)이 하나라도 있으면 넘기지 않는다 — 그건 사람이 봐야 한다.
+    """
+    if stage not in ("assigned", "keycap_mismatched"):
+        return False
+    if not stock.parts_of(order_id, "keycap"):
+        return False
+    if collector.remaining(order_id, "keycap") or collector.wrong(order_id, "keycap"):
+        return False
+
+    logger.info(f"[fault] {order_id} 키캡이 이미 다 모였다 — keycap_dispensed 로 이어간다")
+    set_stage(order_id, "keycap_dispensed")
+    return True
 
 
 # cnt_process 스냅샷
@@ -107,13 +211,14 @@ def _build_body():
             "keycap": o.get("keycap"),
             "colors": [c for c in (o.get("colors") or "").split(",") if c],
             "fault": o.get("fault") or None,
+            "fault_section": o.get("fault_section") or None,   # 어느 부품·선반인지
         }
 
     body = {"orders": orders}
     # 스냅샷은 전량이므로 수신측은 '키 없음 = 빈 목록'으로 읽어야 한다 
-    key_restock = restock_list("keycap")
-    if key_restock:
-        body["key_restock"] = key_restock
+    keycap_restock = restock_list("keycap")
+    if keycap_restock:
+        body["keycap_restock"] = keycap_restock
 
     board_restock = restock_list("board")
     if board_restock:
@@ -150,7 +255,7 @@ def push_process(periodic=False):
         **body,
     }
     logger.info(f"[process] push seq={seq} orders={list(body['orders'])} "
-                f"key_restock={body.get('key_restock')} board_restock={body.get('board_restock')}")
+                f"keycap_restock={body.get('keycap_restock')} board_restock={body.get('board_restock')}")
     return create_cin("cnt_process", con)
 
 def restock_list(kind):

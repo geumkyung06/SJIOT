@@ -1,23 +1,10 @@
-"""stage 체류 시간 감시.
-
-머신이 죽으면 fault조차 안 올라온다. 이게 유일한 감지 수단이다 (명세 7장).
-
-만료 시각을 ZSET 하나에 모은다.
-
-    order:deadlines   score = 만료 epoch,  member = order_id
-
-전체 주문을 훑지 않고 ZRANGEBYSCORE(0, now)로 지난 것만 뽑는다.
-
-중간 체크포인트는 두지 않는다. 4건이 다 오면 dispense 콜백이 그 자리에서 다음 stage로
-넘기므로, 중간에 세어서 얻는 건 '아직 덜 왔다'뿐이고 그 시점에 취할 행동이 없다.
-신호가 늦게 오는 경우도 마감 안에만 들어오면 정상 처리된다.
-"""
 import time
 
 from infra.extensions import r
 from infra.logger import logger
 
-from config import DEADLINE_KEY, DISCARD_TIMEOUT_SEC, STATION_ORDER_PREFIX
+from config import (DEADLINE_KEY, DISCARD_TIMEOUT_SEC, STAGE_BUSY,
+                    STATION_ORDER_PREFIX, STATION_CALL_PREFIX)
 
 # 명세 7장. 사람·이동이 끼는 셋은 기계 속도로 재면 안 된다.
 STAGE_TIMEOUT = {
@@ -36,14 +23,34 @@ STAGE_TIMEOUT = {
     "received": 500,    # 사용자 조립 시간 → 초과 시 completed 일괄
 }
 
-# cnt_agv 보고 1건 = 'AGV가 살아 움직인다'는 증거. 픽업대에서 기다리는 주문을 그만큼 밀어준다.
-# 연장은 보고가 올 때만 1건당 1회이므로, 보고가 끊기면 더 안 밀린다 — 무한 연장이 구조적으로 불가능하다.
 AGV_EXTEND_SEC = 10
 
-# unclaimed 는 STAGE_TIMEOUT 표에 없다. TERMINAL 이라 set_stage 가 disarm 하기 때문이다.
-# 대신 archive.finish_order 가 set_stage **뒤에** 폐기 마감(DISCARD_TIMEOUT_SEC)을 직접 건다.
-# 노쇼로 끝난 트레이는 AGV 위에 남아 있고, 조립대를 곧바로 풀면 cnt_process 에서
-# 폐기 명령이 사라져 버린다 (실측 0.53초). 그래서 조립대를 잡아 둔 채 폐기를 기다린다.
+CALL_EXTEND = {
+    "arrived": 180,     # 부품이 제대로 안 왔다 → 노쇼 백업(300s)이 먼저 터지지 않게
+    "verified": 180,    # 로봇팔이 트레이를 안 내려준다 (기본 60s 로는 조치할 시간이 없다)
+    "received": 180,    # 조립 중 도움 요청
+}
+
+MAX_CALL_EXTENDS = 2
+
+def _call_bonus(order_id, stage):
+    """이 주문에 호출이 열려 있으면 stage 별 연장 초, 아니면 0.
+
+    arm() 이 이 값을 태워야 한다. set_stage 가 전이마다 시계를 다시 거니까,
+    호출 시점에 한 번만 밀어두면 arrived → verified 로 넘어가는 순간 연장이 날아간다.
+    (관리자가 오는 도중에 QR 인증이 끝나는 경우가 정확히 그 경로다.)
+    """
+    sec = CALL_EXTEND.get(stage)
+    if not sec:
+        return 0
+    sid = r.hget(f"order:{order_id}", "station_id")
+    if not sid:
+        return 0
+    if r.hget(f"{STATION_CALL_PREFIX}{sid}", "order_id") != order_id:
+        return 0
+    if int(r.hget(f"order:{order_id}", "call_count") or 0) > MAX_CALL_EXTENDS:
+        return 0
+    return sec
 
 
 def arm(order_id, stage):
@@ -52,7 +59,21 @@ def arm(order_id, stage):
     if not ttl:
         r.zrem(DEADLINE_KEY, order_id)
         return
-    r.zadd(DEADLINE_KEY, {order_id: time.time() + ttl})
+    bonus = _call_bonus(order_id, stage)
+    r.zadd(DEADLINE_KEY, {order_id: time.time() + ttl + bonus})
+    if bonus:
+        logger.info(f"[watchdog] {order_id} {stage} 마감 {ttl}+{bonus}s — 관리자 호출 진행 중")
+
+
+def timeout_section(stage):
+    """마감을 넘긴 stage 에서 '움직여야 했던 설비'. fault_section 으로 나간다.
+
+    표를 새로 만들지 않고 config.STAGE_BUSY 를 그대로 쓴다 — 두 곳에 두면 갈라진다.
+    assigned 만 항목이 2개라(빈 트레이 투입 · 키캡 배출) 마지막 하나를 쓰고,
+    둘 중 어디서 끊겼는지는 _expire 의 collector 로그가 남긴다.
+    """
+    machines = STAGE_BUSY.get(stage) or []
+    return machines[-1] if machines else None
 
 
 def disarm(order_id):
@@ -87,20 +108,7 @@ def _expire(order_id):
     else:
         logger.error(f"[watchdog] {order_id} {stage} 마감")
 
-    # 마감 초과 처리는 구간에 따라 다르다. 기준은 "트레이가 지금 어디 있나"다.
-    #
-    #   창고 구간(assigned~board_packed) · AGV 무응답(loaded·verified)
-    #       → fault 로 세워 멈춘다. 트레이·부품이 벨트나 AGV 위에 남아 있어서,
-    #         그대로 다음 주문을 시작하면 물리적으로 부딪힌다. 사람이 치워야 한다.
-    #         기다릴 만큼 기다렸는데 신호가 없으면 그건 머신 문제다 (명세 7장).
-    #
-    #   pickup_reached(연장 2회 소진) · arrived · received
-    #       → 그 자리에서 끝낸다. 벨트는 이미 비어 있어 라인을 계속 돌려도 안전하다.
-    #         reason="timeout" 과 끊긴 stage 를 아카이브에 남긴다.
     if stage == "unclaimed":
-        # 폐기 마감. AGV 가 DISCARD_TIMEOUT_SEC 안에 discarded 를 안 올렸다.
-        # 주문은 이미 종료·아카이브됐으므로 여기서 할 일은 조립대를 되찾는 것뿐이다.
-        # 안 풀면 조립대 한 칸이 영구 점유돼 라인이 그만큼 좁아진다.
         from services.archive import release_station_after_discard
         logger.error(f"[watchdog] {order_id} 폐기 미보고 {DISCARD_TIMEOUT_SEC}s — "
                      f"조립대 강제 해제 (AGV 확인 필요)")
@@ -112,13 +120,11 @@ def _expire(order_id):
     elif stage == "pickup_reached":
         # 연장을 다 쓰고 내려온 경우에만 여기 온다. AGV가 돌아올 가망이 없다고 본 것이므로
         # 종료는 하되 'AGV 때문에 끝났다'는 사실은 아카이브에 남긴다.
-        r.hset(f"order:{order_id}", "fault", "stage_timeout")
+        r.hset(f"order:{order_id}", mapping={"fault": "stage_timeout",
+                                            "fault_section": "agv"})
         finish_order(order_id, "completed", reason="timeout")
     else:
-        set_fault(order_id, "stage_timeout")
-
-
-# ───────────────────────────────────────────────── AGV 가 미는 마감
+        set_fault(order_id, "stage_timeout", section=timeout_section(stage))
 
 def _pickup_waiters():
     """픽업대에서 AGV를 기다리는 주문. 조립대에 배정된 주문만 대상이다."""
@@ -158,8 +164,22 @@ def rearm_pickup_waiters():
         arm(oid, "pickup_reached")
         logger.info(f"[watchdog] {oid} pickup_reached 마감 재장전 — AGV 대기장소 복귀")
 
+def extend_for_call(order_id, stage):
+    """호출 접수 시 현재 마감을 그만큼 밀어준다. 실제로 민 초를 반환한다.
 
-# ───────────────────────────────────────────────── 스케줄러
+    현재 시각 기준 재장전이 아니라 **기존 마감에 덧붙인다** (extend_pickup_waiters 와 같은 방식).
+    재장전으로 하면 마감 직전에 계속 눌러 같은 stage 에 영원히 머무를 수 있다.
+    호출 상태·call_count 가 먼저 기록된 뒤에 부를 것 — _call_bonus 가 그것들을 본다.
+    """
+    sec = _call_bonus(order_id, stage)
+    if not sec:
+        return 0
+    dl = r.zscore(DEADLINE_KEY, order_id)
+    if dl is None:
+        return 0                      # 마감이 없는 stage(종료·TERMINAL)면 밀 것도 없다
+    r.zadd(DEADLINE_KEY, {order_id: dl + sec})
+    logger.info(f"[watchdog] {order_id} {stage} 마감 +{sec}s — 관리자 호출")
+    return sec
 
 SWEEP_LOCK = "watchdog:lock"
 SWEEP_INTERVAL = 1.0

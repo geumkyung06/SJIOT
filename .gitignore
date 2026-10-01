@@ -55,5 +55,9 @@ app.*.map.json
 test_subscriptions.py
 .gcloudignore
 
+# Debug
 Claude outputs/
 debug/
+tests/
+pytest.ini
+requirements-dev.txt

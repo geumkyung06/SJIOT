@@ -5,6 +5,7 @@ from datetime import datetime
 from config import (STATION_KEY,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
+                    STATION_CALL_PREFIX,
                     KST,
                     STATION_TIMEOUT_SEC,
                     STATION_UNCLAIM_MIN_SEC,
@@ -12,7 +13,10 @@ from config import (STATION_KEY,
 from infra.extensions import r
 from infra.logger import logger
 
+from services import watchdog
 from services.archive import finish_order
+
+STATIONS = ("1", "2", "3")
 
 
 def _complete_station(station_id, reason=None):
@@ -77,3 +81,125 @@ def check_station_timeouts():
         if (now - verified_at).total_seconds() > STATION_TIMEOUT_SEC:
             logger.info(f"[timeout] station {station_id} 조립 타임아웃 → completed")
             _complete_station(station_id, reason="timeout")
+
+
+# ───────────────────────────────────────────────── 관리자 호출
+#
+# 호출 상태는 **조립대 소유**다 (station:call:{sid}). 주문이 아니라 조립대에 두는 이유:
+#   - 관리자가 묻는 건 "몇 번 조립대로 가야 하나"다. 키 3개만 읽으면 끝난다.
+#   - 부품이 안 왔다·화면이 멈췄다처럼 **주문 없이도 눌릴 수 있는 호출**이 존재한다.
+#   - 종료된 주문 해시는 ORDER_DONE_TTL(600s)로 줄어 사라지는데, 노쇼·fault 로 끝났는데
+#     사람은 아직 조립대 앞에 서 있는 상황이 호출의 주 용도다. order 에 두면 같이 사라진다.
+# 누적 횟수만 order:{id}.call_count 에 남겨 아카이브로 넘긴다 (이력·집계용).
+
+
+def _call_key(station_id):
+    return f"{STATION_CALL_PREFIX}{station_id}"
+
+
+def _waited_sec(called_at):
+    if not called_at:
+        return None
+    try:
+        return int((datetime.now(KST) - datetime.fromisoformat(called_at)).total_seconds())
+    except ValueError:
+        logger.warning(f"[call] called_at 파싱 실패 {called_at!r}")
+        return None
+
+
+def call_state(station_id):
+    """이 조립대의 현재 호출. 없으면 None.
+
+    호출 뒤 주문이 넘어갔으면(종료 → 다음 배정) 그 호출은 지난 주문의 것이므로 지운다.
+    남겨두면 다음 사용자가 부른 것처럼 관리자 화면에 뜬다.
+    주문 없이 걸린 호출(order_id 없음)은 관리자가 해결을 누를 때까지 유지한다.
+    """
+    sid = str(station_id)
+    cur = r.hgetall(_call_key(sid))
+    if not cur:
+        return None
+
+    oid = cur.get("order_id") or None
+    if oid and r.get(f"{STATION_ORDER_PREFIX}{sid}") != oid:
+        r.delete(_call_key(sid))
+        logger.info(f"[call] station {sid} 호출 정리 — {oid} 는 이 조립대의 현재 주문이 아니다")
+        return None
+
+    od = r.hgetall(f"order:{oid}") if oid else {}
+    return {
+        "station_id": sid,
+        "order_id": oid,
+        "order_seq": od.get("order_seq"),
+        "stage": od.get("stage"),
+        "fault": od.get("fault") or None,
+        "called_at": cur.get("called_at"),
+        "waited_sec": _waited_sec(cur.get("called_at")),
+        "count": int(cur.get("count") or 1),
+    }
+
+
+def open_call(station_id):
+    """호출 접수. (state, already_open, extended_sec)
+
+    already_open 이면 called_at 은 갱신하지 않는다 — 갱신하면 오래 기다린 사람이
+    관리자 화면에서 뒤로 밀린다. 재호출은 count 만 올리고 마감을 한 번 더 밀어준다.
+    """
+    sid = str(station_id)
+    ckey = _call_key(sid)
+    order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}") or None
+
+    prev = call_state(sid)                      # 지난 주문의 호출은 여기서 정리된다
+    already = prev is not None
+
+    if already:
+        r.hincrby(ckey, "count", 1)
+    else:
+        r.hset(ckey, mapping={"order_id": order_id or "",
+                              "called_at": datetime.now(KST).isoformat(timespec="seconds"),
+                              "count": 1})
+
+    extended = 0
+    if order_id:
+        # call_count 를 먼저 올린다 — watchdog._call_bonus 가 상한 판정에 이 값을 본다.
+        n = r.hincrby(f"order:{order_id}", "call_count", 1)
+        stage = r.hget(f"order:{order_id}", "stage")
+        extended = watchdog.extend_for_call(order_id, stage)
+        logger.info(f"[call] station {sid} 호출 {n}회 — {order_id} stage={stage} +{extended}s")
+    else:
+        logger.info(f"[call] station {sid} 호출 — 배정된 주문 없음")
+
+    return call_state(sid), already, extended
+
+
+def close_call(station_id):
+    """관리자 해결. 정리된 호출 상태를 반환하고, 호출 중이 아니었으면 None.
+
+    해결 시점부터 기본 마감을 다시 잰다 — 조치가 끝났어도 머신이 다시 움직일 시간은 필요하다.
+    단 STAGE_TIMEOUT 에 없는 stage(종료·unclaimed)는 건드리지 않는다. unclaimed 는
+    archive.finish_order 가 직접 건 폐기 마감을 들고 있어서, arm() 을 부르면 그게 지워지고
+    조립대가 영구 점유된다.
+    """
+    sid = str(station_id)
+    state = call_state(sid)
+    if state is None:
+        return None
+    r.delete(_call_key(sid))
+
+    oid = state.get("order_id")
+    stage = state.get("stage")
+    if oid and stage in watchdog.STAGE_TIMEOUT:
+        watchdog.arm(oid, stage)               # 호출 보너스가 빠진 기본 마감
+    logger.info(f"[call] station {sid} 호출 해결 — {oid or '주문 없음'} "
+                f"대기 {state.get('waited_sec')}s ({state.get('count')}회)")
+    return state
+
+
+def open_calls():
+    """열려 있는 호출 전부. 오래 기다린 순."""
+    out = [c for c in (call_state(sid) for sid in STATIONS) if c]
+    return sorted(out, key=lambda c: c.get("called_at") or "")
+
+
+def clear_call(station_id):
+    """조립대 해제·리셋 경로에서 호출 상태를 지운다 (로그도 마감 재장전도 없다)."""
+    return r.delete(_call_key(str(station_id)))

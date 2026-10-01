@@ -1,4 +1,4 @@
-"""관리자 경로 — fault 해제 · 라인 초기화 (기존)
+"""관리자 경로 — fault 해제 · 라인 초기화 · 조립대 호출
   + 관리자 페이지 조회/조작용 stock · stations · orders · stock/refill (gsj_backend_dashborad)
 
 fault 는 stage 를 그대로 두고 그 주문만 멈춘다. 그래서 이걸 해제해주면
@@ -25,7 +25,12 @@ from config import (QUEUE_KEY,
 from infra.extensions import r
 from infra.logger import logger
 from services import recovery
+from services import line as line_state
+from services.archive import abort_order
+from services import snapshot as debug_snapshot
 from services.process import clear_fault
+from services.station_service import STATIONS, close_call, open_call, open_calls
+from services.watchdog import CALL_EXTEND, MAX_CALL_EXTENDS
 from services.stock import get_stocks
 
 bp = Blueprint("admin", __name__)
@@ -151,6 +156,15 @@ def list_faults():
     responses:
       200:
         description: 조회 성공
+        schema:
+          type: object
+          properties:
+            faults:
+              type: array
+              items:
+                type: object
+              example: [{"order_id": "ord_a1b2c3d4", "stage": "loaded", "fault": "drop_failed",
+                         "fault_section": "agv", "station_id": "2"}]
     """
     out = []
     for oid in _live_order_ids():
@@ -160,6 +174,7 @@ def list_faults():
                 "order_id": oid,
                 "stage": o.get("stage"),
                 "fault": o.get("fault"),
+                "fault_section": o.get("fault_section"),
                 "station_id": o.get("station_id"),
                 "order_seq": _to_int(o.get("order_seq")),
             })
@@ -219,6 +234,81 @@ def clear_order_fault(order_id):
     }), 200
 
 
+@bp.route("/admin/order/<order_id>/abort", methods=["POST"])
+def admin_abort_order(order_id):
+    """
+    주문 하나만 중단 — 라인 전체를 리셋하지 않고 이 주문만 끝낸다
+    ---
+    tags:
+      - Admin
+    description: |
+      fault 해제(그 자리에서 이어가기)로 살릴 수 없는 주문 하나를 정리한다. 다른 주문은 건드리지 않는다.
+
+      **창고 구간(assigned~board_packed)은 벨트 위 트레이·부품을 사람이 먼저 치운 뒤에 누른다.**
+      창고를 풀면 바로 다음 주문이 배정돼 벨트가 다시 돈다.
+
+      | stage | 처리 |
+      |---|---|
+      | queued | 대기열에서 빼고 아카이브 |
+      | assigned ~ board_packed | completed — 창고·조립대 해제 |
+      | pickup_reached | completed — 픽업대 트레이는 사람이 회수 |
+      | loaded · arrived | discard=true(기본) → unclaimed, AGV 가 폐기 후 조립대 해제 / false → completed (사람이 회수) |
+      | verified · received | completed |
+      | unclaimed | 폐기 보고를 기다리지 않고 조립대 강제 해제 |
+      | completed | 409 |
+
+      아카이브에 reason=admin_abort 로 남고 대시보드 완료 통계에는 안 잡힌다.
+    parameters:
+      - in: path
+        name: order_id
+        type: string
+        required: true
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          example:
+            password: "관리자 비밀번호"
+            discard: true
+          properties:
+            password:
+              type: string
+            discard:
+              type: boolean
+              default: true
+              description: "loaded·arrived 전용. true=AGV 가 폐기(unclaimed 경로), false=트레이를 사람이 회수했다"
+    responses:
+      200:
+        description: 중단 완료. action 에 사람이 확인할 일이 적혀 있다
+        schema:
+          type: object
+          example: {"ok": true, "order_id": "ord_a1b2c3d4", "from_stage": "arrived",
+                    "final_stage": "unclaimed", "fault": "drop_failed", "station_id": "2",
+                    "assigned_next": [],
+                    "action": "AGV 가 폐기장소로 가는지 확인. discarded 가 오면 조립대가 풀린다 (안 오면 300초 뒤 워치독이 강제 해제)"}
+      400:
+        description: 비밀번호 불일치
+      404:
+        description: 존재하지 않거나 만료된 주문
+      409:
+        description: 이미 끝난 주문
+    """
+    data = request.get_json(silent=True) or {}
+    if data.get("password") != STATION_RESET_PASSWORD:
+        return jsonify({"error": "비밀번호가 틀렸습니다"}), 400
+
+    try:
+        result = abort_order(order_id, discard=data.get("discard", True) is not False)
+    except LookupError:
+        return jsonify({"error": "존재하지 않거나 만료된 주문입니다"}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e), "stage": r.hget(f"order:{order_id}", "stage")}), 409
+
+    logger.info(f"[admin] {order_id} 중단 {result['from_stage']} -> {result['final_stage']}")
+    return jsonify({"ok": True, **result}), 200
+
+
 @bp.route("/admin/reset", methods=["POST"])
 def admin_reset():
     """
@@ -232,7 +322,37 @@ def admin_reset():
         required: true
         schema:
           type: object
-          example: {"password": "관리자 비밀번호", "mode": "zero", "keep_queue": false}
+          example:
+            password: "관리자 비밀번호"
+            mode: "zero"
+            confirm: ""
+            keep_queue: false
+            reset_seq: false
+            flush_unknown: false
+          properties:
+            password:
+              type: string
+              description: "관리자 비밀번호 (STATION_RESET_PASSWORD 와 동일)"
+            mode:
+              type: string
+              enum: [zero, mobius, hard]
+              default: zero
+              description: "zero=전부 초기값(키캡 32칸=40 · 보드 4칸=3, 전 설비 idle, 진행 중 주문 삭제) · mobius=zero 뒤 Mobius 최신값으로 복구 · hard=zero + 아카이브·집계·일련번호까지 삭제(confirm 필요)"
+            confirm:
+              type: string
+              description: "mode=hard 전용·필수. 정확히 HARD-RESET 이어야 한다. 비밀번호만으로는 오타 한 번에 90일치 기록이 날아가서 한 겹 더 둔다"
+            keep_queue:
+              type: boolean
+              default: false
+              description: "대기열(order:queue)과 그 주문 해시를 보존할지. 대기열은 Mobius 어디에도 없어서 지우면 복구가 불가능하다"
+            reset_seq:
+              type: boolean
+              default: false
+              description: "mode=hard 전용. process:seq 까지 리셋. 머신은 seq 가 안 오르면 무시하므로, 리셋하면 창고·AGV 머신도 같이 재시작해야 한다"
+            flush_unknown:
+              type: boolean
+              default: false
+              description: "mode=hard 전용. 이 서비스가 쓰지 않는 키까지 삭제. 실 Redis 는 배포본과 같은 DB 라 기본은 목록만 보고한다"
     responses:
       200:
         description: 초기화 완료
@@ -253,7 +373,7 @@ def admin_reset():
     if mode == "hard" and data.get("confirm") != HARD_RESET_CONFIRM:
         return jsonify({
             "error": f'mode=hard 는 confirm="{HARD_RESET_CONFIRM}" 이 필요합니다',
-            "will_delete": ["orders:archive:*", "stats:*", "order:counter:*",
+            "will_delete": ["orders:archive:*", "order:counter:*",
                             "상태·진행 중 주문 전부"],
         }), 400
 
@@ -271,7 +391,310 @@ def admin_reset():
     return jsonify({"ok": True, **report}), 200
 
 
-# ── 여기서부터 gsj_backend_dashborad: 관리자 페이지 조회 3종 + 재고 채움 ──────
+# ── lgk-refactor: 영업 상태 / 디버그 스냅샷 / 조립대 호출 ───────────────────
+# ── gsj_backend_dashborad: 관리자 페이지 조회(stock·stations·orders) + 재고 채움 ──
+
+# ── 영업 상태 (services/line.py) ────────────────────────────────────────
+@bp.route("/admin/line", methods=["GET"])
+def get_line():
+    """
+    영업 상태 — 접수 중인지 · 남은 주문 · 장비를 꺼도 되는지
+    ---
+    tags:
+      - Admin
+    responses:
+      200:
+        description: |
+          closed 여도 이미 받은 주문은 끝까지 돈다. remaining 이 0 이고 AGV 가 대기장소로
+          돌아오면(agv=idle) drained=true — 그때 장비를 꺼도 된다.
+          노쇼 주문은 AGV 가 폐기를 마칠 때까지 remaining 에 남는다.
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [open, closed]
+            changed_at:
+              type: string
+            queue:
+              type: integer
+            in_progress:
+              type: integer
+            remaining:
+              type: integer
+            agv:
+              type: string
+            drained:
+              type: boolean
+          example: {"status": "closed", "changed_at": "2026-10-02T18:00:03+09:00",
+                    "queue": 1, "in_progress": 2, "remaining": 3, "agv": "busy", "drained": false}
+    """
+    return jsonify(line_state.summary()), 200
+
+
+@bp.route("/admin/line", methods=["POST"])
+def set_line():
+    """
+    오픈 / 마감 전환
+    ---
+    tags:
+      - Admin
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          example:
+            password: "관리자 비밀번호"
+            status: "open"
+          properties:
+            password:
+              type: string
+            status:
+              type: string
+              enum: [open, closed]
+              description: "closed 는 새 주문 접수(POST /order)만 막는다. 대기열·진행 중 주문은 끝까지 돈다. 리셋(/admin/reset)을 하면 자동으로 closed 가 된다"
+    responses:
+      200:
+        description: 전환 완료. GET /admin/line 과 같은 요약 + previous(직전 상태)
+      400:
+        description: 비밀번호 불일치 · 잘못된 status
+    """
+    data = request.get_json(silent=True) or {}
+    if data.get("password") != STATION_RESET_PASSWORD:
+        return jsonify({"error": "비밀번호가 틀렸습니다"}), 400
+
+    value = str(data.get("status") or "")
+    if value not in line_state.STATUSES:
+        return jsonify({"error": "status 는 open · closed 중 하나여야 합니다", "got": value}), 400
+
+    prev = line_state.set_status(value)
+    logger.info(f"[admin] 영업 상태 {prev} -> {value}")
+    return jsonify({"ok": True, "previous": prev, **line_state.summary()}), 200
+
+
+# 디버깅 스냅샷 (services/snapshot.py)
+@bp.route("/admin/debug/snapshot", methods=["GET"])
+def admin_debug_snapshot():
+    """
+    디버깅 스냅샷 — 상태 키 전부 + 주문별 collector·마감 + 불변식 검사 (읽기 전용)
+    ---
+    tags:
+      - Admin
+    description: |
+      redis-cli 로 키를 하나씩 열어보던 걸 대신한다. 아무것도 바꾸지 않는다.
+
+      - **violations** 가 빈 리스트면 Redis 상태끼리 서로 맞다. 리셋 직후엔 이것만 보면 된다.
+      - **mobius=1** 이면 Redis 가 마지막으로 보낸 스냅샷과 머신이 보는 cnt_process 최신 CIN 을 대조한다.
+        mobius.warning 이 있으면 머신은 Redis 와 다른 걸 보고 있다.
+      - **ok** = violations 없음 + mobius.warning 없음.
+
+      단계마다 저장하고 직전과 비교하려면 로컬에서 `python debug/snapshot.py --watch 2`.
+      sync 워커 1개라 이 요청이 도는 동안 콜백이 줄을 선다 — 운영 중 연타 금지.
+    parameters:
+      - in: query
+        name: mobius
+        type: integer
+        enum: [0, 1]
+        default: 0
+        description: 1 이면 Mobius cnt_process·cnt_agv 최신값과 대조 (Mobius GET 2건 추가)
+    responses:
+      200:
+        description: 스냅샷
+        schema:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            violations:
+              type: array
+              items:
+                type: string
+              example: ["warehouse:current_order=ord_a1b2c3d4 인데 occupancy='idle'"]
+            line:
+              type: object
+            queue:
+              type: array
+              items:
+                type: string
+            warehouse:
+              type: object
+            stations:
+              type: object
+            agv:
+              type: object
+            orders:
+              type: object
+              description: order:ord_* 전부. live=false 는 끝난 뒤 TTL(10분) 동안 남은 것
+            process:
+              type: object
+            stock:
+              type: object
+            mobius:
+              type: object
+    """
+    include = request.args.get("mobius", "").lower() in ("1", "true", "yes")
+    return jsonify(debug_snapshot.build(include_mobius=include)), 200
+
+
+# 상태는 station:call:{sid}
+# 누적 횟수만 order:{id}.call_count
+
+def _bad_station(station_id):
+    if str(station_id) not in STATIONS:
+        return jsonify({"error": f"없는 조립대입니다: {station_id}"}), 404
+    return None
+
+@bp.route('/admin/station/<station_id>/call', methods=['POST'])
+def station_admin_call(station_id):
+    """
+    관리자 호출 — 조립대 사용자가 도움을 요청한다
+    ---
+    tags:
+      - Admin
+    parameters:
+      - in: path
+        name: station_id
+        type: string
+        required: true
+        description: 조립대 번호 (기기 자체 고정값). order_id 는 서버가 station:current_order 에서 꺼낸다
+        example: 1
+    responses:
+      200:
+        description: |
+          호출 접수. 배정된 주문이 없어도 접수한다 ('부품이 안 온다' 가 호출의 주 용도 중 하나라
+          주문 없음을 이유로 거절하면 그 케이스가 막힌다). 이미 호출 중이면 already_open=true 로
+          200 을 준다 — called_at 은 최초값을 유지한다.
+        schema:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            station_id:
+              type: string
+              example: "1"
+            order_id:
+              type: string
+              example: ord_a1b2c3d4
+            stage:
+              type: string
+              example: verified
+            called_at:
+              type: string
+              example: "2026-09-18T14:03:11+09:00"
+            waited_sec:
+              type: integer
+              example: 0
+            call_count:
+              type: integer
+              description: 이 주문의 누적 호출 횟수
+              example: 1
+            extended_sec:
+              type: integer
+              description: 이번 호출로 stage 마감을 밀어준 초 (0 이면 연장 대상 stage 가 아니거나 상한 소진)
+              example: 180
+            already_open:
+              type: boolean
+      404:
+        description: 없는 조립대 번호
+    """
+    bad = _bad_station(station_id)
+    if bad:
+        return bad
+
+    state, already, extended = open_call(station_id)
+
+    body = {"ok": True, "already_open": already, "extended_sec": extended, **state}
+    oid = state.get("order_id")
+    if oid:
+        od = r.hgetall(f"order:{oid}")
+        body["board"] = od.get("board")
+        body["keycap"] = od.get("keycap")
+        body["colors"] = [c for c in (od.get("colors") or "").split(",") if c]
+        body["call_count"] = int(od.get("call_count") or 0)
+    return jsonify(body), 200
+
+@bp.route('/admin/station/<station_id>/call/ok', methods=['POST'])
+def station_admin_call_ok(station_id):
+    """
+    호출 해결 — 관리자가 조치를 마쳤다
+    ---
+    tags:
+      - Admin
+    parameters:
+      - in: path
+        name: station_id
+        type: string
+        required: true
+        example: 1
+    responses:
+      200:
+        description: |
+          호출 상태를 지우고, 해결 시점부터 기본 마감을 다시 잰다 (조치가 끝나도 머신이
+          다시 움직일 시간은 필요하다). 종료된 주문·노쇼 폐기 대기 중이면 마감은 건드리지 않는다.
+        schema:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            station_id:
+              type: string
+              example: "1"
+            order_id:
+              type: string
+              example: ord_a1b2c3d4
+            waited_sec:
+              type: integer
+              description: 호출부터 해결까지 걸린 초
+              example: 74
+            count:
+              type: integer
+              description: 이번 호출에서 버튼이 눌린 횟수
+              example: 2
+      404:
+        description: 없는 조립대 번호
+      409:
+        description: 호출 중이 아닌 조립대
+    """
+    bad = _bad_station(station_id)
+    if bad:
+        return bad
+
+    state = close_call(station_id)
+    if state is None:
+        return jsonify({"error": "호출 중이 아닙니다", "station_id": str(station_id)}), 409
+
+    return jsonify({"ok": True, **state}), 200
+
+@bp.route('/admin/calls', methods=['GET'])
+def list_calls():
+    """
+    열려 있는 호출 목록 — 관리자 화면용
+    ---
+    tags:
+      - Admin
+    responses:
+      200:
+        description: 조립대 3칸의 점유 여부 + 배정된 주문 정보
+    """
+    occupancy = r.hgetall(STATION_KEY)
+
+    stations = []
+    for sid in STATION_IDS:
+        status = occupancy.get(sid, "idle")
+        order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
+
+        order_info = _get_order_summary(order_id) if order_id else None
+
+        stations.append({
+            "station_id": sid,
+            "occupancy": status,
+            "order": order_info,
+        })
+
+    return jsonify({"stations": stations}), 200
+
 
 @bp.route('/admin/stock', methods=['GET'])
 def admin_stock():
@@ -392,7 +815,7 @@ def admin_stations():
       - Admin
     responses:
       200:
-        description: 조립대 3칸의 점유 여부 + 배정된 주문 정보
+        description: 조립대 3칸의 점유 여부 + 배정된 주문 정보 + 호출(T/F) · 호출 시각
     """
     occupancy = r.hgetall(STATION_KEY)
 
@@ -403,14 +826,21 @@ def admin_stations():
 
         order_info = _get_order_summary(order_id) if order_id else None
 
+        # [2026-10-01] 조립대 호출 T/F + 호출 시각.
+        # lgk-refactor 쪽 주석에 "상태는 station:call:{sid}" 라고 되어 있어서
+        # 그 키를 그대로 읽는다. open_call()/station_admin_call 의 응답에
+        # called_at 필드가 있는 걸로 봐서 이 키는 called_at 을 담은 hash로 가정했다.
+        # 만약 실제 필드명이 다르면 팀장님께 확인 후 필드명만 바꾸면 된다.
+        call_raw = r.hgetall(f"station:call:{sid}")
+        help_flag = bool(call_raw)
+        help_at = call_raw.get("called_at") if call_raw else None
+
         stations.append({
             "station_id": sid,
             "occupancy": status,
             "order": order_info,
-            # TODO(2026-10-01): 조립대 호출(T/F) + 호출 시각 병합 예정.
-            # 팀장님이 알려주실 실제 Redis 키 이름 확인 후 아래 두 필드를 채운다.
-            # "help": ???,
-            # "help_at": ???,
+            "help": help_flag,
+            "help_at": help_at,
         })
 
     return jsonify({"stations": stations}), 200

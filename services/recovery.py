@@ -6,13 +6,17 @@ Cloud Run 은 트래픽에 따라 인스턴스를 새로 띄우므로, 부팅에
 
 두 모드.
 
-    zero    전부 초기값. 재고 36칸은 STOCK_MAX_COUNT, 상태는 idle, 주문은 전부 삭제.
+    zero    전부 초기값. 재고는 칸별 최대치(키캡 40 · 보드 3), 상태는 idle, 주문은 전부 삭제.
             전시회 첫날 시작 전처럼 '아무것도 진행 중이 아니어야 할 때'.
 
     mobius  zero 를 돌린 뒤 Mobius 최신값으로 덮어쓴다. 머신이 실제로 어디 있는지를
             되찾는다 — 사고 후 복구, 2일차 시작 전.
 
 읽는 것은 **구독을 건 컨테이너뿐**이다. cnt_order·cnt_station 은 우리가 쓴 기록이라 안 읽는다.
+
+**리셋은 모드와 상관없이 영업 상태를 closed 로 둔다** (services/line.py). 지우는 도중에 주문이
+끼어들지 않게 맨 먼저 닫고, 다시 여는 건 사람이 스냅샷(GET /admin/debug/snapshot)으로
+상태를 확인한 뒤 POST /admin/line 으로 한다.
 
 [ 복구가 안 되는 것 — 알고 쓰는 것과 모르고 당하는 것은 다르다 ]
 
@@ -39,7 +43,6 @@ from config import (AGV_KEY,
                     AGV_STATUS_KEY,
                     ARCHIVE_PREFIX,
                     ORDER_COUNTER_KEY,
-                    STATS_PREFIX,
                     DEADLINE_KEY,
                     KST,
                     QUEUE_KEY,
@@ -47,9 +50,12 @@ from config import (AGV_KEY,
                     STATION_KEY,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
-                    STOCK_MAX_COUNT,
+                    STATION_CALL_PREFIX,
                     WAREHOUSE_KEY,
                     WAREHOUSE_ORDER_KEY,
+                    WAREHOUSE_DRIVER_KEY,
+                    KEYCAP_STOCK_MAX_COUNT,
+                    BOARD_STOCK_MAX_COUNT,
                    )
 from infra.extensions import r
 from infra.keys import _touch_order
@@ -75,26 +81,31 @@ DISPENSE_LOOKBACK = 8
 # process:seq 는 **지우지 않는다.** 머신은 "seq 가 안 오르면 무시" 로 재전송을 거르는데,
 # seq 를 1부터 다시 시작하면 그 필터에 걸려 복구 뒤 모든 스냅샷이 버려진다.
 # 내용 지문(process:last)만 지워서 복구 직후 한 번은 반드시 나가게 한다.
-_STATE_KEYS = [WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, STATION_KEY, AGV_KEY, AGV_STATUS_KEY,
+_STATE_KEYS = [WAREHOUSE_KEY, WAREHOUSE_ORDER_KEY, WAREHOUSE_DRIVER_KEY,
+               STATION_KEY, AGV_KEY, AGV_STATUS_KEY,
                DEADLINE_KEY, "process:last",
                "robot:status",                       # 안 쓰는 옛 키. 남아 있으면 같이 정리
                "stock:seed:lock", "watchdog:lock"]
 _STATE_KEYS += [f"{STATION_ORDER_PREFIX}{s}" for s in STATIONS]
 _STATE_KEYS += [f"{STATION_VERIFIED_PREFIX}{s}" for s in STATIONS]
+_STATE_KEYS += [f"{STATION_CALL_PREFIX}{s}" for s in STATIONS]
 
 _ORDER_PATTERNS = ["order:ord_*", "order:*:pending", "order:*:wrong", "order:*:gate",
                    "idempotency:*"]
 
 # mode=hard 에서만 지우는 것 — 90일 보관 기록이다.
-_ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", f"{STATS_PREFIX}*", f"{ORDER_COUNTER_KEY}*"]
+# "stats:*" 는 폐기된 집계 키다 (2026-09-18). 새로 쓰는 코드는 없지만 실 Redis 에
+# 예전 것이 남아 있어서, hard 리셋이 같이 걷어가도록 패턴만 남긴다. 한 번 돌리면 없어진다.
+_ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", "stats:*", f"{ORDER_COUNTER_KEY}*"]
 
 # 이 서비스가 쓰는 키의 prefix 전부. hard 모드가 '모르는 키' 를 가려낼 때 기준이 된다.
 # 실 Redis 는 배포본과 같은 DB 라 FLUSHDB 를 쓰면 남의 키까지 날아간다.
 _KNOWN_PREFIXES = ("order:", "station:", "warehouse:", "agv:", "process:",
-                   "idempotency:", ARCHIVE_PREFIX, STATS_PREFIX,
+                   "idempotency:", ARCHIVE_PREFIX, "stats:",   # stats: 는 레거시
+                   "line:",                                    # 영업 상태 (services/line.py)
                    "robot:status", "watchdog:lock", "stock:seed:lock")
 
-KEEP_NOTE = ["orders:archive:*", "stats:*", "order:counter:*"]
+KEEP_NOTE = ["orders:archive:*", "order:counter:*"]
 KEEP_NOTE_HARD = ["process:seq (reset_seq 로만 삭제)"]
 
 
@@ -160,7 +171,6 @@ def _wipe(keep_queue=False, hard=False, reset_seq=False, flush_unknown=False):
     out = {"deleted": deleted, "kept_queue": sorted(keep_ids)}
     if hard:
         out["archive"] = counts.get(f"{ARCHIVE_PREFIX}*", 0)
-        out["stats"] = counts.get(f"{STATS_PREFIX}*", 0)
         out["counters"] = counts.get(f"{ORDER_COUNTER_KEY}*", 0)
         out["unknown_keys"] = [] if flush_unknown else unknown
         if unknown and not flush_unknown:
@@ -174,14 +184,17 @@ def _seed_zero():
     """재고는 max, 나머지는 idle. '아무것도 진행 중이 아닌' 상태."""
     slots = list(stock.KEYCAP_SLOTS) + list(stock.BOARD_SLOTS)
     for slot in slots:
-        stock.put(slot, STOCK_MAX_COUNT, "idle")
+        stock.put(slot, stock.max_count(slot), "idle")   # 키캡 40 · 보드 3
 
     r.set(WAREHOUSE_KEY, "idle")
     r.hset(STATION_KEY, mapping={s: "idle" for s in STATIONS})
     r.set(AGV_KEY, "idle")
 
-    logger.info(f"[reset] 초기값 — 재고 {len(slots)}칸 = {STOCK_MAX_COUNT} · 전 설비 idle")
-    return {"stock_slots": len(slots), "stock_count": STOCK_MAX_COUNT}
+    logger.info(f"[reset] 초기값 — 키캡 {len(stock.KEYCAP_SLOTS)}칸={KEYCAP_STOCK_MAX_COUNT} · "
+                f"보드 {len(stock.BOARD_SLOTS)}칸={BOARD_STOCK_MAX_COUNT} · 전 설비 idle")
+    return {"stock_slots": len(slots),
+            "keycap_count": KEYCAP_STOCK_MAX_COUNT,
+            "board_count": BOARD_STOCK_MAX_COUNT}
 
 
 # ───────────────────────────────────────────────────────── Mobius 복구
@@ -217,24 +230,49 @@ def _dispensed_keycaps(order_id):
     return got
 
 
-def _restore_collector(order_id, stage):
-    """배출 CIN 을 대조해 미배출 목록을 다시 깐다. 복구했으면 True."""
+def _restore_collector(order_id, stage, tag="reset", remove_only=False):
+    """배출 CIN 을 대조해 미배출 목록을 다시 깐다.
+
+    반환은 **미배출 목록(list)**, 대조할 근거가 없으면 None.
+    빈 리스트는 '4개 다 나왔다'는 유효한 결과다 — falsy 라고 실패로 읽으면 안 된다.
+
+    기준선(base)이 경로마다 다르다.
+
+      재기동(/admin/reset)  기대 4개.  주문 키가 통째로 날아간 뒤라 처음부터 다시 깐다.
+      fault 해제            **현재 pending**.  Mobius 가 확인해 준 것을 빼기만 하고,
+                            이미 소진된 것을 되살리지 않는다 (remove_only=True).
+
+    fault 해제에서 기대 4개를 기준으로 삼으면 안 되는 이유 — 콜백은 fault 중에도
+    collector 를 갱신하므로 Redis 쪽이 더 정확한데, Mobius 를 못 읽거나 lookback(8건)을
+    넘기면 제대로 소진된 pending 을 통째로 4개로 되돌려 놓는다 (실측).
+    Mobius 조회가 실패하면 dispensed 가 비어 remaining == base 가 되어 아무것도 안 건드린다.
+    """
     if stage not in RECOVERABLE_STAGES:
-        return False
+        return None
 
     expected = list(stock.parts_of(order_id, "keycap"))       # 4개
+    base = collector.remaining(order_id, "keycap") if remove_only else list(expected)
+    if remove_only and not base:
+        logger.info(f"[{tag}] {order_id} pending 이 비어 있다 — 재동기화 생략 (기대 {expected})")
+        return []
+
     dispensed = _dispensed_keycaps(order_id)
 
-    remaining = list(expected)
+    remaining = list(base)
     for k in dispensed:
         if k in remaining:
             remaining.remove(k)                                # 중복 배출도 1건씩만 상쇄
 
+    if remove_only and remaining == base:
+        logger.info(f"[{tag}] {order_id} 미배출 {remaining} 그대로 (배출확인 {dispensed})")
+        return remaining
+
     collector.arm(order_id, "keycap", remaining)
-    collector.reset_gate(order_id)
-    logger.info(f"[reset] {order_id} 미배출 복구 {remaining} "
-                f"(기대 {expected} · 배출확인 {dispensed})")
-    return True
+    if not remove_only:
+        collector.reset_gate(order_id)      # 재기동 때만. 해제 경로에서 남의 플래그를 지우지 않는다
+    logger.info(f"[{tag}] {order_id} 미배출 복구 {remaining} "
+                f"(기준 {base} · 배출확인 {dispensed})")
+    return remaining
 
 
 def _restore_process():
@@ -266,6 +304,8 @@ def _restore_process():
             mapping["station_id"] = sid
         if o.get("fault"):
             mapping["fault"] = o["fault"]
+            if o.get("fault_section"):
+                mapping["fault_section"] = o["fault_section"]
         # 노쇼 타이머 기준. 원본이 없으므로 지금부터 다시 센다 (보수적).
         if STAGE_ORDER.index(stage) >= STAGE_ORDER.index("arrived"):
             mapping["arrived_at"] = now
@@ -280,9 +320,10 @@ def _restore_process():
         if stage in WAREHOUSE_STAGES:
             r.set(WAREHOUSE_KEY, "busy")
             r.set(WAREHOUSE_ORDER_KEY, oid)
-            if not _restore_collector(oid, stage):
+            if _restore_collector(oid, stage) is None:
                 # 근거 없이 짐작하면 배출이 중복된다. 세워놓고 사람이 보게 한다.
-                r.hset(f"order:{oid}", "fault", "restart_unknown")
+                r.hset(f"order:{oid}", mapping={"fault": "restart_unknown",
+                                                "fault_section": "keycap_cartridge"})
                 faulted.append(oid)
                 logger.error(f"[reset] {oid} stage={stage} — 진행분을 알 수 없어 "
                              f"fault=restart_unknown (관리자 확인 후 해제)")
@@ -316,6 +357,7 @@ def reset(mode="zero", keep_queue=False, reset_seq=False, flush_unknown=False):
         raise ValueError(f"알 수 없는 mode: {mode}")
 
     from services.process import push_process
+    from services import line
 
     hard = mode == "hard"
     t0 = time.time()
@@ -323,6 +365,9 @@ def reset(mode="zero", keep_queue=False, reset_seq=False, flush_unknown=False):
               "kept": KEEP_NOTE_HARD if hard else KEEP_NOTE}
     logger.warning(f"[reset] 시작 mode={mode} keep_queue={keep_queue} "
                    f"reset_seq={reset_seq} flush_unknown={flush_unknown}")
+
+    # 맨 먼저 닫는다 — 지우는 도중에 POST /order 가 끼어들면 반쯤 지워진 상태에 주문이 얹힌다
+    report["line"] = {"previous": line.set_status(line.CLOSED), "now": line.CLOSED}
 
     report["wipe"] = _wipe(keep_queue=keep_queue, hard=hard,
                            reset_seq=reset_seq, flush_unknown=flush_unknown)

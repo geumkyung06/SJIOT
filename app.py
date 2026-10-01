@@ -14,7 +14,7 @@ from infra.keys import _ensure_initial_state
 
 from routes.order import bp as order_bp
 from routes.stock import bp as stock_bp
-
+from routes.dashboard import bp as dashboard_bp
 from routes.station import bp as station_bp
 from routes.callback import bp as callback_bp
 from routes.admin import bp as admin_bp
@@ -82,7 +82,7 @@ def create_app():
 
     app.register_blueprint(order_bp)
     app.register_blueprint(stock_bp)
-
+    app.register_blueprint(dashboard_bp)
     app.register_blueprint(station_bp)
     app.register_blueprint(callback_bp)
     app.register_blueprint(admin_bp)

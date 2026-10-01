@@ -5,21 +5,20 @@ from config import AGV_KEY, AGV_STATUS_KEY, STATION_ORDER_PREFIX, KST
 from infra.extensions import r
 from infra.logger import logger
 
-from services import watchdog
+from services import agv_trail, watchdog
 from services.process import set_stage, set_fault, is_at_or_past
 
 # status → (전이할 stage, 필요한 직전 stage)
 TRANSITIONS = {
     "loaded": ("loaded", "pickup_reached"),
-    "station_arrived": ("arrived", "loaded"),
+    "arrived": ("arrived", "loaded"),
     "unloaded": ("received", "verified"),
 }
 
 FAULTS = {
     "load_failed": "pickup_failed",
     "unload_failed": "drop_failed",
-    "move_accident": "agv_collided",
-    "broken": "agv_broken",
+    "agv_broken": "agv_broken",
 }
 
 
@@ -80,9 +79,17 @@ def _current_order(con, status=None):
 
 
 def on_agv(con):
+    coord = list(con.get("coord") or [])
     status = str(con.get("status") or "")
 
-    # 올라온 status 를 그대로 보관한다. 진단·로그용이다.
+    # 대시보드 이동경로. parked·discarded 의 조기 return 보다 위에 둔다 — 그 둘도 구간 끝이다.
+    # 궤적 쪽 오류가 아래 stage 전이를 막으면 안 된다 (예전에 list 를 r.set 해서
+    # DataError 로 loaded·arrived 처리가 통째로 죽었다).
+    try:
+        agv_trail.record(coord, status, con.get("station_id"))
+    except Exception as e:
+        logger.error(f"[agv] 궤적 기록 실패 (전이는 계속) con={con} err={e}")
+
     if status:
         r.set(AGV_STATUS_KEY, status)
 
@@ -118,7 +125,8 @@ def on_agv(con):
         return
 
     if status in FAULTS:
-        set_fault(order_id, FAULTS[status])
+        # 어느 동작에서 실패했는지는 fault 값이 이미 말한다 (pickup_failed·drop_failed…).
+        set_fault(order_id, FAULTS[status], section="agv")
         return
 
     if status not in TRANSITIONS:
@@ -146,17 +154,17 @@ def on_agv(con):
     if status == "loaded":
         r.set(AGV_KEY, "busy")
 
-    if status == "station_arrived":
+    if status == "arrived":
         # 오배송. cnt_agv 는 order_id·station_id 를 싣기로 했으므로, 그 쌍이 배정과
         # 다르면 AGV가 엉뚱한 조립대에 선 것이다. 되돌릴 채널이 아직 없으므로
         # (명세 10-2 A3 미결) stage 는 전이시키지 않고 fault 로 세워 사람이 보게 한다.
         # 관리자가 /admin/order/{id}/fault/clear 로 풀면 stage 가 loaded 그대로라
-        # AGV가 제 조립대에서 다시 station_arrived 를 올리는 순간 이어진다.
+        # AGV가 제 조립대에서 다시 arrived 를 올리는 순간 이어진다.
         con_sid = str(con.get("station_id") or "")
         assigned_sid = str(r.hget(f"order:{order_id}", "station_id") or "")
         if con_sid and assigned_sid and con_sid != assigned_sid:
             logger.error(f"[agv] 오배송 {order_id} 배정={assigned_sid} 도착보고={con_sid}")
-            set_fault(order_id, "drop_failed")
+            set_fault(order_id, "drop_failed", section=f"agv:station{con_sid}")
             return
 
         # 노쇼 타이머의 기준 시각. 프론트도 3분을 세지만 그건 클라이언트 값이라

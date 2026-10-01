@@ -4,27 +4,16 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from config import (ORDER_TTL,
-                    QUEUE_KEY,
-                    WAREHOUSE_KEY,
                     STATION_KEY,
-                    AGV_KEY,
-                    WAREHOUSE_ORDER_KEY,
                     STATION_ORDER_PREFIX,
-                    MAX_QUEUE_LEN,
                     STATION_VERIFIED_PREFIX,
                     STATION_UNCLAIM_MIN_SEC,
-                    AGV_STATUS_KEY,
-                    ORDER_PAGE_BASE,
-                    STATION_RESET_PASSWORD,
-                    COLOR_LIST,
-                    BOARD_LIST,
                     KST,
                    )
 
 from infra.logger import logger
 
 from infra.extensions import r
-from infra.mobius import _push_station_snapshot
 from services.process import set_stage, is_before, is_after
 from services.archive import finish_order
 from services.watchdog import DEADLINE_KEY
@@ -371,6 +360,7 @@ def get_station_status(station_id):
         "colors": [c for c in (order_data.get("colors") or "").split(",") if c],
         "arrived_at": order_data.get("arrived_at"),
         "fault": order_data.get("fault") or None,
+        "fault_section": order_data.get("fault_section") or None,
     }
     if elapsed is not None:
         # 프론트가 자체 타이머 대신 이 값을 써도 되도록 서버 기준 잔여 시간을 같이 준다.

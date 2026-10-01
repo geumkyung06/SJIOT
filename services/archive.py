@@ -1,10 +1,11 @@
 """주문 종료 공통 경로 — 아카이브 · 집계 · 자원 해제.
 
-종료 지점이 넷이다. 넷 다 여기로 모은다.
+종료 지점이 다섯이다. 전부 여기로 모은다.
     완료 버튼           routes/station.py  → station_service._complete_station
     노쇼(프론트)        routes/station.py  /unclaim
     노쇼(워치독 백업)    services/watchdog.py  arrived 마감
     타임아웃            services/watchdog.py  그 외 stage 마감
+    관리자 단건 중단     routes/admin.py  /admin/order/<id>/abort → abort_order (reason=admin_abort)
 
 아카이브에는 '아예 끝난 주문'만 들어가므로 기록의 final_status 는 completed 하나다.
 정상 완료가 아닌 종료는 reason 으로 구분한다 — 노쇼는 unclaimed, 마감 초과는 timeout.
@@ -12,9 +13,6 @@ Redis·cnt_process 의 stage 는 그대로 unclaimed / completed 를 쓴다 (sta
 
 저장 (Redis ERD 5장)
     orders:archive:{YYYYMMDD}   hash   field=order_id  value=기록 JSON   TTL 90일
-    stats:{reason|completed}:{date} string 건수
-    stats:mbti:{date}           hash   MBTI 분포
-    stats:color:{date}          hash   색상 분포
 """
 import json
 import time
@@ -25,9 +23,10 @@ from config import (ARCHIVE_PREFIX,
                     DEADLINE_KEY,
                     DISCARD_TIMEOUT_SEC,
                     ORDER_DONE_TTL,
-                    STATS_PREFIX,
+                    QUEUE_KEY,
                     STATION_ORDER_PREFIX,
                     STATION_VERIFIED_PREFIX,
+                    STATION_CALL_PREFIX,
                     WAREHOUSE_ORDER_KEY,
                     KST,
                    )
@@ -94,25 +93,18 @@ def _archive(order_id, od, reason):
         rec["ended_at_stage"] = od.get("stage")      # 어느 단계에서 끊겼는지
     if od.get("fault"):
         rec["fault"] = od["fault"]
+        rec["fault_section"] = od.get("fault_section")      # 어느 부품·선반에서 멈췄나
     if od.get("pickup_wait_extends"):
         rec["pickup_wait_extends"] = int(od["pickup_wait_extends"])
+    if od.get("call_count"):
+        rec["call_count"] = int(od["call_count"])       # 관리자를 몇 번 불렀나
 
     r.hset(akey, order_id, json.dumps(rec, ensure_ascii=False))
     r.expire(akey, ARCHIVE_TTL)
 
-    # 집계는 reason 으로 가른다 — 정상 완료 / 노쇼 / 마감 초과
-    ckey = f"{STATS_PREFIX}{reason or 'completed'}:{date}"
-    r.incr(ckey)
-    r.expire(ckey, ARCHIVE_TTL)
-    if od.get("keycap"):
-        mkey = f"{STATS_PREFIX}mbti:{date}"
-        r.hincrby(mkey, od["keycap"], 1)
-        r.expire(mkey, ARCHIVE_TTL)
-    if colors:
-        skey = f"{STATS_PREFIX}color:{date}"
-        for c in colors:
-            r.hincrby(skey, c, 1)
-        r.expire(skey, ARCHIVE_TTL)
+    # stats:* 집계는 폐기했다 (2026-09-18). 쓰는 화면이 없어서 종료 경로마다
+    # INCR 4건을 더 치를 이유가 없다. 필요해지면 아카이브 해시를 날짜별로 세면 된다 —
+    # 같은 값이 orders:archive:{date} 의 레코드에 전부 들어 있다.
 
 
 def _release_resources(order_id, od, final_stage=None):
@@ -138,6 +130,7 @@ def _release_resources(order_id, od, final_stage=None):
     sid = od.get("station_id")
     if sid and r.get(f"{STATION_ORDER_PREFIX}{sid}") == order_id:
         r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
+        r.delete(f"{STATION_CALL_PREFIX}{sid}")      # 남기면 다음 사용자가 부른 것처럼 보인다
         release_station(sid)
 
 
@@ -156,6 +149,133 @@ def release_station_after_discard(order_id):
     if not sid or r.get(f"{STATION_ORDER_PREFIX}{sid}") != order_id:
         return None                              # 이미 풀렸다
     r.delete(f"{STATION_VERIFIED_PREFIX}{sid}")
+    r.delete(f"{STATION_CALL_PREFIX}{sid}")
     _touch_order(order_id, ORDER_DONE_TTL)
     logger.info(f"[finish] {order_id} 폐기 완료 — 조립대 {sid} 해제")
     return release_station(sid)                  # try_assign_next 까지 돈다
+
+# ── 관리자 단건 중단 ─────────────────────────────────────────────────────
+ABORT_REASON = "admin_abort"
+
+# AGV 가 트레이를 들고 있어 폐기(unclaimed) 경로로 보낼 수 있는 구간.
+# 그냥 completed 로 지우면 노쇼 때와 같은 일이 난다 — 주문이 cnt_process 에서 사라져
+# AGV 는 트레이를 든 채 받을 명령이 없다 (_release_resources 주석).
+ABORT_DISCARD_STAGES = ("loaded", "arrived")
+
+# collector 가 주문마다 까는 목록 (warehouse·conveyor·robot_arm 콜백)
+_COLLECTOR_SLOTS = ("keycap", "board", "keycap_pack")
+
+_ABORT_ACTION = {
+    "queued": "대기열에서 뺐다. 할 일 없음",
+    "warehouse": "벨트·트레이 위 부품을 사람이 치웠는지 확인 — 창고가 바로 다음 주문을 시작한다",
+    "pickup_reached": "픽업대 트레이를 사람이 회수",
+    "discard": "AGV 가 폐기장소로 가는지 확인. discarded 가 오면 조립대가 풀린다 (안 오면 300초 뒤 워치독이 강제 해제)",
+    "removed": "트레이를 사람이 회수했다고 보고 끝냈다",
+    "station": "조립대의 트레이·부품을 사람이 회수",
+    "force_release": "폐기 보고를 기다리지 않고 조립대를 풀었다. AGV 가 트레이를 정말 비웠는지 확인",
+}
+
+
+def _clear_scratch(order_id):
+    """끝난 주문이 collector 를 물고 있으면 다음 주문 판정을 오염시킨다 (불변식 6)."""
+    from services import collector
+    for slot in _COLLECTOR_SLOTS:
+        collector.clear(order_id, slot)
+    collector.reset_gate(order_id)
+
+
+def abort_order(order_id, discard=True):
+    """관리자가 주문 하나만 끝낸다. fault 해제(그 자리에서 이어가기)와 라인 전체 리셋 사이의 길.
+
+    트레이가 지금 어디 있느냐로 갈린다.
+
+      queued                    대기열에서 빼고 아카이브만. 잡은 자원이 없다
+      assigned ~ board_packed   **벨트 위 트레이·부품을 사람이 먼저 치운 뒤에 부른다.**
+                                창고를 풀면 바로 다음 주문이 배정돼 벨트가 다시 돈다
+      pickup_reached            픽업대 트레이를 사람이 회수 (워치독 pickup_reached 마감과 같은 처리)
+      loaded · arrived          discard=True(기본)  → unclaimed 로 끝낸다. AGV 가 폐기하고
+                                                     discarded 를 올리면 조립대가 풀린다 (노쇼와 같은 길)
+                                discard=False       → 트레이를 사람이 회수했다. completed 로 끝낸다
+      verified · received       손님 앞이다. completed 로 끝낸다
+      unclaimed                 이미 끝났고 폐기 보고만 기다리는 중 → 조립대를 강제로 푼다
+                                (워치독 폐기 마감 300초를 기다리지 않는 것)
+      completed                 이미 끝났다 → ValueError
+
+    아카이브는 reason=admin_abort 로 남는다. 대시보드는 reason 없는 주문만 완료로 세므로
+    통계에 섞이지 않는다. 걸려 있던 fault 는 아카이브에 남기고 주문 해시에서는 지운다 —
+    남겨 두면 머신이 cnt_process 에서 fault 를 보고 폐기 명령에도 멈춰 선다.
+
+    재고 칸 status·선반 차단(warehouse:driver_failed)은 건드리지 않는다. 그건 주문이 아니라
+    장비 상태다 — 장비를 고쳐 정상 status 가 올라오면 콜백이 푼다 (callbacks/warehouse.py).
+    고쳤다는 걸 사람이 선언하는 길은 fault/clear 다.
+
+    assigned_next 는 이 중단으로 자리가 나서 대기열에서 새로 배정된 주문들이다.
+
+    없는 주문은 LookupError, 이미 끝난 주문은 ValueError.
+    """
+    from services.process import push_process
+
+    key = f"order:{order_id}"
+    od = r.hgetall(key)
+    if not od:
+        raise LookupError(order_id)
+    stage = od.get("stage")
+    sid = od.get("station_id")
+    fault = od.get("fault") or None
+
+    if stage == "completed":
+        raise ValueError("이미 끝난 주문입니다")
+
+    result = {"order_id": order_id, "from_stage": stage, "fault": fault, "station_id": sid}
+    waiting = set(r.lrange(QUEUE_KEY, 0, -1)) - {order_id}
+
+    def _newly_assigned():
+        return sorted(waiting - set(r.lrange(QUEUE_KEY, 0, -1)))
+
+    if stage == "unclaimed":
+        held = bool(sid) and r.get(f"{STATION_ORDER_PREFIX}{sid}") == order_id
+        if not held:
+            raise ValueError("이미 끝났고 조립대도 풀린 주문입니다")
+        r.hdel(key, "fault", "fault_section")
+        release_station_after_discard(order_id)
+        _clear_scratch(order_id)
+        push_process()
+        logger.warning(f"[abort] {order_id} unclaimed — 폐기 보고 없이 조립대 {sid} 강제 해제")
+        return {**result, "final_stage": "unclaimed", "assigned_next": _newly_assigned(),
+                "action": _ABORT_ACTION["force_release"]}
+
+    from services.dispatch import try_assign_next
+    from services.recovery import WAREHOUSE_STAGES
+
+    if stage in ABORT_DISCARD_STAGES and discard:
+        final, action = "unclaimed", "discard"
+    elif stage in ABORT_DISCARD_STAGES:
+        final, action = "completed", "removed"
+    elif stage == "queued":
+        final, action = "completed", "queued"
+    elif stage in WAREHOUSE_STAGES:
+        final, action = "completed", "warehouse"
+    elif stage == "pickup_reached":
+        final, action = "completed", "pickup_reached"
+    else:
+        final, action = "completed", "station"
+
+    r.lrem(QUEUE_KEY, 0, order_id)           # queued 가 아니면 아무 일도 없다
+    finish_order(order_id, final, reason=ABORT_REASON)
+
+    # finish_order 가 fault 를 아카이브에 옮겨 적은 뒤에 지운다
+    r.hdel(key, "fault", "fault_section")
+    _clear_scratch(order_id)
+
+    if stage == "queued":
+        # 대기 주문도 재고를 예약한다 (stock.reserved_map). 빠지면 막혀 있던 주문이 풀릴 수 있다.
+        # 나머지 경로는 finish_order 의 자원 해제가 이미 try_assign_next 를 불렀다
+        try_assign_next()
+
+    # 자원 해제 뒤 배정이 안 되면 아무도 push 하지 않아서 스냅샷에 이 주문이 completed 로 남는다
+    # (dispatch.release_station 주석). 중단은 명시적으로 지운다. 내용이 같으면 push 는 안 나간다.
+    push_process()
+
+    logger.warning(f"[abort] {order_id} {stage} -> {final} (fault={fault}, discard={discard})")
+    return {**result, "final_stage": final, "assigned_next": _newly_assigned(),
+            "action": _ABORT_ACTION[action]}

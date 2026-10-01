@@ -61,7 +61,8 @@ def on_keycap_conveyor(con):
         # 창고팀이 section 필드를 넣어주기 전까지는 그 값이 있을 때만 구분한다.
         section = str(con.get("section") or "01").zfill(2)
         logger.error(f"[keycap_conveyor] {order_id} 실패 {failed} section={section}")
-        set_fault(order_id, f"keycap_{section}_belt_jammed")
+        set_fault(order_id, f"keycap_{section}_belt_jammed",
+                  section=f"keycap_conveyor:{section}")
         return
 
     if not all(result.get(f) == "done" for f in KEYCAP_FIELDS):
@@ -78,16 +79,16 @@ def on_tray_conveyor(con):
         return
     order_id, stage = got
 
-    for section, ok_stage, fault in (
-        ("section1", "tray_reached", "tray_01_belt_jammed"),
-        ("section2", "pickup_reached", "tray_02_belt_jammed"),
+    for section, ok_stage, fault, part in (
+        ("section1", "tray_reached", "tray_01_belt_jammed", "tray_conveyor:01"),
+        ("section2", "pickup_reached", "tray_02_belt_jammed", "tray_conveyor:02"),
     ):
         value = con.get(section)
         if value is None:
             continue
         if value == "failed":
             logger.error(f"[tray_conveyor] {order_id} {section} 실패")
-            set_fault(order_id, fault)
+            set_fault(order_id, fault, section=part)
             return
         if value != "done" or is_at_or_past(stage, ok_stage):
             continue

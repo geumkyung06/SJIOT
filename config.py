@@ -9,13 +9,35 @@ AGV_KEY = os.getenv("AGV_KEY", "agv:occupancy")
 # occupancy(idle/busy)만으로는 'AGV가 지금 어디서 뭘 하는 중인지'를 알 수 없어서
 # 워치독이 정상 대기와 고장을 구분하지 못한다.
 AGV_STATUS_KEY = os.getenv("AGV_STATUS_KEY", "agv:status")
+AGV_COORD_KEY = os.getenv("AGV_COORD_KEY", "agv:coord")
+# 대시보드 AGV 이동경로 (services/agv_trail.py).
+# agv:coord 는 마지막 점(JSON), agv:trail 은 현재 구간의 점 목록, agv:leg 는 구간 번호.
+# agv:coord:seq 는 점마다 오르는 순번 — 대시보드가 ?since= 로 새 점만 받아 간다.
+AGV_TRAIL_KEY = os.getenv("AGV_TRAIL_KEY", "agv:trail")
+AGV_SEQ_KEY = os.getenv("AGV_SEQ_KEY", "agv:coord:seq")
+AGV_LEG_KEY = os.getenv("AGV_LEG_KEY", "agv:leg")
 DEADLINE_KEY = os.getenv("DEADLINE_KEY", "order:deadlines")
 
+# 영업 상태 (services/line.py). open 일 때만 POST /order 를 받는다 — 다른 API 는 막지 않는다.
+# 키가 없으면 closed 로 본다. 리셋 직후·Redis 유실 뒤 아무도 확인 안 한 상태로 주문이 들어오지 않게.
+LINE_STATUS_KEY = os.getenv("LINE_STATUS_KEY", "line:status")
+LINE_CHANGED_AT_KEY = os.getenv("LINE_CHANGED_AT_KEY", "line:changed_at")
+
 WAREHOUSE_ORDER_KEY = os.getenv("WAREHOUSE_ORDER_KEY", "warehouse:current_order")
+
+# 키캡 드라이버(선반) 고장. 선반 하나가 죽으면 그 축 8칸(2글자 × 4색)을 전부 못 쓴다.
+# 칸 status(warehouse:stock)는 창고가 보낸 CIN 그대로 두고, 파생 상태인 '선반 고장'만 여기 따로 둔다 —
+# 8칸에 disable 을 찍어두면 그중 한 칸에 idle CIN 하나만 와도 선반 고장이 조용히 풀린다.
+WAREHOUSE_DRIVER_KEY = os.getenv("WAREHOUSE_DRIVER_KEY", "warehouse:driver_failed")
 STATION_ORDER_PREFIX = os.getenv("STATION_ORDER_PREFIX", "station:current_order:")
 MAX_QUEUE_LEN = 3  # 조립대 개수와 동일 (그 이상 대기시켜봤자 처리 못 함)
 
 STATION_VERIFIED_PREFIX = os.getenv("STATION_VERIFIED_PREFIX", "station:verified_at:")
+
+# 관리자 호출. 조립대 디바이스의 호출 버튼이 누른 '지금 상태'를 담는다.
+# station:occupancy 해시에 필드를 붙이지 않는 이유 — /admin/reset 이 그 해시를
+# hset(mapping={s: "idle"}) 로 덮어써서 늘어난 필드를 지우지 못한다.
+STATION_CALL_PREFIX = os.getenv("STATION_CALL_PREFIX", "station:call:")
 STATION_TIMEOUT_SEC = int(os.getenv("STATION_TIMEOUT_SEC", "600"))  # 10분
 
 # 노쇼(unclaim) 최소 대기 시간. 프론트가 3분 타이머를 돌리지만 그건 클라이언트 값이라
@@ -27,8 +49,11 @@ ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
 
 # 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관.
 ARCHIVE_PREFIX = os.getenv("ARCHIVE_PREFIX", "orders:archive:")
-STATS_PREFIX = os.getenv("STATS_PREFIX", "stats:")
 ARCHIVE_TTL = int(os.getenv("ARCHIVE_TTL", str(90 * 24 * 3600)))
+
+# 대시보드
+EXHIBITION_START_DATE = os.getenv("EXHIBITION_START_DATE","20260918")
+EXHIBITION_DAYS = int(os.getenv("EXHIBITION_DAYS", "3"))
 
 ORDER_PAGE_BASE = os.getenv("ORDER_PAGE_BASE", "https://sjiot-backend-294910862364.asia-northeast1.run.app")
 
@@ -45,9 +70,10 @@ ORDER_TTL = int(os.getenv("ORDER_TTL", str(24 * 3600)))          # 진행 중 �
 ORDER_DONE_TTL = int(os.getenv("ORDER_DONE_TTL", "600"))         # 종료된 주문 10분
 ORDER_COUNTER_TTL = int(os.getenv("ORDER_COUNTER_TTL", str(90 * 24 * 3600)))   # 일련번호 90일
 
-# 카트리지 1칸의 최대 수량. /admin/reset?mode=zero 가 36칸을 이 값으로 채운다.
-# 나중에 env 로 뺄 값이라 전역 하나로 둔다.
-STOCK_MAX_COUNT = int(os.getenv("STOCK_MAX_COUNT", "30"))
+# 1칸의 최대 수량. /admin/reset?mode=zero 가 이 값으로 채운다.
+# 키캡 카트리지와 보드 보관대는 물리적으로 용량이 달라서 따로 둔다.
+KEYCAP_STOCK_MAX_COUNT = int(os.getenv("KEYCAP_STOCK_MAX_COUNT", "40"))   # 키캡 32칸
+BOARD_STOCK_MAX_COUNT = int(os.getenv("BOARD_STOCK_MAX_COUNT", "3"))      # 보드 4칸
 
 # 노쇼 폐기 마감. unclaimed 로 끝난 트레이를 AGV가 discarded 로 보고할 때까지
 # 조립대를 잡아 둔다 — 그래야 폐기 명령이 cnt_process 에서 사라지지 않는다.
