@@ -39,7 +39,12 @@ add_definitions(-DUNICODE -D_UNICODE)
 # of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
-  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
+  # [수정] 한국어(코드페이지 949) Windows에서 일부 플러그인(printing 등)의
+  # C++ 소스 파일에 있는 특수문자를 컴파일러가 잘못 해석해서 경고
+  # C4819("현재 코드 페이지에서 표시할 수 없는 문자")가 나고, 이게 /WX 때문에
+  # 에러로 취급되어 빌드가 멈추는 문제가 있었습니다. /utf-8 옵션을 추가해서
+  # 소스 파일을 항상 UTF-8로 읽도록 명시해 이 문제를 해결합니다.
+  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100" /utf-8)
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")

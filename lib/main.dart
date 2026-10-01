@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:animations/animations.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'package:printing/printing.dart' show Printing;
 
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
@@ -60,7 +61,26 @@ const bool kBoardSelectEnabled = true;
 const bool kAxisSelectEnabled = false;
 
 // [복구] UI/UX 확인이 끝나 다시 실제 서버(재고 조회/주문 생성/상태 폴링)에 연결합니다.
+//
+// (참고) false로 두면 서버에 전혀 접속하지 않고, 재고는 "품절 없음", 주문은 가짜
+// 접수로 처리해서 영수증 화면까지 바로 갑니다. 프린터만 따로 확인할 때 쓰며,
+// 이때는 실제 주문이 만들어지지 않고 화면 위쪽에 "서버 미연결 테스트 모드"
+// 표시가 나옵니다. 행사용 exe는 반드시 true여야 합니다.
 const bool kApiEnabled = true;
+
+// [임시/프린터 연동 확인용] 서버가 주문을 실제로 만들지 못해(대기열 가득 등)
+// 영수증 화면이 "대기 중"으로 뜨는 경우에도 영수증을 출력합니다.
+// 백엔드/조립대 작업이 끝나서 주문이 정상적으로 만들어지면 false로 바꾸세요.
+// (true인 채로 행사에 나가면 주문이 안 만들어진 손님에게도 주문번호 '-'와
+// QR 없음 안내만 찍힌 영수증이 나와서 종이만 낭비됩니다.)
+const bool kPrintReceiptWithoutOrder = true;
+
+// [임시/프린터 연동 확인용] 콘솔을 볼 수 없는 exe 실행에서도 영수증 출력이
+// 됐는지/안 됐다면 왜인지 화면 우측 상단에 표시합니다.
+// 영수증 화면에서 출력하고, 처음 화면으로 돌아온 뒤에도 다음 주문을 시작할
+// 때까지 남아있습니다. 확인이 끝나면 false로 바꾸고 exe를 다시 빌드하세요.
+// (false면 화면에 아무것도 표시되지 않고 원래 화면 그대로입니다.)
+const bool kShowPrintDebugOverlay = true;
 
 enum AppStep {
   home,
@@ -325,6 +345,13 @@ class _AppRootState extends State<AppRoot> {
   String? _receiptTime;
   Uint8List? _receiptQrBytes; // GET /order/{order_id}/qr 로 받아온 실제 QR 이미지
 
+  // [임시/프린터 연동 확인용] 화면 우측 상단에 띄울 출력 결과. (kShowPrintDebugOverlay)
+  String? _printDebugMessage;
+  bool? _printDebugOk; // null = 출력 중, true = 성공, false = 실패
+  // 출력 작업 번호. 새 주문을 시작하면 올려서, 늦게 끝난 이전 출력의 결과가
+  // 다음 손님 화면에 뜨지 않게 합니다.
+  int _printJobSeq = 0;
+
   // [수정] 팀 논의로 축(스위치)을 제품에서 아예 제외하기로 하면서, 화면에
   // 축 이름/색을 표시할 일이 없어져 이 매핑은 삭제했습니다. (기존에는
   // 여기서 _axisLabels/_axisColors로 디자인 확인·영수증 화면에 표시했음)
@@ -528,6 +555,9 @@ class _AppRootState extends State<AppRoot> {
 
     setState(() {
       _step = AppStep.mbtiChoice;
+      _printJobSeq++; // [프린터 점검용] 이전 출력 결과는 여기서 지움
+      _printDebugMessage = null;
+      _printDebugOk = null;
     });
   }
 
@@ -1293,10 +1323,15 @@ class _AppRootState extends State<AppRoot> {
         // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
         // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
         final orderId = _orderId;
+        Uint8List? qrBytes;
 
         if (orderId != null) {
           try {
-            final qrBytes = await _api.getOrderQr(orderId);
+            // QR 서버가 응답하지 않아도 영수증 출력이 무한정 밀리지 않도록
+            // 5초까지만 기다립니다. (화면은 8초 뒤 자동으로 처음으로 돌아갑니다)
+            qrBytes = await _api
+                .getOrderQr(orderId)
+                .timeout(const Duration(seconds: 5));
 
             // 화면에 사용할 QR 저장
             if (mounted) {
@@ -1304,28 +1339,16 @@ class _AppRootState extends State<AppRoot> {
                 _receiptQrBytes = qrBytes;
               });
             }
-
-            // 실제 영수증 출력
-            try {
-              await ReceiptPrinterService.printReceipt(
-                orderNumber: _receiptOrderNumber ?? '-',
-                time: _receiptTime ?? _formatNowHHmm(),
-                mbti: _mbtiResult ?? '----',
-                keycapLabels: List.generate(
-                  _boardCount,
-                  (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
-                ),
-                qrBytes: qrBytes,
-              );
-
-              debugPrint('>>> 영수증 출력 완료');
-            } catch (e) {
-              debugPrint('>>> 영수증 출력 실패: $e');
-            }
           } catch (e) {
             print('>>> QR 조회 실패: $e');
           }
         }
+
+        // [수정] 영수증 화면이 뜨면 QR 조회가 성공했는지와 상관없이 영수증을
+        // 출력합니다. QR이 없으면 프린터 서비스가 "QR 정보를 불러오지
+        // 못했습니다." 문구를 대신 찍습니다.
+        await _printReceipt(qrBytes: qrBytes);
+
         return; // 성공했으므로 재시도 루프 종료
       } on TimeoutException {
         // "응답을 못 받은" 경우 → 같은 idempotency 키로 자동 재시도
@@ -1398,6 +1421,12 @@ class _AppRootState extends State<AppRoot> {
             _step = AppStep.receipt;
           });
           _scheduleDoneRestart();
+
+          // [임시/프린터 연동 확인용] 주문이 안 만들어졌어도 영수증 화면이
+          // 뜨면 출력합니다. (kPrintReceiptWithoutOrder 설명 참고)
+          if (kPrintReceiptWithoutOrder) {
+            await _printReceipt();
+          }
         } else if (isStockIssue) {
           // 재고 문제로 서버가 거절한 경우: 최신 재고를 다시 반영해서
           // 품절된 칸은 비워주고, 그 칸으로 커서를 옮겨 다시 고르게 함
@@ -1439,6 +1468,7 @@ class _AppRootState extends State<AppRoot> {
       _step = AppStep.receipt;
     });
     _scheduleDoneRestart();
+    _printReceipt(); // 서버 없이 프린터 연동만 확인할 수 있도록 목업에서도 출력
 
     // [임시] 실제 서버 폴링 대신, 2초 간격으로 waiting → assigned →
     // in_progress → done 상태를 흘려보내서 영수증 박스 애니메이션까지
@@ -1454,6 +1484,84 @@ class _AppRootState extends State<AppRoot> {
         if (!mounted || _step != AppStep.receipt) return;
         setState(() => _orderStatus = mockSteps[i]);
       });
+    }
+  }
+
+  // [영수증 출력] 영수증 화면이 뜬 직후에 호출됩니다.
+  // qrBytes가 null이어도 출력합니다. 출력이 실패해도 화면 진행에는 영향이 없고
+  // 콘솔(그리고 kShowPrintDebugOverlay가 켜져 있으면 화면 우측 상단)에
+  // 실패 이유가 남습니다.
+  Future<void> _printReceipt({Uint8List? qrBytes}) async {
+    final job = ++_printJobSeq;
+    _setPrintDebug(job, '출력 중...', null);
+
+    try {
+      await ReceiptPrinterService.printReceipt(
+        orderNumber: _receiptOrderNumber ?? '-',
+        time: _receiptTime ?? _formatNowHHmm(),
+        mbti: _mbtiResult ?? '----',
+        keycapLabels: List.generate(
+          _boardCount,
+          (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
+        ),
+        qrBytes: qrBytes,
+      );
+
+      debugPrint('>>> 영수증 출력 완료');
+      // 프린터가 알려준 정보(이름/사용 가능 여부/실제 용지 크기)도 함께 표시
+      final detail = ReceiptPrinterService.lastPrintInfo;
+      _setPrintDebug(
+        job,
+        '출력 요청 성공\n'
+        '${detail != null ? '$detail\n' : ''}'
+        '프린터에서 용지가 나오는지 확인하세요',
+        true,
+      );
+    } catch (e) {
+      debugPrint('>>> 영수증 출력 실패: $e');
+      final detail = ReceiptPrinterService.lastPrintInfo;
+      final printers = await _installedPrinterNames();
+      _setPrintDebug(
+        job,
+        '출력 실패\n${_cleanErrorText(e)}'
+        '${detail != null ? '\n$detail' : ''}$printers',
+        false,
+      );
+    }
+  }
+
+  // [프린터 점검용] 우측 상단 표시 내용을 바꿉니다. 스위치가 꺼져 있거나,
+  // 그 사이 새 주문이 시작됐으면(작업 번호가 달라졌으면) 아무것도 하지 않습니다.
+  void _setPrintDebug(int job, String message, bool? ok) {
+    if (!kShowPrintDebugOverlay) return;
+    if (!mounted || job != _printJobSeq) return;
+    setState(() {
+      _printDebugMessage = message;
+      _printDebugOk = ok;
+    });
+  }
+
+  // [프린터 점검용] 화면에 띄울 오류 문구. 앞의 "Exception: "을 떼고,
+  // 혹시 섞여 있을 수 있는 주소(http…)는 가리고, 너무 길면 자릅니다.
+  String _cleanErrorText(Object e) {
+    var text = e.toString().replaceFirst('Exception: ', '');
+    text = text.replaceAll(RegExp(r'https?://\S+'), '[주소 생략]');
+    if (text.length > 160) text = '${text.substring(0, 160)}...';
+    return text;
+  }
+
+  // [프린터 점검용] 출력이 실패했을 때 Windows에 실제로 어떤 이름의 프린터가
+  // 설치돼 있는지 함께 보여줍니다. (프린터 이름이 달라서 못 찾는 경우 확인용)
+  Future<String> _installedPrinterNames() async {
+    if (!kShowPrintDebugOverlay) return '';
+    try {
+      final printers = await Printing.listPrinters();
+      if (printers.isEmpty) return '\n설치된 프린터: 없음';
+      var names = printers.map((p) => p.name).join(', ');
+      if (names.length > 160) names = '${names.substring(0, 160)}...';
+      return '\n설치된 프린터: $names';
+    } catch (_) {
+      return '';
     }
   }
 
@@ -1826,6 +1934,31 @@ class _AppRootState extends State<AppRoot> {
                     top: KioskCanvas.margin + 44,
                     left: KioskCanvas.margin + 56,
                     child: _BackButton(onTap: _goBack),
+                  ),
+                // [임시] 서버에 연결하지 않는 테스트 모드(kApiEnabled = false)일 때만
+                // 화면 위쪽 가운데에 표시합니다. 터치는 통과시킵니다.
+                if (!kApiEnabled)
+                  const Positioned(
+                    top: KioskCanvas.margin + 6,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Center(child: _OfflineModeBadge()),
+                    ),
+                  ),
+                // [임시/프린터 연동 확인용] 출력 결과 표시. 터치는 통과시킵니다.
+                if (kShowPrintDebugOverlay &&
+                    _printDebugMessage != null &&
+                    (_step == AppStep.receipt || _step == AppStep.home))
+                  Positioned(
+                    top: KioskCanvas.margin + 24,
+                    right: KioskCanvas.margin + 24,
+                    child: IgnorePointer(
+                      child: _PrintDebugBadge(
+                        message: _printDebugMessage!,
+                        ok: _printDebugOk,
+                      ),
+                    ),
                   ),
                 // [신규] 종료 확인창. 숨겨진 터치를 감지하면 이게 화면 전체를
                 // 덮으며 나타나서, 그 아래 키오스크 진행 화면으로는 터치가
@@ -2235,5 +2368,81 @@ int _progressStepOf(AppStep step) {
     case AppStep.complete:
     case AppStep.designConfirm:
       return 6;
+  }
+}
+
+/// [임시/프린터 연동 확인용] 영수증 출력 결과를 화면 우측 상단에 보여주는 표시.
+/// kShowPrintDebugOverlay를 false로 두면 화면에 나오지 않습니다.
+/// 초록 테두리 = 성공, 분홍/빨강 테두리 = 실패, 회색 = 출력 중.
+class _PrintDebugBadge extends StatelessWidget {
+  final String message;
+  final bool? ok;
+  const _PrintDebugBadge({required this.message, required this.ok});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ok == null
+        ? AppColors.disabledLine
+        : (ok! ? AppColors.accent : AppColors.danger);
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 480),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color, width: 3),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '프린터 점검용 (임시)',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppColors.muted,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 22,
+              height: 1.4,
+              fontWeight: FontWeight.w700,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// [임시] 서버에 연결하지 않는 테스트 모드(kApiEnabled = false)임을 알리는 표시.
+/// kApiEnabled를 true로 되돌리면 나타나지 않습니다.
+class _OfflineModeBadge extends StatelessWidget {
+  const _OfflineModeBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.danger, width: 2),
+      ),
+      child: const Text(
+        '서버 미연결 테스트 모드',
+        style: TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: AppColors.danger,
+        ),
+      ),
+    );
   }
 }
