@@ -14,6 +14,10 @@ Cloud Run 은 트래픽에 따라 인스턴스를 새로 띄우므로, 부팅에
 
 읽는 것은 **구독을 건 컨테이너뿐**이다. cnt_order·cnt_station 은 우리가 쓴 기록이라 안 읽는다.
 
+**리셋은 모드와 상관없이 영업 상태를 closed 로 둔다** (services/line.py). 지우는 도중에 주문이
+끼어들지 않게 맨 먼저 닫고, 다시 여는 건 사람이 스냅샷(GET /admin/debug/snapshot)으로
+상태를 확인한 뒤 POST /admin/line 으로 한다.
+
 [ 복구가 안 되는 것 — 알고 쓰는 것과 모르고 당하는 것은 다르다 ]
 
   order:queue   대기열은 Mobius 어디에도 없다. cnt_process 는 조립대에 올라간 주문만
@@ -98,6 +102,7 @@ _ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", "stats:*", f"{ORDER_COUNTER_KEY}*"]
 # 실 Redis 는 배포본과 같은 DB 라 FLUSHDB 를 쓰면 남의 키까지 날아간다.
 _KNOWN_PREFIXES = ("order:", "station:", "warehouse:", "agv:", "process:",
                    "idempotency:", ARCHIVE_PREFIX, "stats:",   # stats: 는 레거시
+                   "line:",                                    # 영업 상태 (services/line.py)
                    "robot:status", "watchdog:lock", "stock:seed:lock")
 
 KEEP_NOTE = ["orders:archive:*", "order:counter:*"]
@@ -352,6 +357,7 @@ def reset(mode="zero", keep_queue=False, reset_seq=False, flush_unknown=False):
         raise ValueError(f"알 수 없는 mode: {mode}")
 
     from services.process import push_process
+    from services import line
 
     hard = mode == "hard"
     t0 = time.time()
@@ -359,6 +365,9 @@ def reset(mode="zero", keep_queue=False, reset_seq=False, flush_unknown=False):
               "kept": KEEP_NOTE_HARD if hard else KEEP_NOTE}
     logger.warning(f"[reset] 시작 mode={mode} keep_queue={keep_queue} "
                    f"reset_seq={reset_seq} flush_unknown={flush_unknown}")
+
+    # 맨 먼저 닫는다 — 지우는 도중에 POST /order 가 끼어들면 반쯤 지워진 상태에 주문이 얹힌다
+    report["line"] = {"previous": line.set_status(line.CLOSED), "now": line.CLOSED}
 
     report["wipe"] = _wipe(keep_queue=keep_queue, hard=hard,
                            reset_seq=reset_seq, flush_unknown=flush_unknown)
