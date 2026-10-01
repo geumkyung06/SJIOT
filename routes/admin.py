@@ -1,5 +1,13 @@
 """관리자 경로 — fault 해제 · 라인 초기화 (기존)
   + 관리자 페이지 조회/조작용 stock · stations · orders · stock/refill (gsj_backend_dashborad)
+
+fault 는 stage 를 그대로 두고 그 주문만 멈춘다. 그래서 이걸 해제해주면
+"그 자리에서 이어간다" — 새로 만들어주는 게 아니라 `fault` 값이 빈 최신 스냅샷을
+하나 더 얹고, 창고·AGV 는 같은 order_id 에 fault 가 없으면 재결로 판정한다.
+
+[2026-10-01] 재고 채움(admin_stock_refill) 변경: 팀장님 지시로 백엔드가 수량을
+임의로 고정(자동 최대치 채움·초과분 clamp)하지 않는다. 프론트가 보낸 count를
+그대로 받아서 처리한다. count는 이제 필수값.
 """
 import json
 from datetime import datetime
@@ -27,6 +35,8 @@ HARD_RESET_CONFIRM = "HARD-RESET"
 STATION_IDS = ("1", "2", "3")
 
 # 창고 재고 최대 수량 (2026-09-09 팀장님 확인값)
+# [2026-10-01] 재고 채움 API는 이 값으로 더 이상 clamp하지 않는다.
+# /admin/stock 응답에서 프론트에게 참고용 max로만 계속 내려준다.
 WAREHOUSE_MAX = {
     "board": {"g": 325, "b": 325, "r": 325, "y": 325},
     "keycap": {
@@ -53,7 +63,9 @@ def _to_int(v):
 
 def _max_for_part(part):
     """
-    STOCK 슬롯 이름(part)에서 최대 수량을 찾는다.
+    STOCK 슬롯 이름(part)에서 최대 수량을 찾는다. 존재하는 part인지 확인하는
+    용도와, 응답에 참고용 max를 같이 내려주는 용도로만 쓴다 — 더 이상 count를
+    이 값으로 자르지 않는다 (2026-10-01).
     보드: "r"·"y"·"g"·"b" (밑줄 없음)
     키캡: "E_r" 형식 (글자_색상)
     존재하지 않는 part면 None.
@@ -225,7 +237,7 @@ def admin_reset():
       200:
         description: 초기화 완료
       400:
-        description: 비밀번호 불일치쨌지원 안 하는 mode쨌confirm 누락
+        description: 비밀번호 불일치·지원 안 하는 mode·confirm 누락
       500:
         description: 초기화 중 오류
     """
@@ -235,14 +247,14 @@ def admin_reset():
 
     mode = str(data.get("mode") or "zero")
     if mode not in ("zero", "mobius", "hard"):
-        return jsonify({"error": "mode 는 zero 쨌 mobius 쨌 hard 중 하나여야 합니다",
+        return jsonify({"error": "mode 는 zero · mobius · hard 중 하나여야 합니다",
                         "got": mode}), 400
 
     if mode == "hard" and data.get("confirm") != HARD_RESET_CONFIRM:
         return jsonify({
             "error": f'mode=hard 는 confirm="{HARD_RESET_CONFIRM}" 이 필요합니다',
             "will_delete": ["orders:archive:*", "stats:*", "order:counter:*",
-                            "상태쨌진행 중 주문 전부"],
+                            "상태·진행 중 주문 전부"],
         }), 400
 
     try:
@@ -270,7 +282,7 @@ def admin_stock():
       - Admin
     responses:
       200:
-        description: 재고 수량 + 최대 수량
+        description: 재고 수량 + 최대 수량(참고용)
       503:
         description: 재고 캐시가 아직 없음
     """
@@ -313,19 +325,21 @@ def admin_stock_refill():
           properties:
             part:
               type: string
-              description: 재고 칸 이름 — 보드는 "r"쨌"y"쨌"g"쨌"b", 키캡은 "E_r" 형식(글자_색상)
+              description: 재고 칸 이름 — 보드는 "r"|"y"|"g"|"b" (밑줄 없음), 키캡은 "E_r" 형식(글자_색상)
               example: "E_r"
             count:
               type: integer
               description: >
-                생략하면 해당 칸의 최대치로 자동 채움("채우기" 버튼 기본 동작).
-                값을 보내면 그 수량으로 채우되 최대치를 넘지 못하게 자동으로 잘림.
+                [2026-10-01 변경] 필수값. 프론트가 넘긴 값을 그대로 적용한다.
+                백엔드는 이 값을 최대치로 자르거나(clamp) 생략 시 자동으로
+                채우지 않는다. 최대치(max)는 참고용으로만 응답에 같이 내려준다.
               example: 30
+          required: [part, count]
     responses:
       200:
-        description: 업데이트 완료. 최대치로 잘렸으면 clamped=true.
+        description: 업데이트 완료
       400:
-        description: part 누락쨌존재하지 않는 칸쨌count 형식 오류
+        description: part 누락·존재하지 않는 칸·count 누락/형식 오류
     """
     data = request.get_json(silent=True) or {}
     part = data.get("part")
@@ -343,18 +357,14 @@ def admin_stock_refill():
         return jsonify({"error": f"아직 재고 데이터가 없는 칸입니다: {part}"}), 400
     existing = json.loads(existing_raw)
 
-    clamped = False
+    # [2026-10-01] count는 이제 필수. 백엔드는 이 값을 더 이상 자르거나(clamp)
+    # 생략 시 자동으로 채우지 않는다 — 프론트가 보낸 수량을 그대로 반영한다.
     if raw_count is None:
-        # count 생략 = "채우기" 버튼 기본 동작 — 자동으로 최대치까지
-        count = max_qty
-    else:
-        if not isinstance(raw_count, int) or raw_count < 0:
-            return jsonify({"error": "count는 0 이상의 정수여야 합니다"}), 400
-        if raw_count > max_qty:
-            count = max_qty
-            clamped = True
-        else:
-            count = raw_count
+        return jsonify({"error": "count가 필요합니다 (프론트에서 채울 개수를 보내주세요)"}), 400
+    if not isinstance(raw_count, int) or raw_count < 0:
+        return jsonify({"error": "count는 0 이상의 정수여야 합니다"}), 400
+
+    count = raw_count
 
     # status는 count에 맞춰 자동 조정하되, disable(하드웨어 고장)은 채운다고 해결되는 게
     # 아니므로 절대 건드리지 않는다 (Redis ERD 6-3장 restock_list 원칙과 동일).
@@ -363,13 +373,12 @@ def admin_stock_refill():
     existing["count"] = count
     r.hset("warehouse:stock", part, json.dumps(existing))
 
-    logger.info(f"[admin] 재고 채움: {part} -> {count} (max={max_qty}, clamped={clamped})")
+    logger.info(f"[admin] 재고 채움: {part} -> {count} (참고 max={max_qty})")
     return jsonify({
         "ok": True,
         "part": part,
         "count": count,
         "max": max_qty,
-        "clamped": clamped,
         "status": existing.get("status"),
     }), 200
 
@@ -398,6 +407,10 @@ def admin_stations():
             "station_id": sid,
             "occupancy": status,
             "order": order_info,
+            # TODO(2026-10-01): 조립대 호출(T/F) + 호출 시각 병합 예정.
+            # 팀장님이 알려주실 실제 Redis 키 이름 확인 후 아래 두 필드를 채운다.
+            # "help": ???,
+            # "help_at": ???,
         })
 
     return jsonify({"stations": stations}), 200
