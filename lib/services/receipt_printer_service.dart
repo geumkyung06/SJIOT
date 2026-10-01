@@ -7,12 +7,38 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class ReceiptPrinterService {
-  // SLK-TS100 = 80mm 영수증 프린터
+  // SLK-TS100 = 80mm 영수증 프린터.
+  // [수정] 이 PC의 Windows 드라이버(SEWOO SLK-TS100)가 제공하는 용지는 폭
+  // 72mm(72×210, 72×297, 72×3297)뿐이고 기본 용지도 72×210입니다. 예전에는
+  // 80×180mm로 인쇄를 요청해서 드라이버가 지원하지 않는 크기였기 때문에,
+  // 기본 크기를 드라이버 기본 용지(72×210)에 맞춥니다.
+  // (실제 인쇄에서는 아래 _fitToPrinter가 프린터가 알려준 실제 용지 크기를
+  // 우선 사용하고, 이 값은 프린터가 크기를 알려주지 않을 때의 대비용입니다.)
   static final PdfPageFormat _receiptFormat = PdfPageFormat(
-    80 * PdfPageFormat.mm,
-    180 * PdfPageFormat.mm,
+    72 * PdfPageFormat.mm,
+    210 * PdfPageFormat.mm,
     marginAll: 4 * PdfPageFormat.mm,
   );
+
+  /// [프린터 점검용] 마지막 출력 때 프린터가 알려준 정보(이름/사용 가능 여부/
+  /// 실제 용지 크기). main.dart의 화면 우측 상단 점검 표시에 보여줍니다.
+  static String? lastPrintInfo;
+
+  /// 프린터가 알려준 실제 용지 크기에 맞춰 PDF 페이지 크기를 정합니다.
+  /// 값이 이상하면(예: 3297mm 롤 길이) 종이가 한없이 나오지 않도록
+  /// 기본 크기로 되돌립니다.
+  static PdfPageFormat _fitToPrinter(PdfPageFormat reported) {
+    const mm = PdfPageFormat.mm;
+    final width =
+        (reported.width >= 40 * mm && reported.width <= 90 * mm)
+            ? reported.width
+            : _receiptFormat.width;
+    final height =
+        (reported.height >= 100 * mm && reported.height <= 300 * mm)
+            ? reported.height
+            : _receiptFormat.height;
+    return PdfPageFormat(width, height, marginAll: 4 * mm);
+  }
 
   /// 실제 SLK-TS100으로 영수증 출력
   static Future<void> printReceipt({
@@ -22,6 +48,8 @@ class ReceiptPrinterService {
     required List<String> keycapLabels,
     Uint8List? qrBytes,
   }) async {
+    lastPrintInfo = null;
+
     // 1. Windows에 설치된 프린터 목록 조회
     final printers = await Printing.listPrinters();
 
@@ -60,23 +88,44 @@ class ReceiptPrinterService {
 
     debugPrint('선택된 프린터: ${targetPrinter.name}');
 
-    // 3. 영수증 PDF 생성
-    final pdfBytes = await _buildReceiptPdf(
-      orderNumber: orderNumber,
-      time: time,
-      mbti: mbti,
-      keycapLabels: keycapLabels,
-      qrBytes: qrBytes,
-    );
+    // 3~4. 프린터가 알려준 실제 용지 크기로 영수증 PDF를 만들어 바로 출력
+    // [수정] usePrinterSettings: true — 요청한 임의 크기(예전 80×180mm)를
+    // 드라이버에 강제로 넘기지 않고, 테스트 페이지와 같은 드라이버 기본 설정
+    // (기본 용지 72×210)으로 출력합니다. PDF는 프린터가 onLayout으로 알려준
+    // 실제 용지 크기에 맞춰 그 자리에서 만듭니다.
+    PdfPageFormat? reportedFormat;
 
-    // 4. SLK-TS100으로 바로 출력
     final result = await Printing.directPrintPdf(
       printer: targetPrinter,
       name: 'receipt_$orderNumber',
       format: _receiptFormat,
       dynamicLayout: false,
-      onLayout: (_) async => pdfBytes,
+      usePrinterSettings: true,
+      onLayout: (format) async {
+        reportedFormat = format;
+        return _buildReceiptPdf(
+          orderNumber: orderNumber,
+          time: time,
+          mbti: mbti,
+          keycapLabels: keycapLabels,
+          qrBytes: qrBytes,
+          pageFormat: _fitToPrinter(format),
+        );
+      },
     );
+
+    // [프린터 점검용] 프린터가 알려준 정보를 남겨둡니다.
+    final rf = reportedFormat;
+    const mmUnit = PdfPageFormat.mm;
+    final paperText = rf == null
+        ? '용지: 프린터가 알려주지 않음'
+        : '용지: ${(rf.width / mmUnit).toStringAsFixed(1)}×'
+            '${(rf.height / mmUnit).toStringAsFixed(1)}mm '
+            '(여백 좌${(rf.marginLeft / mmUnit).toStringAsFixed(1)} '
+            '우${(rf.marginRight / mmUnit).toStringAsFixed(1)})';
+    lastPrintInfo =
+        '프린터: ${targetPrinter.name} (사용가능: ${targetPrinter.isAvailable})\n'
+        '$paperText';
 
     if (!result) {
       throw Exception('영수증 출력에 실패했습니다.');
@@ -91,6 +140,7 @@ class ReceiptPrinterService {
     required String time,
     required String mbti,
     required List<String> keycapLabels,
+    required PdfPageFormat pageFormat,
     Uint8List? qrBytes,
   }) async {
     final regularData = await rootBundle.load(
@@ -111,7 +161,7 @@ class ReceiptPrinterService {
 
     pdf.addPage(
       pw.Page(
-        pageFormat: _receiptFormat,
+        pageFormat: pageFormat,
         theme: pw.ThemeData.withFont(
           base: regularFont,
           bold: boldFont,
