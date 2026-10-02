@@ -15,17 +15,167 @@
   body { margin:0; background:#F5F6F8; font-family:'IBM Plex Sans KR',sans-serif; }
   a { color:#34383F; text-decoration:none; }
   a:hover { color:#8B9098; }
-  @keyframes omScan { 0%{transform:translateY(-100%)} 100%{transform:translateY(1100%)} }
   @keyframes omPulse { 0%,100%{opacity:.35} 50%{opacity:1} }
-  @keyframes omDash { to { stroke-dashoffset:-40 } }
   @keyframes omRise { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
-  @keyframes omGlow { 0%,100%{opacity:.25} 50%{opacity:.6} }
+  @keyframes omFade { from{opacity:0} to{opacity:1} }
+  /* 프로세스 흐름 연결선 */
+  @keyframes omFlowDash { to { stroke-dashoffset:-40 } }
+  /* 현황 대시보드 AGV 경로 */
+  @keyframes omDash { to { stroke-dashoffset:-30 } }
+  @keyframes omPop { from{opacity:0;transform:scale(.6)} to{opacity:1;transform:none} }
+  @keyframes omBlink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.18;transform:scale(.9)} }
 </style>
 </helmet>
 
 <div style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#F5F6F8;color:#34383F;font-family:'IBM Plex Sans KR',sans-serif">
 
   <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(52,56,63,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(52,56,63,.035) 1px,transparent 1px);background-size:60px 60px;pointer-events:none"></div>
+
+
+  <!-- ################################################### -->
+  <!-- MODE 0 : 처음 화면 — 대시보드 선택                    -->
+  <!-- ################################################### -->
+
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+
+  <div style="position:relative;display:flex;flex-direction:column;height:100%;padding:34px 44px 40px;box-sizing:border-box;animation:omFade .4s ease-out">
+
+    <!-- HEADER -->
+
+    <div style="display:flex;align-items:center;justify-content:space-between">
+
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="width:46px;height:46px;border:1px solid #E2E5E9;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#FFFFFF;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:19px;letter-spacing:.02em;color:#34383F">OM</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.32em;color:#8B9098">SMART SYSTEM · SEJONG IoT</div>
+          <div style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;letter-spacing:.01em;color:#34383F">
+            Order to Make
+            <span style="color:#E2E5E9;font-weight:400">|</span>
+            자동화 조립 시스템
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:26px">
+        <img src="assets/logo_sejong.png" alt="세종대학교" style="height:56px;display:block">
+        <img src="assets/logo_coss.png" alt="사물인터넷 혁신융합대학사업단" style="height:42px;display:block">
+        <span style="width:1px;height:44px;background:#E2E5E9"></span>
+        <div style="text-align:right;line-height:1.25">
+          <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:600;letter-spacing:.02em">{{ clock }}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098">{{ dateLabel }}</div>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- 선택 영역 -->
+
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:48px">
+
+      <div style="text-align:center;animation:omRise .5s ease-out">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:#8B9098">SELECT DASHBOARD</div>
+        <div style="font-size:46px;font-weight:600;margin-top:14px">표시할 대시보드를 선택하세요</div>
+        <div style="width:96px;height:4px;border-radius:2px;background:#91D4EE;margin:22px auto 0"></div>
+      </div>
+
+
+      <div style="display:flex;gap:40px;animation:omRise .6s ease-out">
+
+        <!-- 01 시스템 소개용 -->
+
+        <div onClick="{{ openIntro }}"
+          style="position:relative;width:760px;height:500px;box-sizing:border-box;border:1px solid #E2E5E9;border-radius:28px;background:#FFFFFF;box-shadow:0 4px 18px rgba(52,56,63,.05);overflow:hidden;cursor:pointer;padding:46px 48px 44px;display:flex;flex-direction:column;transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease"
+          style-hover="border-color:#91D4EE;box-shadow:0 18px 40px rgba(52,56,63,.11);transform:translateY(-4px)">
+
+          <div style="position:absolute;left:0;right:0;top:0;height:6px;background:#91D4EE"></div>
+
+          <img src="assets/kiosk_v3.png" alt=""
+            style="position:absolute;right:52px;bottom:0;height:380px;opacity:.95;filter:drop-shadow(0 14px 24px rgba(52,56,63,.16));pointer-events:none">
+
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:700;color:#8B9098">01</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.24em;color:#8B9098;border:1px solid #E2E5E9;border-radius:7px;padding:5px 10px">SYSTEM INTRO</span>
+          </div>
+
+          <div style="font-size:44px;font-weight:700;line-height:1.25;margin-top:26px;max-width:470px">시스템 소개용<br>대시보드</div>
+
+          <div style="font-size:19px;line-height:1.65;color:#8B9098;margin-top:18px;max-width:440px">
+            Order to Make 시스템의 구성 요소와<br>주문부터 조립까지의 프로세스 흐름을 소개합니다.
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:22px">
+            <span style="font-size:15px;background:#F5F6F8;border-radius:999px;padding:7px 15px">시스템 소개</span>
+            <span style="font-size:15px;background:#F5F6F8;border-radius:999px;padding:7px 15px">프로세스 흐름</span>
+          </div>
+
+          <div style="margin-top:auto;display:inline-flex;align-self:flex-start;align-items:center;gap:14px;height:62px;padding:0 26px;border-radius:16px;background:#EAF6FB;border:1px solid #91D4EE;font-size:20px;font-weight:600">
+            시스템 소개 열기
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:22px">→</span>
+          </div>
+
+        </div>
+
+
+        <!-- 02 현황용 -->
+
+        <div onClick="{{ openStatus }}"
+          style="position:relative;width:760px;height:500px;box-sizing:border-box;border:1px solid #E2E5E9;border-radius:28px;background:#FFFFFF;box-shadow:0 4px 18px rgba(52,56,63,.05);overflow:hidden;cursor:pointer;padding:46px 48px 44px;display:flex;flex-direction:column;transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease"
+          style-hover="border-color:#8ECB9A;box-shadow:0 18px 40px rgba(52,56,63,.11);transform:translateY(-4px)">
+
+          <div style="position:absolute;left:0;right:0;top:0;height:6px;background:#99E3BD"></div>
+
+          <img src="assets/agv.png" alt=""
+            style="position:absolute;right:44px;bottom:40px;height:220px;filter:drop-shadow(0 14px 22px rgba(52,56,63,.20));pointer-events:none">
+
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:700;color:#8B9098">02</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.24em;color:#8B9098;border:1px solid #E2E5E9;border-radius:7px;padding:5px 10px">LIVE STATUS</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;border:1px solid #F39CA9;border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em">
+              <span style="width:8px;height:8px;border-radius:50%;background:#F39CA9;animation:omPulse 1.4s ease-in-out infinite"></span>
+              LIVE
+            </span>
+          </div>
+
+          <div style="font-size:44px;font-weight:700;line-height:1.25;margin-top:26px;max-width:470px">현황용<br>대시보드</div>
+
+          <div style="font-size:19px;line-height:1.65;color:#8B9098;margin-top:18px;max-width:440px">
+            주문 건수 · 재고 · AGV · 조립대 · 주문 진행 단계를<br>실시간으로 확인합니다.
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap;max-width:460px">
+            <span style="font-size:15px;background:#F5F6F8;border-radius:999px;padding:7px 15px">주문 KPI</span>
+            <span style="font-size:15px;background:#F5F6F8;border-radius:999px;padding:7px 15px">재고</span>
+            <span style="font-size:15px;background:#F5F6F8;border-radius:999px;padding:7px 15px">AGV · 조립대</span>
+            <span style="font-size:15px;background:#F5F6F8;border-radius:999px;padding:7px 15px">MBTI 통계</span>
+          </div>
+
+          <div style="margin-top:auto;display:inline-flex;align-self:flex-start;align-items:center;gap:14px;height:62px;padding:0 26px;border-radius:16px;background:#EAFAF1;border:1px solid #8ECB9A;font-size:20px;font-weight:600">
+            현황 대시보드 열기
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:22px">→</span>
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#A3A8B0;letter-spacing:.06em">
+        키보드 1 · 2 로 바로 선택 &nbsp;·&nbsp; ESC 로 언제든 이 화면으로 돌아옵니다
+      </div>
+
+    </div>
+
+  </div>
+
+  </sc-if>
+
+
+  <!-- ################################################### -->
+  <!-- MODE 1 : 시스템 소개용 대시보드 (시스템 소개 · 프로세스 흐름) -->
+  <!-- ################################################### -->
+
+  <sc-if value="{{ isIntroMode }}">
 
   <div style="position:relative;display:flex;flex-direction:column;height:100%;padding:34px 44px 30px;box-sizing:border-box;gap:22px">
 
@@ -53,7 +203,7 @@
 
 
       <div style="flex:1;display:flex;justify-content:center;gap:10px">
-        <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="4">
+        <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="5">
           <div onClick="{{ tab.go }}" style="{{ tab.style }}">
             <span style="font-family:'JetBrains Mono',monospace;font-size:13px;opacity:.7">{{ tab.n }}</span>
             <span style="font-size:17px;font-weight:500">{{ tab.label }}</span>
@@ -106,305 +256,81 @@
 
     <div style="flex:1;position:relative;min-height:0">
 
-
-      <!-- ================================================= -->
-      <!-- PAGE 01 : 실시간 현황 -->
-      <!-- ================================================= -->
-
-      <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
-
-        <div style="position:absolute;inset:0;display:grid;grid-template-columns:400px 1fr;grid-template-rows:minmax(0,1fr);gap:22px;animation:omRise .5s ease-out">
-
-
-          <!-- 재고 -->
-
-          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:22px 24px 18px;display:flex;flex-direction:column;gap:14px;min-height:0">
-
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-              <div style="display:flex;align-items:baseline;gap:10px;min-width:0">
-                <div style="font-size:22px;font-weight:600;color:#34383F;white-space:nowrap">
-                  실시간 재고 현황
-                </div>
-                <div style="font-size:12px;color:#8B9098;white-space:nowrap">
-                  {{ invCaption }}
-                </div>
-              </div>
-
-              <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;white-space:nowrap">
-                <span style="width:7px;height:7px;border-radius:50%;background:#8ECB9A;animation:omPulse 2s ease-in-out infinite"></span>
-                5초
-              </div>
-            </div>
-
-
-            <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px">
-
-              <div style="background:#F5F6F8;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
-                <span style="font-size:12px;color:#8B9098">총 키캡</span>
-                <span style="display:flex;align-items:baseline;gap:4px;white-space:nowrap">
-                  <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;line-height:1;color:#34383F">{{ invTotal }}</span>
-                  <span style="font-size:12px;color:#8B9098">/ {{ invCapacity }}</span>
-                </span>
-              </div>
-
-              <div style="background:#F5F6F8;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
-                <span style="font-size:12px;color:#8B9098">부족</span>
-                <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;line-height:1;color:#E48F87">{{ invShort }}</span>
-              </div>
-
-              <div style="background:#F5F6F8;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px">
-                <span style="font-size:12px;color:#8B9098">보충</span>
-                <span style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:600;line-height:1;color:#E5C46B">{{ invLow }}</span>
-              </div>
-
-            </div>
-
-
-            <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(16,minmax(0,1fr));column-gap:20px;min-height:0">
-
-              <sc-for list="{{ invCells }}" as="cell" hint-placeholder-count="32">
-                <div style="{{ cell.wrap }}">
-                  <div style="{{ cell.badge }}">{{ cell.letter }}</div>
-                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
-                    <div style="{{ cell.num }}">{{ cell.text }}</div>
-                    <div style="height:6px;border-radius:3px;background:#EDEFF2;overflow:hidden">
-                      <div style="{{ cell.fill }}"></div>
-                    </div>
-                  </div>
-                </div>
-              </sc-for>
-
-            </div>
-
-
-            <div style="background:#F5F6F8;border-radius:12px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
-
-              <div style="display:flex;align-items:baseline;gap:8px">
-                <span style="font-size:13px;font-weight:600;color:#34383F">보드 랙</span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098">{{ boardLabel }}</span>
-              </div>
-
-              <div style="display:flex;align-items:center;gap:12px">
-                <sc-for list="{{ boardCells }}" as="b" hint-placeholder-count="4">
-                  <span style="display:flex;align-items:center;gap:4px">
-                    <span style="{{ b.dot }}"></span>
-                    <span style="{{ b.code }}">{{ b.label }}</span>
-                    <span style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:600;color:#34383F">{{ b.count }}</span>
-                  </span>
-                </sc-for>
-              </div>
-
-            </div>
-
-
-            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#8B9098">
-
-              <div style="display:flex;gap:10px;white-space:nowrap">
-
-                <span style="display:flex;align-items:center;gap:5px">
-                  <span style="width:12px;height:4px;border-radius:2px;background:#8ECB9A"></span>
-                  충분
-                </span>
-
-                <span style="display:flex;align-items:center;gap:5px">
-                  <span style="width:12px;height:4px;border-radius:2px;background:#E5C46B"></span>
-                  보충 {{ invLowMax }} 이하
-                </span>
-
-                <span style="display:flex;align-items:center;gap:5px">
-                  <span style="width:12px;height:4px;border-radius:2px;background:#E48F87"></span>
-                  부족 {{ invShortMax }} 이하
-                </span>
-
-                <span style="display:flex;align-items:center;gap:5px">
-                  <span style="width:12px;height:4px;border-radius:2px;background:#E2E5E9"></span>
-                  비활성
-                </span>
-
-              </div>
-
-              <span style="font-family:'JetBrains Mono',monospace">{{ invUpdated }}</span>
-
-            </div>
-
-          </div>
-
-
-          <!-- 실시간 시스템 -->
-
-          <div style="position:relative;border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;overflow:hidden">
-
-            <div style="position:absolute;left:24px;top:24px;width:880px;height:392px;border:1px solid #E2E5E9;border-radius:16px;overflow:hidden;background:#EDEFF2">
-
-              <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,#EDEFF2 0 14px,#E6E9ED 14px 28px)"></div>
-
-              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
-                <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.28em;color:#8B9098">
-                  WAREHOUSE CAM 01
-                </div>
-
-                <div style="font-size:17px;color:#8B9098">
-                  창고 카메라 스트림 연동 영역 · 실시간
-                </div>
-              </div>
-
-              <div style="position:absolute;left:0;right:0;top:0;height:110px;background:linear-gradient(rgba(145,212,238,.45),transparent);animation:omScan 4.5s linear infinite"></div>
-
-              <div style="position:absolute;top:22px;right:68px;display:flex;align-items:center;gap:8px;background:#FFFFFF;border:1px solid #F39CA9;border-radius:999px;padding:6px 14px">
-                <span style="width:9px;height:9px;border-radius:50%;background:#F39CA9;animation:omPulse 1.4s ease-in-out infinite"></span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#34383F">
-                  LIVE
-                </span>
-              </div>
-
-            </div>
-
-
-            <div style="position:absolute;left:928px;top:24px;right:24px;height:392px;border:1.5px dashed #FFDF82;border-radius:16px;background:#FFFCF2;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px 20px;box-sizing:border-box;gap:8px">
-
-              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.26em;color:#8B9098">
-                AGV STANDBY BAY
-              </div>
-
-              <div style="font-size:19px;font-weight:600;color:#34383F">
-                AGV 대기공간
-              </div>
-
-              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098">
-                {{ agvState }}
-              </div>
-
-            </div>
-
-
-            <div style="position:absolute;left:24px;right:24px;bottom:24px;height:250px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px">
-
-              <sc-for list="{{ stations }}" as="st" hint-placeholder-count="3">
-
-                <div style="{{ st.box }}">
-
-                  <div style="display:flex;align-items:center;justify-content:space-between">
-
-                    <div style="display:flex;align-items:center;gap:11px">
-                      <span style="{{ st.dot }}"></span>
-                      <span style="font-family:'Chakra Petch',sans-serif;font-size:33px;font-weight:700;color:#34383F">
-                        {{ st.name }}
-                      </span>
-                    </div>
-
-                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">
-                      1s
-                    </div>
-
-                  </div>
-
-
-                  <div style="font-size:20px;font-weight:600;color:#34383F">
-                    {{ st.status }}
-                  </div>
-
-
-                  <div style="display:flex;align-items:baseline;justify-content:space-between">
-                    <span style="font-size:16px;color:#8B9098">호출번호</span>
-                    <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:600;color:#34383F">
-                      {{ st.code }}
-                    </span>
-                  </div>
-
-                </div>
-
-              </sc-for>
-
-            </div>
-
-
-            <div style="{{ agvWrap }}">
-
-              <div style="text-align:center;margin-bottom:8px;white-space:nowrap">
-
-                <div style="display:inline-flex;align-items:center;gap:8px;background:#FFFFFF;border:1px solid #FFDF82;border-radius:999px;padding:5px 13px;box-shadow:0 4px 14px rgba(52,56,63,.08)">
-
-                  <span style="width:8px;height:8px;border-radius:50%;background:#FFDF82;animation:omPulse 1.2s ease-in-out infinite"></span>
-
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#34383F">
-                    02 · AGV — {{ agvTask }}
-                  </span>
-
-                </div>
-
-              </div>
-
-              <img src="assets/agv.png" alt="AGV"
-                style="height:112px;display:block;margin:0 auto;filter:drop-shadow(0 10px 18px rgba(52,56,63,.22))">
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </sc-if>
-
-
       <!-- ================================================= -->
       <!-- PAGE 02 : 시스템 소개 -->
       <!-- ================================================= -->
 
-      <sc-if value="{{ isIntro }}">
+      <sc-if value="{{ isIntroPage }}">
 
-        <div style="position:absolute;inset:0;display:grid;grid-template-columns:1.15fr .85fr;gap:34px;animation:omRise .5s ease-out">
+        <div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:48px;animation:omRise .5s ease-out">
 
-          <div style="display:flex;flex-direction:column;justify-content:center;gap:34px;padding:0 10px 0 20px">
+          <!-- 왼쪽 : 메인 타이틀 · 소개 문구 · 키워드 -->
+
+          <div style="display:flex;flex-direction:column;justify-content:center;gap:40px;padding:0 10px 0 20px">
 
             <div>
               <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:#8B9098">
                 SMART SYSTEM
               </div>
 
-              <div style="font-family:'Chakra Petch',sans-serif;font-size:58px;font-weight:700;line-height:1.15;margin-top:14px;color:#34383F">
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:62px;font-weight:700;line-height:1.15;margin-top:14px;color:#34383F">
                 Order to Make:<br>
                 <span style="font-family:'IBM Plex Sans KR',sans-serif;font-weight:600">
                   자동화 조립 시스템
                 </span>
               </div>
 
-              <div style="width:120px;height:4px;border-radius:2px;background:#91D4EE;margin-top:22px"></div>
+              <div style="width:120px;height:4px;border-radius:2px;background:#91D4EE;margin-top:24px"></div>
             </div>
 
 
-            <div style="font-size:25px;line-height:1.75;color:#34383F">
-              주문부터 창고 출고, 배송, 그리고 조립까지<br>
-              전과정이 자동화된
-              <strong style="font-weight:600;background:linear-gradient(transparent 62%,#91D4EE 62%)">
-                사용자 맞춤형 시스템
-              </strong>을 소개합니다.
+            <div style="font-size:23px;line-height:1.8;color:#34383F;word-break:keep-all">
+              사용자의 MBTI와 색상 선택을 기반으로 맞춤형 키보드를 주문하고,<br>
+              스마트창고의 부품 출고부터 AGV 운송, 조립대 전달까지<br>
+              전 과정을 자동으로 연결하는
+              <strong style="font-weight:600;background:linear-gradient(transparent 62%,#91D4EE 62%)">지능형 제작 시스템</strong>입니다.
             </div>
+
+
+            <div style="display:flex;align-items:center;gap:28px;padding-top:6px">
+              <img src="assets/logo_sejong.png" alt="세종대학교" style="height:72px;display:block">
+              <img src="assets/logo_coss.png" alt="사물인터넷 혁신융합대학사업단" style="height:54px;display:block">
+            </div>
+
+
 
           </div>
 
 
-          <div style="display:flex;flex-direction:column;gap:18px;justify-content:center">
+          <!-- 오른쪽 : 핵심 구성 요소 -->
+
+          <div style="display:flex;flex-direction:column;gap:16px;justify-content:center">
+
+            <div style="display:flex;align-items:baseline;gap:14px;padding-left:4px">
+              <span style="font-size:22px;font-weight:600;color:#34383F">핵심 구성 요소</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.24em;color:#8B9098">CORE COMPONENTS</span>
+            </div>
 
             <sc-for list="{{ actors }}" as="a" hint-placeholder-count="4">
 
               <div style="{{ a.box }}">
 
-                <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:700;color:#8B9098;min-width:52px">
+                <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:700;color:#8B9098;min-width:48px;line-height:1.1">
                   {{ a.n }}
                 </div>
 
-                <div style="flex:1">
-                  <div style="font-size:23px;font-weight:600;color:#34383F">
-                    {{ a.title }}
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                      <span style="font-size:24px;font-weight:600;color:#34383F">{{ a.title }}</span>
+                      <span style="{{ a.subStyle }}">{{ a.sub }}</span>
+                    </div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098;border:1px solid #E2E5E9;border-radius:7px;padding:5px 9px;white-space:nowrap">{{ a.tag }}</span>
                   </div>
 
-                  <div style="font-size:17px;color:#8B9098;margin-top:5px">
+                  <div style="font-size:17px;line-height:1.6;color:#8B9098;margin-top:8px;word-break:keep-all">
                     {{ a.desc }}
                   </div>
-                </div>
-
-                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098;border:1px solid #E2E5E9;border-radius:7px;padding:5px 9px;white-space:nowrap">
-                  {{ a.tag }}
                 </div>
 
               </div>
@@ -417,208 +343,220 @@
 
       </sc-if>
 
-
       <!-- ================================================= -->
-      <!-- PAGE 03 : 주문 통계 -->
+      <!-- PAGE 03 : 시스템 구성도 -->
       <!-- ================================================= -->
 
-      <sc-if value="{{ isStats }}">
+      <sc-if value="{{ isArchPage }}">
 
-        <div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 190px;gap:22px;animation:omRise .5s ease-out">
+        <div style="position:absolute;left:0;top:0;width:1832px;height:912px;animation:omRise .5s ease-out">
 
 
-          <!-- MBTI -->
+          <!-- 제목 -->
 
-          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:26px 30px;display:flex;flex-direction:column;gap:18px">
-
-            <div style="display:flex;align-items:baseline;justify-content:space-between">
-
-              <div style="font-size:26px;font-weight:600;color:#34383F">
-                MBTI 순위
-              </div>
-
-              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">
-                60s · 주문 DB
-              </div>
-
+          <div style="position:absolute;left:0;top:0;display:flex;align-items:flex-end;gap:26px">
+            <div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:#8B9098">SYSTEM ARCHITECTURE</div>
+              <div style="font-size:62px;font-weight:700;margin-top:14px;color:#34383F;line-height:1.15">시스템 구성도</div>
             </div>
+          </div>
 
 
-            <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:30px;min-height:0">
+          <div style="position:absolute;left:0;top:36px;width:1832px;height:876px">
+
+          <!-- 계층 라벨 -->
+
+          <sc-for list="{{ archTiers }}" as="t" hint-placeholder-count="3">
+            <div style="{{ t.chip }}">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;color:#8B9098">{{ t.tag }}</div>
+              <div style="font-size:19px;font-weight:600;margin-top:4px;color:#34383F">{{ t.name }}</div>
+            </div>
+          </sc-for>
 
 
-              <div style="display:flex;flex-direction:column;gap:10px;justify-content:center;width:311px;height:597px">
+          <!-- 연결선 -->
 
-                <sc-for list="{{ mbtiTop }}" as="m" hint-placeholder-count="4">
+          {{ archLinks }}
 
-                  <div style="{{ m.row }}">
 
-                    <span style="{{ m.rank }}">
-                      {{ m.no }}
-                    </span>
+          <!-- 사용자 접점 · 현장 장치 — 이름 + 핵심 역할 -->
 
-                    <span style="font-family:'Chakra Petch',sans-serif;font-size:24px;font-weight:700;flex:1;color:#34383F">
-                      {{ m.type }}
-                    </span>
+          <sc-for list="{{ archNodes }}" as="nd" hint-placeholder-count="5">
+            <div style="{{ nd.box }}">
+              <span style="font-size:24px;font-weight:600;color:#34383F">{{ nd.title }}</span>
+              <span style="font-size:17px;color:#8B9098">{{ nd.role }}</span>
+            </div>
+          </sc-for>
 
-                    <span style="font-size:15px;color:#8B9098">
-                      {{ m.count }}
-                    </span>
 
-                    <span style="font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:600;width:70px;text-align:right;color:#34383F">
-                      {{ m.pct }}
-                    </span>
+          <!-- 핵심 : 플랫폼 서버 · Mobius -->
 
+          <sc-for list="{{ archCores }}" as="c" hint-placeholder-count="2">
+            <div style="{{ c.box }}">
+
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.26em;color:#8B9098">{{ c.tag }}</span>
+                <span style="{{ c.badge }}">{{ c.badgeText }}</span>
+              </div>
+
+              <div>
+                <div style="font-size:24px;font-weight:600;color:#34383F">{{ c.title }}</div>
+                <div style="font-size:17px;color:#8B9098;margin-top:6px">{{ c.role }}</div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <sc-for list="{{ c.items }}" as="it" hint-placeholder-count="2">
+                  <div style="{{ it.box }}">
+                    <span style="font-size:17px;font-weight:600;color:#34383F">{{ it.name }}</span>
+                    <span style="font-size:17px;color:#8B9098">{{ it.desc }}</span>
                   </div>
-
                 </sc-for>
-
               </div>
 
+            </div>
+          </sc-for>
 
-              <!-- DONUT -->
 
-              <div style="display:flex;align-items:center;justify-content:center">
+          <!-- 범례 -->
 
-                <div style="position:relative;width:400px;height:394px;flex:none">
+          <div style="position:absolute;left:180px;top:690px;display:flex;flex-direction:column;gap:14px;font-size:16px;color:#8B9098">
+            <span style="display:flex;align-items:center;gap:12px"><span style="width:34px;height:0;border-top:2px solid #B9BEC6"></span>API 호출</span>
+            <span style="display:flex;align-items:center;gap:12px"><span style="width:34px;height:0;border-top:3px dashed #5DB5DB"></span>명령</span>
+            <span style="display:flex;align-items:center;gap:12px"><span style="width:34px;height:0;border-top:3px solid #8ECB9A"></span>보고</span>
+          </div>
 
-                  <div style="{{ donut }}">
+          </div>
 
-                    <div style="position:absolute;border-radius:50%;background:#FFFFFF;border:1px solid #E2E5E9;display:flex;flex-direction:column;align-items:center;justify-content:center;width:182px;height:173px;left:106px;top:111px">
+        </div>
 
-                      <div style="font-family:'Chakra Petch',sans-serif;font-size:26px;font-weight:700;color:#34383F">
-                        {{ completedOrders }}
-                      </div>
+      </sc-if>
 
-                      <div style="font-size:11px;color:#8B9098">
-                        완료 주문
-                      </div>
 
-                    </div>
+      <!-- ================================================= -->
+      <!-- PAGE 05 : 프로젝트 핵심 효과 -->
+      <!-- ================================================= -->
 
-                  </div>
+      <sc-if value="{{ isValuePage }}">
 
+        <div style="position:absolute;left:0;top:0;width:1832px;height:912px;display:flex;flex-direction:column;gap:34px;animation:omRise .5s ease-out">
+
+
+          <!-- 제목 -->
+
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:#8B9098">PROJECT VALUE</div>
+            <div style="font-size:62px;font-weight:700;line-height:1.15;margin-top:14px;color:#34383F">
+              자동화를 넘어
+              <span style="background:linear-gradient(transparent 64%,#91D4EE 64%)">하나의 연결된 제작 경험</span>
+            </div>
+          </div>
+
+
+          <!-- 중앙 강조 : 연결된 공정 -->
+
+          <div style="border:1px solid #E2E5E9;border-radius:24px;background:#FFFFFF;box-shadow:0 10px 30px rgba(52,56,63,.07);padding:40px 44px 44px;display:flex;flex-direction:column;gap:36px">
+
+            <div style="display:flex;align-items:stretch">
+              <sc-for list="{{ valueChain }}" as="v" hint-placeholder-count="5">
+                <div style="{{ v.node }}">
+                  <span style="display:flex;align-items:center;gap:8px">
+                    <span style="{{ v.dot }}"></span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#8B9098">{{ v.n }}</span>
+                  </span>
+                  <span style="font-family:'Chakra Petch',sans-serif;font-size:40px;font-weight:700;line-height:1.1;color:#34383F;white-space:nowrap">{{ v.en }}</span>
+                  <span style="font-size:17px;color:#8B9098">{{ v.ko }}</span>
                 </div>
+                <div style="{{ v.arrow }}">→</div>
+              </sc-for>
+            </div>
 
-              </div>
-
+            <div style="text-align:center;font-size:36px;font-weight:500;color:#34383F">
+              분리된 장비가 아닌,
+              <strong style="font-weight:700;background:linear-gradient(transparent 62%,#FFDF82 62%)">하나의 연결된 자동화 시스템</strong>
             </div>
 
           </div>
 
 
-          <!-- 색상별 주문수 -->
+          <!-- 핵심 효과 4 -->
 
-          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:26px 30px;display:flex;flex-direction:column;gap:18px">
-
-            <div style="display:flex;align-items:baseline;justify-content:space-between">
-
-              <div style="font-size:26px;font-weight:600;color:#34383F">
-                색상별 주문수
+          <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:20px;min-height:0">
+            <sc-for list="{{ valueEffects }}" as="e" hint-placeholder-count="4">
+              <div style="{{ e.box }}">
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:40px;font-weight:700;line-height:1;color:#C9CDD3">{{ e.n }}</span>
+                <div style="font-size:24px;font-weight:600;color:#34383F;margin-top:18px">{{ e.title }}</div>
+                <div style="font-size:17px;line-height:1.6;color:#8B9098;margin-top:8px;word-break:keep-all">{{ e.desc }}</div>
               </div>
+            </sc-for>
+          </div>
 
-              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">
-                단위: 개 · 60s
-              </div>
+        </div>
 
+      </sc-if>
+
+
+      <!-- ================================================= -->
+      <!-- PAGE 06 : 방문객 참여 안내 -->
+      <!-- ================================================= -->
+
+      <sc-if value="{{ isJoinPage }}">
+
+        <div style="position:absolute;left:0;top:0;width:1832px;height:912px;display:flex;flex-direction:column;gap:30px;animation:omRise .5s ease-out">
+
+
+          <!-- 제목 · 안내 문구 -->
+
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:#8B9098">JOIN THE EXPERIENCE</div>
+            <div style="font-size:62px;font-weight:700;line-height:1.15;margin-top:14px;color:#34383F">
+              나만의 키보드를
+              <span style="background:linear-gradient(transparent 64%,#F39CA9 64%)">직접 만들어보세요</span>
             </div>
-
-
-            <div style="flex:1;display:flex;align-items:flex-end;gap:40px;padding:0 26px 6px">
-
-              <sc-for list="{{ colorOrders }}" as="c" hint-placeholder-count="4">
-
-                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:12px;height:100%;justify-content:flex-end">
-
-                  <div style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:600;color:#34383F">
-                    {{ c.value }}
-                  </div>
-
-                  <div style="{{ c.bar }}"></div>
-
-                  <div style="font-size:17px;color:#8B9098">
-                    {{ c.name }}
-                  </div>
-
-                </div>
-
-              </sc-for>
-
-            </div>
-
           </div>
 
 
-          <!-- 최다 조합 -->
+          <!-- STEP 01 ~ 05 -->
 
-          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:22px 30px;display:flex;align-items:center;justify-content:space-between;gap:26px">
-
-            <div>
-
-              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#8B9098">
-                TOP COMBINATION
+          <div style="display:flex;align-items:stretch">
+            <sc-for list="{{ joinSteps }}" as="st" hint-placeholder-count="5">
+              <div style="{{ st.box }}">
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.22em;color:#8B9098">STEP</span>
+                  <span style="font-family:'Chakra Petch',sans-serif;font-size:34px;font-weight:700;line-height:1;color:#34383F">{{ st.n }}</span>
+                  <span style="{{ st.dot }}"></span>
+                </div>
+                <div style="font-size:24px;font-weight:600;color:#34383F;margin-top:18px;line-height:1.35;word-break:keep-all">{{ st.title }}</div>
+                <div style="font-size:17px;line-height:1.6;color:#8B9098;margin-top:8px;word-break:keep-all">{{ st.desc }}</div>
               </div>
-
-              <div style="font-size:24px;font-weight:600;margin-top:7px;color:#34383F">
-                최다 조합
-              </div>
-
-              <div style="font-size:16px;color:#8B9098;margin-top:5px">
-                {{ topComboInfo }}
-              </div>
-
-            </div>
-
-
-            <div style="display:flex;gap:14px">
-
-              <sc-for list="{{ topCombo }}" as="k" hint-placeholder-count="4">
-                <div style="{{ k.cap }}"></div>
-              </sc-for>
-
-            </div>
-
+              <div style="{{ st.arrow }}">→</div>
+            </sc-for>
           </div>
 
 
-          <!-- 주문 건수 -->
+          <!-- CTA -->
 
-          <div style="border:1px solid #E2E5E9;border-radius:20px;background:#FFFFFF;padding:22px 30px;display:flex;align-items:center;justify-content:space-between;gap:26px">
+          <div style="flex:1;position:relative;overflow:hidden;border-radius:28px;background:#34383F;box-shadow:0 18px 40px rgba(52,56,63,.18);display:flex;flex-direction:column;justify-content:center;padding:0 64px;min-height:0">
 
-            <div>
+            <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:60px 60px;pointer-events:none"></div>
+            <div style="position:absolute;left:0;right:0;top:0;height:6px;background:linear-gradient(90deg,#91D4EE,#99E3BD,#FFDF82,#F39CA9)"></div>
 
-              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#8B9098">
-                ORDER COUNT · 10s
+            <img src="assets/kiosk_v3.png" alt=""
+              style="position:absolute;right:110px;bottom:0;height:calc(100% - 34px);filter:drop-shadow(0 20px 36px rgba(0,0,0,.35));pointer-events:none">
+
+            <div style="position:relative;display:flex;flex-direction:column;gap:22px;max-width:1300px">
+
+              <span style="display:inline-flex;align-self:flex-start;align-items:center;gap:10px;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:7px 16px;font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.24em;color:#FFFFFF">
+                <span style="width:9px;height:9px;border-radius:50%;background:#F39CA9;animation:omPulse 1.2s ease-in-out infinite"></span>
+                TRY IT NOW
+              </span>
+
+              <div style="font-size:66px;font-weight:700;line-height:1.2;color:#FFFFFF;letter-spacing:-.01em">
+                지금 <span style="color:#FFDF82">키오스크</span>에서 직접 체험해보세요!
               </div>
 
-              <div style="font-size:24px;font-weight:600;margin-top:7px;color:#34383F">
-                주문 건수
+              <div style="font-size:26px;color:#C9CDD3">
+                당신의 선택이 실제 자동화 시스템을 움직입니다.
               </div>
-
-              <div style="font-size:16px;color:#8B9098;margin-top:5px">
-                주문 API 실시간 집계
-              </div>
-
-            </div>
-
-
-            <div style="display:flex;gap:14px">
-
-              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
-
-                <div style="{{ k.box }}">
-
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8B9098">
-                    {{ k.label }}
-                  </div>
-
-                  <div style="font-family:'Chakra Petch',sans-serif;font-size:34px;font-weight:600;color:#34383F">
-                    {{ k.value }}
-                  </div>
-
-                </div>
-
-              </sc-for>
 
             </div>
 
@@ -633,18 +571,18 @@
       <!-- PAGE 04 : 프로세스 -->
       <!-- ================================================= -->
 
-      <sc-if value="{{ isFlow }}">
+      <sc-if value="{{ isFlowPage }}">
 
         <div style="position:absolute;inset:0;display:flex;flex-direction:column;gap:26px;animation:omRise .5s ease-out">
 
           <div style="display:flex;align-items:flex-end;justify-content:space-between">
 
             <div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.3em;color:#8B9098">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.34em;color:#8B9098">
                 PROCESS FLOW
               </div>
 
-              <div style="font-family:'Chakra Petch',sans-serif;font-size:44px;font-weight:700;margin-top:8px;color:#34383F">
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:62px;font-weight:700;line-height:1.15;margin-top:14px;color:#34383F">
                 Flow Chart
               </div>
             </div>
@@ -701,11 +639,11 @@
                     {{ s.n }}
                   </div>
 
-                  <div style="font-size:19px;font-weight:600;line-height:1.35;margin-top:6px;color:#34383F">
+                  <div style="font-size:24px;font-weight:600;line-height:1.3;margin-top:6px;color:#34383F;word-break:keep-all">
                     {{ s.title }}
                   </div>
 
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;margin-top:8px">
+                  <div style="font-size:17px;color:#8B9098;margin-top:8px">
                     {{ s.meta }}
                   </div>
 
@@ -723,6 +661,428 @@
 
     </div>
   </div>
+
+  </sc-if>
+
+
+  <!-- ################################################### -->
+  <!-- MODE 2 : 현황용 대시보드                              -->
+  <!-- ################################################### -->
+
+  <sc-if value="{{ isStatusMode }}">
+
+  <div style="position:relative;height:100%;padding:18px;box-sizing:border-box;display:grid;grid-template-columns:390px 1126px 340px;grid-template-rows:220px 676px 120px;gap:14px">
+
+
+    <!-- ================================================= -->
+    <!-- 총 주문 건수 -->
+    <!-- GET /dashboard/orders/stats · total_orders -->
+    <!-- ================================================= -->
+
+    <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:19px;font-weight:600">총 주문 건수</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">누적 · 10s</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:96px;font-weight:600;line-height:.95;letter-spacing:-.01em">{{ totalOrders }}</span>
+        <span style="font-size:20px;color:#8B9098">{{ totalUnit }}</span>
+      </div>
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 상단 가운데 : 오늘 주문 · 증감 · 시간별 추이 -->
+    <!-- ================================================= -->
+
+    <div style="display:grid;grid-template-columns:360px 300px 438px;gap:14px;min-width:0">
+
+      <!-- 오늘 주문 건수 -->
+      <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:19px;font-weight:600">오늘 주문 건수</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">10s</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-family:'Chakra Petch',sans-serif;font-size:72px;font-weight:600;line-height:.95">{{ todayOrders }}</span>
+          <span style="font-size:18px;color:#8B9098">{{ todayUnit }}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="background:#F5F6F8;border-radius:12px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between">
+            <span style="display:flex;align-items:center;gap:7px;font-size:14px;color:#8B9098"><span style="width:8px;height:8px;border-radius:50%;background:#E5C46B"></span>대기</span>
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:24px;font-weight:600;line-height:1">{{ waitingOrders }}</span>
+          </div>
+          <div style="background:#F5F6F8;border-radius:12px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between">
+            <span style="display:flex;align-items:center;gap:7px;font-size:14px;color:#8B9098"><span style="width:8px;height:8px;border-radius:50%;background:#8ECB9A"></span>완료</span>
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:24px;font-weight:600;line-height:1">{{ completedToday }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 주문 건수 증감 (어제 같은 시각 대비) -->
+      <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:19px;font-weight:600">주문 건수 증감</span>
+          <span style="font-size:13px;color:#8B9098">어제 같은 시각 대비</span>
+        </div>
+        <div style="{{ deltaStyle }}">{{ deltaText }}</div>
+        <div style="font-size:13px;color:#8B9098">{{ deltaCaption }}</div>
+      </div>
+
+      <!-- 시간별 추이 -->
+      <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px 20px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:19px;font-weight:600">시간별 주문 추이</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">{{ hourlyRange }}</span>
+        </div>
+        <div style="flex:1;position:relative;min-height:0">
+          {{ hourlyChart }}
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 색상별 주문수 -->
+    <!-- GET /dashboard/statistics · keycap_color_stats -->
+    <!-- ================================================= -->
+
+    <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px 22px 14px;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:19px;font-weight:600">색상별 주문수</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">키캡 · 개</span>
+      </div>
+      <div style="flex:1;display:flex;align-items:flex-end;gap:18px;padding:0 6px;border-bottom:1px solid #E2E5E9;min-height:0">
+        <sc-for list="{{ colorOrders }}" as="c" hint-placeholder-count="4">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;height:100%">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:600;line-height:1">{{ c.value }}</span>
+            <div style="{{ c.bar }}"></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:18px;padding:0 6px">
+        <sc-for list="{{ colorOrders }}" as="c" hint-placeholder-count="4">
+          <span style="flex:1;text-align:center;font-size:13px;color:#8B9098">{{ c.name }}</span>
+        </sc-for>
+      </div>
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 실시간 재고 현황 -->
+    <!-- GET /dashboard/stocks -->
+    <!-- ================================================= -->
+
+    <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:16px 18px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+          <span style="font-size:19px;font-weight:600;white-space:nowrap">실시간 재고 현황</span>
+          <span style="font-size:12px;color:#8B9098;white-space:nowrap">{{ invCaption }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;white-space:nowrap">
+          <span style="{{ invLiveDot }}"></span>
+          5초
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:6px">
+        <div style="background:#F5F6F8;border-radius:10px;padding:6px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:6px">
+          <span style="font-size:12px;color:#8B9098;white-space:nowrap">총 키캡</span>
+          <span style="white-space:nowrap"><span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;line-height:1">{{ invTotal }}</span><span style="font-size:11px;color:#8B9098"> / {{ invCapacity }}</span></span>
+        </div>
+        <div style="background:#F5F6F8;border-radius:10px;padding:6px 10px;display:flex;align-items:baseline;justify-content:space-between">
+          <span style="font-size:12px;color:#8B9098">부족</span>
+          <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;line-height:1;color:#E48F87">{{ invShort }}</span>
+        </div>
+        <div style="background:#F5F6F8;border-radius:10px;padding:6px 10px;display:flex;align-items:baseline;justify-content:space-between">
+          <span style="font-size:12px;color:#8B9098">보충</span>
+          <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;line-height:1;color:#D9B24F">{{ invLow }}</span>
+        </div>
+      </div>
+
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(16,minmax(0,1fr));column-gap:18px;min-height:0">
+        <sc-for list="{{ invCells }}" as="cell" hint-placeholder-count="32">
+          <div style="{{ cell.wrap }}">
+            <div style="{{ cell.badge }}">{{ cell.letter }}</div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+              <div style="{{ cell.num }}">{{ cell.text }}</div>
+              <div style="height:5px;border-radius:3px;background:#EDEFF2;overflow:hidden">
+                <div style="{{ cell.fill }}"></div>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="background:#F5F6F8;border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-size:13px;font-weight:600">보드 랙</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8B9098">{{ boardLabel }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px">
+          <sc-for list="{{ boardCells }}" as="b" hint-placeholder-count="4">
+            <span style="display:flex;align-items:center;gap:4px">
+              <span style="{{ b.dot }}"></span>
+              <span style="{{ b.code }}">{{ b.label }}</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:600">{{ b.count }}</span>
+            </span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#8B9098">
+        <div style="display:flex;gap:9px;white-space:nowrap">
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:11px;height:4px;border-radius:2px;background:#8ECB9A"></span>충분</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:11px;height:4px;border-radius:2px;background:#E5C46B"></span>보충 {{ invLowMax }} 이하</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:11px;height:4px;border-radius:2px;background:#E48F87"></span>부족 {{ invShortMax }} 이하</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:11px;height:4px;border-radius:2px;background:#E2E5E9"></span>비활성·없음</span>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace">{{ invUpdated }}</span>
+      </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 메인 비주얼 : 창고 카메라 · AGV · 조립대 -->
+    <!-- GET /admin/orders · /admin/calls -->
+    <!-- ================================================= -->
+
+    <div style="position:relative;border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px;box-sizing:border-box;overflow:hidden;min-width:0">
+      <div style="position:relative;width:100%;height:100%">
+
+
+        <!-- ----------------------------------------------- -->
+        <!-- 창고 카메라 영역 (640 × 360)                       -->
+        <!-- 웹캠 연동 시 이 블록 안쪽을 <video> 로 바꾼다        -->
+        <!-- ----------------------------------------------- -->
+
+        <div style="position:absolute;left:0;top:0;width:640px;height:360px;border:1px solid #E2E5E9;border-radius:14px;overflow:hidden;background:#EEF0F3;box-sizing:border-box;padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px">
+
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;color:#8B9098">WAREHOUSE · CAM 01</span>
+            <span style="font-size:11px;color:#8B9098">스마트 창고</span>
+          </div>
+
+          <!-- 키캡 구역 -->
+          <div style="border:1px dashed #D3D7DD;border-radius:10px;background:rgba(255,255,255,.55);padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:11px;font-weight:600;color:#8B9098">키캡 구역</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A3A8B0">선반 4 · 카트리지 32 · 컨베이어 2</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 128px 1fr;grid-template-rows:30px 42px 30px;gap:6px 8px;align-items:stretch">
+
+              <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:0 10px;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:12px;font-weight:600">구역 1</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098">E / I</span>
+              </div>
+              <div></div>
+              <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:0 10px;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:12px;font-weight:600">구역 3</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098">T / F</span>
+              </div>
+
+              <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:5px 9px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+                <span style="font-size:11px;font-weight:600">키캡 컨베이어 1</span>
+                <div style="height:9px;border-radius:4px;background:repeating-linear-gradient(115deg,#C3CCDB 0 3px,#F2F5FA 3px 10px)"></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:10px;color:#8B9098;text-align:center;line-height:1.2">키캡 로봇암</span>
+                <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+                  <div style="background:#F7F8FA;border:1px solid #E2E5E9;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:#5E646D">1</div>
+                  <div style="background:#F7F8FA;border:1px solid #E2E5E9;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:#5E646D">2</div>
+                </div>
+              </div>
+              <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:5px 9px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+                <span style="font-size:11px;font-weight:600">키캡 컨베이어 2</span>
+                <div style="height:9px;border-radius:4px;background:repeating-linear-gradient(115deg,#C3CCDB 0 3px,#F2F5FA 3px 10px)"></div>
+              </div>
+
+              <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:0 10px;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:12px;font-weight:600">구역 2</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098">N / S</span>
+              </div>
+              <div></div>
+              <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:0 10px;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:12px;font-weight:600">구역 4</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098">P / J</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 조립 · 출고 라인 -->
+          <div style="flex:1;border:1px dashed #D3D7DD;border-radius:10px;background:rgba(255,255,255,.55);padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-height:0">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:11px;font-weight:600;color:#8B9098">조립 · 출고 라인</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#A3A8B0">보드 보관대 · 트레이 컨베이어 2 · AGV 픽업</span>
+            </div>
+            <div style="flex:1;display:grid;grid-template-columns:96px 1fr 1fr 46px;grid-template-rows:1fr 1fr;gap:6px 8px;min-height:0">
+
+              <div style="grid-column:3;grid-row:1;display:grid;grid-template-columns:1fr 70px;gap:6px">
+                <div style="background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:0 9px;display:flex;align-items:center;justify-content:space-between;gap:6px">
+                  <span style="font-size:11px;font-weight:600;white-space:nowrap">보드 보관대</span>
+                  <span style="display:flex;gap:3px">
+                    <span style="width:9px;height:9px;border-radius:3px;background:#F39CA9"></span>
+                    <span style="width:9px;height:9px;border-radius:3px;background:#FFDF82"></span>
+                    <span style="width:9px;height:9px;border-radius:3px;background:#99E3BD"></span>
+                    <span style="width:9px;height:9px;border-radius:3px;background:#91D4EE"></span>
+                  </span>
+                </div>
+                <div style="background:#F7F8FA;border:1px solid #E2E5E9;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#5E646D;text-align:center;line-height:1.2">보드<br>로봇암</div>
+              </div>
+
+              <div style="grid-column:1;grid-row:2;background:#F7F8FA;border:1px solid #E2E5E9;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#5E646D">트레이 로봇암</div>
+              <div style="grid-column:2;grid-row:2;background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:4px 9px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+                <span style="font-size:11px;font-weight:600">트레이 컨베이어 1</span>
+                <div style="height:9px;border-radius:4px;background:repeating-linear-gradient(115deg,#C3CCDB 0 3px,#F2F5FA 3px 10px)"></div>
+              </div>
+              <div style="grid-column:3;grid-row:2;background:#FFFFFF;border:1px solid #E2E5E9;border-radius:7px;padding:4px 9px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+                <span style="font-size:11px;font-weight:600">트레이 컨베이어 2</span>
+                <div style="height:9px;border-radius:4px;background:repeating-linear-gradient(115deg,#C3CCDB 0 3px,#F2F5FA 3px 10px)"></div>
+              </div>
+              <div style="grid-column:4;grid-row:1 / span 2;border:1px dashed #E5C46B;background:#FFFCF2;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#8B9098;line-height:1.15">
+                <span>A</span><span>G</span><span>V</span>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+
+        <!-- AGV 대기장소 (= 픽업대) -->
+
+        <div style="{{ parkingBox }}">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.24em;color:#8B9098">AGV STANDBY</span>
+          <span style="font-size:17px;font-weight:600">AGV 대기장소</span>
+        </div>
+
+
+        <!-- 폐기 -->
+
+        <div style="{{ discardBox }}">
+          <span style="font-size:20px;font-weight:600">폐기</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.24em;color:#8B9098">DISCARD</span>
+          <span style="font-size:12px;color:#8B9098;margin-top:4px">미수령 부품</span>
+        </div>
+
+
+        <!-- 조립대 1 · 2 · 3 -->
+
+        <sc-for list="{{ stations }}" as="st" hint-placeholder-count="3">
+          <div style="{{ st.box }}">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between">
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:28px;font-weight:700;line-height:1">{{ st.name }}</span>
+              <span style="display:flex;align-items:center;gap:9px">
+                <span style="{{ st.dot }}"></span>
+                <span style="font-size:21px;font-weight:600">{{ st.status }}</span>
+              </span>
+              <span style="{{ st.callStyle }}">
+                <span style="{{ st.callDot }}"></span>
+                {{ st.callText }}
+              </span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              {{ st.square }}
+              <span style="font-size:11px;color:#8B9098;white-space:nowrap">{{ st.squareCap }}</span>
+            </div>
+          </div>
+        </sc-for>
+
+
+        <!-- AGV 경로 -->
+
+        {{ agvPath }}
+
+
+        <!-- AGV -->
+
+        <div style="{{ agvWrap }}">
+          <div style="text-align:center;margin-bottom:4px;white-space:nowrap">
+            <span style="{{ agvPill }}">
+              <span style="{{ agvPillDot }}"></span>
+              AGV · {{ agvText }}
+            </span>
+          </div>
+          <img src="assets/agv.png" alt="AGV" style="height:58px;display:block;margin:0 auto;filter:drop-shadow(0 8px 12px rgba(52,56,63,.22))">
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 우측 : MBTI 순위 · 최다 조합 -->
+    <!-- GET /dashboard/statistics -->
+    <!-- ================================================= -->
+
+    <div style="display:grid;grid-template-rows:minmax(0,1fr) 220px;gap:14px;min-height:0;min-width:0">
+
+      <!-- MBTI 순위 -->
+      <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px 22px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;min-height:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:19px;font-weight:600">MBTI 순위</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B9098;border:1px solid #E2E5E9;border-radius:6px;padding:3px 7px">완료 {{ completedOrders }}건</span>
+        </div>
+
+        <div style="display:flex;justify-content:center">
+          <div style="position:relative;width:184px;height:184px;flex:none">
+            <div style="{{ donut }}"></div>
+            <div style="position:absolute;left:34px;top:34px;width:116px;height:116px;border-radius:50%;background:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+              <span style="font-size:11px;color:#8B9098">1위</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:30px;font-weight:700;line-height:1">{{ mbtiFirstType }}</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:600;color:#8B9098">{{ mbtiFirstPct }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px;justify-content:flex-end;min-height:0">
+          <sc-for list="{{ mbtiTop }}" as="m" hint-placeholder-count="4">
+            <div style="{{ m.row }}">
+              <span style="{{ m.rank }}">{{ m.no }}</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:700;flex:1">{{ m.type }}</span>
+              <span style="font-size:13px;color:#8B9098">{{ m.count }}</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:17px;font-weight:600;width:58px;text-align:right">{{ m.pct }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ mbtiEmpty }}">
+            <div style="font-size:13px;color:#8B9098;text-align:center;padding:10px 0">완료된 주문이 아직 없습니다</div>
+          </sc-if>
+        </div>
+      </div>
+
+      <!-- 최다 조합 -->
+      <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px 22px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-height:0">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:19px;font-weight:600">최다 조합</span>
+          <span style="font-size:14px;color:#8B9098">{{ topComboInfo }}</span>
+        </div>
+        <div style="display:flex;gap:10px">
+          <sc-for list="{{ topCombo }}" as="k" hint-placeholder-count="4">
+            <div style="{{ k.cap }}">{{ k.letter }}</div>
+          </sc-for>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 하단 : 주문 진행 단계 (status 파이프라인) -->
+    <!-- GET /admin/orders -->
+    <!-- ================================================= -->
+
+    <div style="grid-column:1 / -1;position:relative;border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:0 16px;box-sizing:border-box;overflow:hidden">
+      {{ pipeline }}
+    </div>
+
+  </div>
+
+  </sc-if>
+
 </div>
 
 </x-dc>
@@ -733,6 +1093,31 @@
   data-dc-script
   data-props="{&quot;autoRotate&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;동작&quot;},&quot;rotateSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:15,&quot;min&quot;:5,&quot;max&quot;:60,&quot;step&quot;:1,&quot;unit&quot;:&quot;s&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;동작&quot;}}"
 >
+
+
+// =========================================================
+// 화면 구성
+//
+//   home   : 처음 화면 — 대시보드 선택 (버튼 2개)
+//   intro  : 시스템 소개용 대시보드 — 시스템 소개 · 프로세스 흐름 (자동 전환)
+//   status : 현황용 대시보드 — 주문·재고·AGV·조립대 실시간 현황
+//
+// 주소 끝에 #intro / #status 를 붙이면 그 화면으로 바로 시작한다.
+// ESC 키 → 처음 화면, 처음 화면에서 1 · 2 키 → 각 대시보드
+// =========================================================
+
+const MODES = ['home', 'intro', 'status'];
+
+
+// =========================================================
+// 홈(처음 화면)으로 가는 단축키 — 여기에 원하는 키를 추가·삭제
+//
+//   'Escape' · 'Home' · 'Backspace' · 'F1' 같은 특수키 이름,
+//   'KeyH'(H) · 'KeyQ'(Q) · 'Digit0'(0) 처럼 키보드 위치 이름을 쓴다.
+//   위치 이름(Key○)은 한/영 상태와 상관없이 동작한다.
+// =========================================================
+
+const HOME_KEYS = ['Escape', 'Home'];
 
 
 const P = {
@@ -754,7 +1139,7 @@ const P = {
 // =========================================================
 
 const API_BASE_URL =
-  'http://127.0.0.1:5000';
+  'https://sjiot-backend-294910862364.asia-northeast1.run.app';
 
 
 // =========================================================
@@ -780,47 +1165,220 @@ function dbgChanged(tag, value) {
 }
 
 
-const CAPS = [
-  { code: 'R', hex: '#E48F87' },
-  { code: 'Y', hex: '#E5C46B' },
-  { code: 'G', hex: '#8ECB9A' },
-  { code: 'B', hex: '#8FB4E4' }
+// #########################################################
+// 시스템 소개용 대시보드 상수
+// #########################################################
+
+const INTRO_TABS = [
+  { n: '01', label: '시스템 소개' },
+  { n: '02', label: '시스템 구성도' },
+  { n: '03', label: '프로세스 흐름' },
+  { n: '04', label: '핵심 효과' },
+  { n: '05', label: '참여 안내' }
 ];
 
 
-const ROWS = [
-  'E',
-  'I',
-  'N',
-  'S',
-  'F',
-  'T',
-  'P',
-  'J',
-  'BD'
+const STEPS = [
+  { n: '01', lane: 0, col: 0, title: '주문 접수 · 결제 확인', meta: '주문 API · 10s' },
+  { n: '02', lane: 1, col: 1, title: '부품 조회 · 재고 할당', meta: '창고 컨트롤러 · 5s' },
+  { n: '03', lane: 1, col: 2, title: '자동 출고 · 트레이 적재', meta: '배정 스케줄러 이벤트' },
+  { n: '04', lane: 2, col: 3, title: '적재 확인 · 경로 생성', meta: 'AGV 상태 토픽 · 0.5s' },
+  { n: '05', lane: 2, col: 4, title: '조립대 운반 · 인계', meta: '조립대 컨트롤러 · 1s' },
+  { n: '06', lane: 0, col: 5, title: '진행 상태 갱신 · 완료', meta: '플랫폼 대시보드 · 실시간' }
+];
+
+
+const LANES = [
+  { tag: 'LANE 01', name: '플랫폼', color: P.blue },
+  { tag: 'LANE 02', name: '스마트창고', color: P.green },
+  { tag: 'LANE 03', name: 'AGV', color: P.yellow }
+];
+
+
+const LANE_Y = [100, 320, 540];
+
+// 프로세스 흐름 단계 박스 (도식 좌표 1560 × 640 기준)
+const FLOW_BOX_W = 244;
+const FLOW_BOX_H = 150;
+const FLOW_COL_STEP = (1560 - FLOW_BOX_W) / 5;
+const flowCx = c => FLOW_BOX_W / 2 + c * FLOW_COL_STEP;
+
+
+const ACTORS = [
+  {
+    n: '01', title: '주문 플랫폼', sub: '맞춤형 키보드 주문', tag: 'KIOSK',
+    desc: '키오스크에서 MBTI 질문에 응답하고 원하는 색상을 선택하여 개인별 키보드를 주문합니다.'
+  },
+  {
+    n: '02', title: '스마트창고', sub: '필요 부품 자동 출고', tag: 'WAREHOUSE',
+    desc: '주문 정보를 기반으로 필요한 키캡과 보드의 재고를 확인하고 자동으로 출고합니다.'
+  },
+  {
+    n: '03', title: 'AGV', sub: '부품 자율 운송', tag: 'AGV',
+    desc: '스마트창고에서 출고된 부품을 지정된 조립대까지 자동으로 운반합니다.'
+  },
+  {
+    n: '04', title: '조립대', sub: '실시간 조립 공정 관리', tag: 'STATION',
+    desc: '각 조립대의 주문 정보와 공정 상태, 호출번호 등을 실시간으로 관리합니다.'
+  }
+];
+
+
+
+
+const ACTOR_COLORS = [P.blue, P.green, P.yellow, P.red];
+
+// =========================================================
+// 시스템 구성도 (Mobius 구조 변경 보고 2026-10-02 기준)
+// 좌표는 페이지 영역 1832 × 912 px 기준
+// =========================================================
+
+const ARCH_TIERS = [
+  { tag: 'TIER 01', name: '사용자 접점', color: P.red, y: 165 },
+  { tag: 'TIER 02', name: '플랫폼', color: P.blue, y: 430 },
+  { tag: 'TIER 03', name: '현장 장치', color: P.green, y: 740 }
+];
+
+// 이름 + 핵심 역할만
+const ARCH_NODES = [
+  { x: 180, y: 110, w: 524, h: 110, title: '키오스크', role: '맞춤 주문 접수', color: P.blue },
+  { x: 744, y: 110, w: 524, h: 110, title: '현황 대시보드', role: '실시간 현황 조회', color: P.blue },
+  { x: 1308, y: 110, w: 524, h: 110, title: '조립대', role: 'QR 인증 · 사용자 조립', color: P.red },
+  { x: 1052, y: 680, w: 370, h: 120, title: '스마트창고', role: '부품 자동 출고', color: P.green },
+  { x: 1462, y: 680, w: 370, h: 120, title: 'AGV', role: '부품 자율 운송', color: P.yellow }
+];
+
+// 강조 — 플랫폼 서버 · Mobius
+const ARCH_CORES = [
+  {
+    x: 180, y: 296, w: 640, h: 268, tag: 'PLATFORM', title: 'Server', badgeText: 'Flask · Redis',
+    role: '주문을 받고, 공정 단계를 판단한다',
+    color: P.blue, tint: '#EAF6FB',
+    items: [
+      { name: 'REST API', desc: '주문 · 조회 · 인증' },
+      { name: 'Redis', desc: '실시간 상태 판단' }
+    ]
+  },
+  {
+    x: 1052, y: 280, w: 780, h: 300, tag: 'MIDDLEWARE', title: 'Mobius', badgeText: 'oneM2M',
+    role: '장치에 명령하고, 보고를 기록한다',
+    color: '#34383F', tint: '#F5F6F8',
+    items: [
+      { name: '명령', desc: 'cnt_process 하나로 전달' },
+      { name: '기록', desc: '장치 보고 · 주문 이력' }
+    ]
+  }
+];
+
+
+const ARCH_COLOR = {
+  rest: '#B9BEC6',
+  cmd: '#5DB5DB',
+  report: '#8ECB9A'
+};
+
+
+// =========================================================
+// 프로젝트 핵심 효과
+// =========================================================
+
+const VALUE_CHAIN = [
+  { en: 'ORDER', ko: '키오스크 주문', color: P.blue },
+  { en: 'WAREHOUSE', ko: '스마트창고 출고', color: P.green },
+  { en: 'ROBOT', ko: '로봇팔 적재', color: P.green },
+  { en: 'AGV', ko: '자율 운송', color: P.yellow },
+  { en: 'STATION', ko: '조립대 조립', color: P.red }
+];
+
+const VALUE_EFFECTS = [
+  {
+    title: '맞춤형 제작',
+    desc: '사용자의 MBTI와 선호 색상을 주문 정보에 반영하여 개인별 키보드 구성을 제공합니다.'
+  },
+  {
+    title: '반복 작업 자동화',
+    desc: '부품 확인, 출고, 이송 등 반복적인 작업을 자동화하여 작업 과정의 효율성을 높입니다.'
+  },
+  {
+    title: '실시간 데이터 연동',
+    desc: '주문부터 재고, 출고, 운송, 조립까지 각 공정의 정보를 실시간으로 연결하고 관리합니다.'
+  },
+  {
+    title: '통합 시스템 운영',
+    desc: '키오스크, 스마트창고, 로봇팔, AGV, 조립대를 하나의 시스템으로 연결하여 개별 장비가 아닌 하나의 자동화 공정으로 운영합니다.'
+  }
 ];
 
 
 // =========================================================
-// 재고 현황 기준
+// 방문객 참여 안내
 // =========================================================
 
-const INV_MAX = 40;        // 카트리지당 최대 수량
-const INV_LOW = 16;        // 보충 기준 (이하)
-const INV_SHORT = 8;       // 부족 기준 (이하)
-const BOARD_MAX = 3;       // 보드 랙 동시 적재 최대
+const JOIN_STEPS = [
+  { title: 'MBTI 질문에 답해주세요', desc: '화면에 표시되는 간단한 질문을 통해 나의 성향을 선택합니다.', color: P.blue },
+  { title: '원하는 색상을 골라주세요', desc: '키보드에 적용할 원하는 색상 조합을 선택합니다.', color: P.red },
+  { title: '주문을 접수해주세요', desc: '선택한 정보로 나만의 키보드 주문이 생성됩니다.', color: P.yellow },
+  { title: '자동화 과정을 확인해보세요', desc: '스마트창고에서 부품이 출고되고 로봇과 AGV를 통해 이동하는 과정을 직접 확인합니다.', color: P.green },
+  { title: '호출번호를 확인해주세요', desc: '주문 완료 후 발급된 호출번호를 통해 나의 키보드 제작 상태를 확인할 수 있습니다.', color: P.blue }
+];
 
-const CAP_HEX =
-  Object.fromEntries(
-    CAPS.map(c => [c.code.toLowerCase(), c.hex])
-  );
 
+const CARD_SHADOW = '0 2px 10px rgba(52,56,63,.05)';
+
+const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
+
+
+// #########################################################
+// 현황용 대시보드 상수
+// #########################################################
+
+const el = React.createElement;
+
+const FONT_NUM = "'Chakra Petch',sans-serif";
+const FONT_MONO = "'JetBrains Mono',monospace";
+
+
+// =========================================================
+// 색상
+// =========================================================
+
+// 키캡·보드 색 (파스텔 — 배지·주문 프레임)
 const CAP_PASTEL = {
   r: P.red,
   y: P.yellow,
   g: P.green,
   b: P.blue
 };
+
+// 키캡 색 (진한 쪽 — 막대·글자)
+const CAP_HEX = {
+  r: '#E48F87',
+  y: '#E5C46B',
+  g: '#8ECB9A',
+  b: '#8FB4E4'
+};
+
+// /admin/orders 의 board 값 → 색 코드 (config.BOARD_SLOT_MAP 과 같은 규칙)
+const BOARD_CODE = {
+  red: 'r',
+  yellow: 'y',
+  green: 'g',
+  blue: 'b'
+};
+
+const GREY_FILL = '#E2E5E9';
+
+
+// =========================================================
+// 재고 현황 기준
+// =========================================================
+
+const INV_LETTERS = ['E', 'I', 'N', 'S', 'F', 'T', 'P', 'J'];
+
+const INV_MAX = 40;        // 카트리지당 최대 수량
+const INV_LOW = 16;        // 보충 기준 (이하)
+const INV_SHORT = 8;       // 부족 기준 (이하)
+const BOARD_MAX = 3;       // 보드 랙 동시 적재 최대
 
 // 카드 배치: 왼쪽 R·G, 오른쪽 Y·B
 const INV_ORDER = ['r', 'y', 'g', 'b'];
@@ -832,6 +1390,10 @@ const INV_BAR = {
 };
 
 
+// =========================================================
+// 주문 통계
+// =========================================================
+
 const RANK_COLORS = [
   '#F39CA9',
   '#FFDF82',
@@ -839,190 +1401,196 @@ const RANK_COLORS = [
   '#91D4EE'
 ];
 
-
 const DONUT_COLORS = [
   '#F39CA9',
   '#FFDF82',
   '#99E3BD',
   '#91D4EE',
-  '#C6D8E0',
   '#E2E5E9'
 ];
 
-
 const COLOR_INFO = [
-  {
-    code: 'r',
-    name: '레드',
-    color: P.red
-  },
-
-  {
-    code: 'y',
-    name: '옐로우',
-    color: P.yellow
-  },
-
-  {
-    code: 'g',
-    name: '그린',
-    color: P.green
-  },
-
-  {
-    code: 'b',
-    name: '블루',
-    color: P.blue
-  }
+  { code: 'r', name: '레드' },
+  { code: 'y', name: '옐로우' },
+  { code: 'g', name: '그린' },
+  { code: 'b', name: '블루' }
 ];
 
 
-const KEYCAP_COLORS = {
-  r: P.red,
-  y: P.yellow,
-  g: P.green,
-  b: P.blue
+// =========================================================
+// 주문 단계 (config.STAGE_ORDER 와 같은 이름·순서)
+// =========================================================
+
+// 하단 파이프라인에 칸으로 나오는 정상 단계 13개
+const FLOW = [
+  ['queued', '대기열'],
+  ['assigned', '출고 지시'],
+  ['keycap_dispensed', '키캡 배출'],
+  ['keycap_reached', '키캡 이송'],
+  ['keycap_packed', '키캡 적재'],
+  ['tray_reached', '트레이 이송'],
+  ['board_packed', '보드 적재'],
+  ['pickup_reached', '출고 대기'],
+  ['loaded', 'AGV 적재'],
+  ['arrived', '조립대 도착'],
+  ['verified', '사용자 인증'],
+  ['received', '부품 수령'],
+  ['completed', '주문 완료']
+];
+
+const FLOW_COL = Object.fromEntries(
+  FLOW.map(([code], i) => [code, i])
+);
+
+// 비정상 단계 → 직전 정상 칸에 회색으로
+const ABNORMAL_COL = {
+  keycap_mismatched: FLOW_COL.assigned,
+  board_mismatched: FLOW_COL.tray_reached,
+  unclaimed: FLOW_COL.arrived
+};
+
+// 전체 16단계 순서 (조립대에 걸린 주문 중 가장 앞선 것을 고를 때)
+const STAGE_ORDER = [
+  'queued', 'assigned', 'keycap_mismatched', 'keycap_dispensed',
+  'keycap_reached', 'keycap_packed', 'tray_reached', 'board_mismatched',
+  'board_packed', 'pickup_reached', 'loaded', 'arrived', 'unclaimed',
+  'verified', 'received', 'completed'
+];
+
+const STAGE_IDX = Object.fromEntries(
+  STAGE_ORDER.map((s, i) => [s, i])
+);
+
+// 조립대 카드 주문번호: 이 단계부터 보드색 (arrived 순간 깜박임)
+const LIT_STAGES = ['arrived', 'verified', 'received'];
+
+const COMPLETED_KEEP = 3;   // 주문 완료 칸에 남길 최근 건수
+
+
+// =========================================================
+// 조립대 상태
+// =========================================================
+
+const STATION_STATUS = {
+  idle: { label: '대기', color: '#C9CDD3' },
+  intake: { label: '접수중', color: CAP_HEX.y },
+  working: { label: '작업중', color: CAP_HEX.g },
+  unclaimed: { label: '미수령', color: CAP_HEX.r }
+};
+
+function stationStatusOf(order) {
+  if (!order) return STATION_STATUS.idle;
+  if (order.stage === 'unclaimed') return STATION_STATUS.unclaimed;
+  if (order.stage === 'verified' || order.stage === 'received') return STATION_STATUS.working;
+  return STATION_STATUS.intake;   // assigned ~ arrived
+}
+
+
+// =========================================================
+// 메인 비주얼 좌표 (안쪽 1088 × 638 기준, AGV 는 바퀴 위치)
+// =========================================================
+
+const MV = {
+  CY: 440,                 // AGV 통로 높이
+  DOCK_Y: 486,             // 조립대·폐기 위에 섰을 때
+
+  PARK_BOX: { x: 676, y: 0, w: 210, h: 160 },
+  PARK: { x: 781, y: 150 },
+
+  ST_X: [180, 489, 798],
+  ST_W: 289,
+  ST_TOP: 478,
+  ST_H: 160,
+
+  DISCARD_BOX: { x: 0, y: 478, w: 150, h: 160 },
+  DISCARD_X: 75
+};
+
+const stationCx = sid => MV.ST_X[sid - 1] + MV.ST_W / 2;
+
+const AGV_SPEED = 170;     // px / s
+const TICK_MS = 200;
+
+const POLL = {
+  orders: 5000,            // /admin/orders + /admin/calls
+  stocks: 5000,
+  statistics: 5000,
+  orderStats: 10000
 };
 
 
 // =========================================================
-// 조립대 공정 상태
-// GET /dashboard/station 의 stage 값
+// 유틸
 // =========================================================
 
-const STAGE_LABEL = {
-  idle: '\ub300\uae30 \u00b7 \ud638\ucd9c \uc5c6\uc74c',
-  queued: '\ub300\uae30\uc5f4 \u00b7 \ubc30\uc815 \ub300\uae30',
-  assigned: '\ubd80\ud488 \ubc30\uc815 \uc644\ub8cc',
-  picking: '\ubd80\ud488 \ucd9c\uace0 \uc911',
-  delivering: 'AGV \uc6b4\ubc18 \uc911',
-  arrived: '\ubd80\ud488 \uc778\uacc4 \uc911',
-  assembling: '\uc870\ub9bd \uc9c4\ud589 \uc911',
-  done: '\uc870\ub9bd \uc644\ub8cc',
-  completed: '\uc870\ub9bd \uc644\ub8cc'
-};
+const fmtNum = v =>
+  v === null || v === undefined || Number.isNaN(v)
+    ? '—'
+    : Number(v).toLocaleString();
 
+const p2 = n => String(n).padStart(2, '0');
 
-const STAGE_COLOR = {
-  idle: P.line,
-  queued: P.yellow,
-  assigned: P.yellow,
-  picking: P.yellow,
-  delivering: P.yellow,
-  arrived: P.yellow,
-  assembling: P.green,
-  done: P.blue,
-  completed: P.blue
-};
+function fmtSec(s) {
+  if (s === null || s === undefined) return '';
+  s = Math.max(0, Math.round(s));
+  return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
 
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
 
-const STEPS = [
-
-  {
-    n: '01',
-    lane: 0,
-    col: 0,
-    title: '주문 접수 · 결제 확인',
-    meta: '주문 API · 10s'
-  },
-
-  {
-    n: '02',
-    lane: 1,
-    col: 1,
-    title: '부품 조회 · 재고 할당',
-    meta: '창고 컨트롤러 · 5s'
-  },
-
-  {
-    n: '03',
-    lane: 1,
-    col: 2,
-    title: '자동 출고 · 트레이 적재',
-    meta: '배정 스케줄러 이벤트'
-  },
-
-  {
-    n: '04',
-    lane: 2,
-    col: 3,
-    title: '적재 확인 · 경로 생성',
-    meta: 'AGV 상태 토픽 · 0.5s'
-  },
-
-  {
-    n: '05',
-    lane: 2,
-    col: 4,
-    title: '조립대 운반 · 인계',
-    meta: '조립대 컨트롤러 · 1s'
-  },
-
-  {
-    n: '06',
-    lane: 0,
-    col: 5,
-    title: '진행 상태 갱신 · 완료',
-    meta: '플랫폼 대시보드 · 실시간'
+function polyLen(pts) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) {
+    len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
   }
+  return len;
+}
 
-];
-
-
-const LANES = [
-
-  {
-    tag: 'LANE 01',
-    name: '플랫폼',
-    color: P.blue
-  },
-
-  {
-    tag: 'LANE 02',
-    name: '스마트창고',
-    color: P.green
-  },
-
-  {
-    tag: 'LANE 03',
-    name: 'AGV',
-    color: P.yellow
+// 경로 위 dist 지점의 좌표와, 시작점부터 그 지점까지의 꺾은선
+function walkPath(pts, dist) {
+  const done = [pts[0]];
+  let left = dist;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    if (left <= d) {
+      const g = d === 0 ? 1 : left / d;
+      const at = { x: a.x + (b.x - a.x) * g, y: a.y + (b.y - a.y) * g };
+      done.push(at);
+      return { at, done, rest: [at, ...pts.slice(i)] };
+    }
+    left -= d;
+    done.push(b);
   }
+  const end = pts[pts.length - 1];
+  return { at: end, done, rest: [end] };
+}
 
-];
+// 통로를 따라가는 경로: 세로로 통로까지 → 가로 → 세로로 목적지
+function routeTo(from, to) {
+  const raw = [
+    from,
+    { x: from.x, y: MV.CY },
+    { x: to.x, y: MV.CY },
+    to
+  ];
+  return raw.filter((p, i) =>
+    i === 0 || p.x !== raw[i - 1].x || p.y !== raw[i - 1].y
+  );
+}
 
-
-const TABS = [
-
-  {
-    n: '01',
-    label: '실시간 현황'
-  },
-
-  {
-    n: '02',
-    label: '시스템 소개'
-  },
-
-  {
-    n: '03',
-    label: '주문 통계'
-  },
-
-  {
-    n: '04',
-    label: '프로세스 흐름'
-  }
-
-];
-
-
-const ACTOR_COLORS = [
-  P.blue,
-  P.green,
-  P.yellow,
-  P.red
-];
+function placePoint(place) {
+  if (place === 'parking') return { ...MV.PARK };
+  if (place === 'discard') return { x: MV.DISCARD_X, y: MV.DOCK_Y };
+  const [kind, n] = place.split(':');
+  const x = stationCx(Number(n));
+  return { x, y: kind === 'station' ? MV.DOCK_Y : MV.CY };
+}
 
 
 // =========================================================
@@ -1038,153 +1606,271 @@ class Component extends DCLogic {
 
   state = {
 
-    page: 0,
+    mode: 'home',
 
+    now: new Date(),
+
+
+    // -----------------------------------------------------
+    // 시스템 소개용 — 0: 시스템 소개, 1: 프로세스 흐름
+    // -----------------------------------------------------
+
+    introPage: 0,
     elapsed: 0,
-
-    t: 0,
-
     paused: false,
 
 
     // -----------------------------------------------------
-    // 재고
+    // 재고 · GET /dashboard/stocks
     // -----------------------------------------------------
 
     stocks: {},
-
     stocksAt: null,
 
 
     // -----------------------------------------------------
-    // 주문 건수
-    // GET /dashboard/orders/stats
+    // 주문 건수 · GET /dashboard/orders/stats
+    // 받기 전에는 null → 화면에 '—'
     // -----------------------------------------------------
 
-    kpi: {
+    kpi: null,
 
-      total_orders: 0,
 
-      today_orders: 0,
+    // -----------------------------------------------------
+    // 주문 통계 · GET /dashboard/statistics
+    // -----------------------------------------------------
 
-      waiting_orders: 0,
+    statistics: null,
 
-      completed_today: 0
 
+    // -----------------------------------------------------
+    // 주문 목록 · GET /admin/orders
+    // 사용자 호출 · GET /admin/calls
+    // -----------------------------------------------------
+
+    orders: [],
+    ordersAt: null,
+    ordersErr: null,
+    calls: {},
+
+
+    // -----------------------------------------------------
+    // AGV (단일) — 주문 단계로 목적지를 정하고 통로를 따라 이동
+    // -----------------------------------------------------
+
+    agv: {
+      x: MV.PARK.x,
+      y: MV.PARK.y,
+      place: 'parking',
+      leg: null,           // { pts, len, dist }
+      ready: false
     },
 
-
-    // -----------------------------------------------------
-    // 주문 통계
-    // GET /dashboard/statistics
-    // -----------------------------------------------------
-
-    statistics: {
-
-      completed_orders: 0,
-
-      mbti_stats: [],
-
-      keycap_color_stats: {},
-
-      top_keycap_combo: null
-
-    },
-
-
-    // -----------------------------------------------------
-    // 조립대 현황
-    // GET /dashboard/station
-    // -----------------------------------------------------
-
-    stations_api: [],
-
-
-    // -----------------------------------------------------
-    // AGV 애니메이션용 MOCK
-    // -----------------------------------------------------
-
-    remain: [
-      47,
-      0,
-      132
-    ],
-
-
-    now:
-      new Date()
+    agvTask: { mode: 'idle', order: null }
 
   };
 
 
+  // #######################################################
+  // 화면(모드) 전환
+  // #######################################################
+
+  componentDidMount() {
+
+    // 시각 — 모든 화면 공통
+    this.clockTimer = setInterval(() => this.setState({ now: new Date() }), 1000);
+
+    // 키보드 — ESC: 처음 화면 / 1·2: 대시보드 선택 / ←·→: 소개 페이지 이동
+    this.onKey = e => this.handleKey(e);
+    window.addEventListener('keydown', this.onKey);
+
+    // 주소의 #intro / #status 를 바꾸면 그 화면으로
+    this.onHash = () => this.enterMode(this.modeFromHash());
+    window.addEventListener('hashchange', this.onHash);
+
+    this.enterMode(this.modeFromHash(), { replace: true });
+
+  }
+
+
+  componentWillUnmount() {
+
+    dbg('unmount', '타이머 전체 해제');
+
+    clearInterval(this.clockTimer);
+    window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('hashchange', this.onHash);
+
+    this.stopIntro();
+    this.stopStatus();
+
+  }
+
+
+  modeFromHash() {
+
+    try {
+      const h = (window.location.hash || '').replace('#', '');
+      return MODES.includes(h) ? h : 'home';
+    } catch (e) {
+      return 'home';
+    }
+
+  }
+
+
+  enterMode(mode, opts = {}) {
+
+    if (!MODES.includes(mode)) mode = 'home';
+
+    if (mode === this.state.mode && !opts.replace) return;
+
+    dbg('mode', `${this.state.mode} → ${mode}`);
+
+    this.stopIntro();
+    this.stopStatus();
+
+    this.setState({ mode });
+
+    try {
+      const url = mode === 'home'
+        ? window.location.pathname + window.location.search
+        : '#' + mode;
+      window.history.replaceState(null, '', url);
+    } catch (e) { }
+
+    if (mode === 'intro') this.startIntro();
+    if (mode === 'status') this.startStatus();
+
+  }
+
+
+  handleKey(e) {
+
+    const mode = this.state.mode;
+
+    if (HOME_KEYS.includes(e.key) || HOME_KEYS.includes(e.code)) {
+      e.preventDefault();
+      this.enterMode('home');
+      return;
+    }
+
+    if (mode === 'home') {
+      if (e.key === '1') this.enterMode('intro');
+      if (e.key === '2') this.enterMode('status');
+      return;
+    }
+
+    if (mode === 'intro') {
+      if (e.key === 'ArrowLeft') this.goPage(this.state.introPage - 1);
+      if (e.key === 'ArrowRight') this.goPage(this.state.introPage + 1);
+      if (e.key === ' ') this.setState(s => ({ paused: !s.paused, elapsed: 0 }));
+    }
+
+  }
+
+
+  // #######################################################
+  // 시스템 소개용 대시보드
+  // #######################################################
+
+  startIntro() {
+
+    this.setState({ introPage: 0, elapsed: 0 });
+
+    this.introTimer = setInterval(() => this.introTick(), 500);
+
+  }
+
+
+  stopIntro() {
+
+    clearInterval(this.introTimer);
+    this.introTimer = null;
+
+  }
+
+
+  get rotateSeconds() {
+    return this.props.rotateSeconds ?? 15;
+  }
+
+
+  get rotating() {
+    return (this.props.autoRotate ?? true) && !this.state.paused;
+  }
+
+
+  // 자동 전환 — 시스템 소개 ↔ 프로세스 흐름
+  introTick() {
+
+    if (!this.rotating) return;
+
+    this.setState(s => {
+
+      const t = s.elapsed + 0.5;
+
+      if (t >= this.rotateSeconds) {
+        dbg('auto-rotate', `page ${s.introPage} → ${(s.introPage + 1) % INTRO_TABS.length}`);
+        return { elapsed: 0, introPage: (s.introPage + 1) % INTRO_TABS.length };
+      }
+
+      return { elapsed: t };
+
+    });
+
+  }
+
+
+  goPage(i) {
+
+    const n = INTRO_TABS.length;
+
+    this.setState({ introPage: ((i % n) + n) % n, elapsed: 0 });
+
+  }
+
+
   // =======================================================
-  // 재고 API
-  // GET /dashboard/stocks
+  // 공통 GET
+  // =======================================================
+
+  async getJson(path, failMsg) {
+
+    const response = await fetch(`${API_BASE_URL}${path}`);
+
+    let data = null;
+    try { data = await response.json(); } catch (e) { }
+
+    if (!response.ok || !data || data.success === false) {
+      throw new Error((data && data.error) || `${failMsg} (HTTP ${response.status})`);
+    }
+
+    return data;
+
+  }
+
+
+  // =======================================================
+  // 재고 API · GET /dashboard/stocks
   // =======================================================
 
   async fetchStocks() {
 
     try {
 
-      const response =
-        await fetch(
-          `${API_BASE_URL}/dashboard/stocks`
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.error
-          ||
-          '재고 조회 실패'
-        );
-
-      }
-
-
-      if (
-        data.success === false
-      ) {
-
-        throw new Error(
-          data.error
-          ||
-          '재고 조회 실패'
-        );
-
-      }
-
+      const data = await this.getJson('/dashboard/stocks', '재고 조회 실패');
 
       this.setState({
-
-        stocks:
-          data.stocks
-          ||
-          {},
-
-        stocksAt:
-          new Date()
-
+        stocks: data.stocks || {},
+        stocksAt: new Date()
       });
 
-
-      console.log(
-        '[dashboard/stocks]',
-        data.stocks
-      );
-
+      dbgChanged('dashboard/stocks', Object.keys(data.stocks || {}).length + ' keys');
 
     } catch (error) {
 
-      console.error(
-        '[재고 API ERROR]',
-        error
-      );
+      console.error('[재고 API ERROR]', error);
 
     }
 
@@ -1192,97 +1878,36 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // 주문 건수 API
-  // GET /dashboard/orders/stats
+  // 주문 건수 API · GET /dashboard/orders/stats
   // =======================================================
 
   async fetchOrderStats() {
 
     try {
 
-      const response =
-        await fetch(
-          `${API_BASE_URL}/dashboard/orders/stats`
-        );
+      const data = await this.getJson('/dashboard/orders/stats', '주문 현황 조회 실패');
 
-
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.error
-          ||
-          '주문 현황 조회 실패'
-        );
-
-      }
-
-
-      if (
-        data.success === false
-      ) {
-
-        throw new Error(
-          data.error
-          ||
-          '주문 현황 조회 실패'
-        );
-
-      }
-
+      // 어제 같은 시각까지의 주문 수 — 백엔드에 아직 없는 필드. 없으면 증감은 '—'
+      const y = data.yesterday_same_time_orders;
 
       this.setState({
-
         kpi: {
-
-          total_orders:
-            Number(
-              data.total_orders
-              ||
-              0
-            ),
-
-          today_orders:
-            Number(
-              data.today_orders
-              ||
-              0
-            ),
-
-          waiting_orders:
-            Number(
-              data.waiting_orders
-              ||
-              0
-            ),
-
-          completed_today:
-            Number(
-              data.completed_today
-              ||
-              0
-            )
-
+          total_orders: Number(data.total_orders || 0),
+          today_orders: Number(data.today_orders || 0),
+          waiting_orders: Number(data.waiting_orders || 0),
+          completed_today: Number(data.completed_today || 0),
+          yesterday_same_time:
+            y === null || y === undefined || Number.isNaN(Number(y))
+              ? null
+              : Number(y)
         }
-
       });
 
-
-      console.log(
-        '[dashboard/orders/stats]',
-        data
-      );
-
+      dbgChanged('dashboard/orders/stats', data);
 
     } catch (error) {
 
-      console.error(
-        '[주문 API ERROR]',
-        error
-      );
+      console.error('[주문 API ERROR]', error);
 
     }
 
@@ -1290,93 +1915,29 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // 주문 통계 API
-  // GET /dashboard/statistics
+  // 주문 통계 API · GET /dashboard/statistics
   // =======================================================
 
   async fetchStatistics() {
 
     try {
 
-      const response =
-        await fetch(
-          `${API_BASE_URL}/dashboard/statistics`
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.error
-          ||
-          '주문 통계 조회 실패'
-        );
-
-      }
-
-
-      if (
-        data.success === false
-      ) {
-
-        throw new Error(
-          data.error
-          ||
-          '주문 통계 조회 실패'
-        );
-
-      }
-
+      const data = await this.getJson('/dashboard/statistics', '주문 통계 조회 실패');
 
       this.setState({
-
         statistics: {
-
-          completed_orders:
-            Number(
-              data.completed_orders
-              ||
-              0
-            ),
-
-          mbti_stats:
-            Array.isArray(
-              data.mbti_stats
-            )
-              ? data.mbti_stats
-              : [],
-
-          keycap_color_stats:
-            data.keycap_color_stats
-            ||
-            {},
-
-          top_keycap_combo:
-            data.top_keycap_combo
-            ||
-            null
-
+          completed_orders: Number(data.completed_orders || 0),
+          mbti_stats: Array.isArray(data.mbti_stats) ? data.mbti_stats : [],
+          keycap_color_stats: data.keycap_color_stats || {},
+          top_keycap_combo: data.top_keycap_combo || null
         }
-
       });
 
-
-      console.log(
-        '[dashboard/statistics]',
-        data
-      );
-
+      dbgChanged('dashboard/statistics', data);
 
     } catch (error) {
 
-      console.error(
-        '[주문 통계 API ERROR]',
-        error
-      );
+      console.error('[주문 통계 API ERROR]', error);
 
     }
 
@@ -1384,356 +1945,237 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // 조립대 현황 API
-  // GET /dashboard/station
+  // 주문 목록 · GET /admin/orders  (+ 사용자 호출 · GET /admin/calls)
+  //
+  // 앞쪽이 진행 중 주문, 뒤쪽이 오늘 아카이브.
+  // 노쇼(unclaimed) 주문은 AGV 가 폐기를 마칠 때까지 양쪽에 다 나온다
+  // → 앞(진행 중)을 남기고, 두 번 나온 것은 dup 으로 표시해 '폐기 중' 판단에 쓴다.
   // =======================================================
 
-  async fetchStations() {
+  normalizeOrders(raw) {
 
-    try {
+    const count = {};
+    raw.forEach(o => { count[o.order_id] = (count[o.order_id] || 0) + 1; });
 
-      const response =
-        await fetch(
-          `${API_BASE_URL}/dashboard/station`
-        );
+    const seen = {};
 
+    return raw
+      .filter(o => {
+        if (seen[o.order_id]) return false;
+        seen[o.order_id] = true;
+        return true;
+      })
+      .map(o => ({
+        id: o.order_id,
+        seq: o.order_seq === null || o.order_seq === undefined ? null : Number(o.order_seq),
+        stage: o.stage,
+        fault: o.fault || null,
+        board: BOARD_CODE[o.board] || o.board || null,
+        sid: o.station_id === null || o.station_id === undefined ? null : Number(o.station_id),
+        created: o.created_at ? new Date(o.created_at) : null,
+        ended: !!o.ended_at,
+        endedAt: o.ended_at ? new Date(o.ended_at) : null,
+        reason: o.reason || null,
+        dup: count[o.order_id] > 1
+      }));
 
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.error
-          ||
-          '조립대 현황 조회 실패'
-        );
-
-      }
-
-
-      if (
-        data.success === false
-      ) {
-
-        throw new Error(
-          data.error
-          ||
-          '조립대 현황 조회 실패'
-        );
-
-      }
+  }
 
 
-      this.setState({
+  async fetchOrders() {
 
-        stations_api:
-          Array.isArray(
-            data.stations
-          )
-            ? data.stations
-            : []
+    const [ordersRes, callsRes] = await Promise.allSettled([
+      this.getJson('/admin/orders', '주문 목록 조회 실패'),
+      this.getJson('/admin/calls', '호출 조회 실패')
+    ]);
 
-      });
+    const patch = {};
 
+    if (ordersRes.status === 'fulfilled') {
+      patch.orders = this.normalizeOrders(ordersRes.value.orders || []);
+      patch.ordersAt = new Date();
+      patch.ordersErr = null;
+    } else {
+      patch.ordersErr = ordersRes.reason?.message || '주문 목록 조회 실패';
+      console.error('[주문 목록 API ERROR]', ordersRes.reason);
+    }
 
-      dbgChanged(
-        'dashboard/station',
-        data.stations
-      );
+    if (callsRes.status === 'fulfilled') {
+      const m = {};
+      (callsRes.value.calls || []).forEach(c => { m[Number(c.station_id)] = c; });
+      patch.calls = m;
+    } else {
+      console.error('[호출 API ERROR]', callsRes.reason);
+    }
 
+    this.setState(patch);
 
+    if (patch.orders) {
+      this.updateAgvTask(patch.orders);
+      dbgChanged('admin/orders', patch.orders
+        .filter(o => this.isActive(o))
+        .map(o => `${o.seq}:${o.stage}${o.fault ? '!' : ''}@${o.sid ?? '-'}`));
+    }
 
-    } catch (error) {
-
-      console.error(
-        '[조립대 API ERROR]',
-        error
-      );
-
+    if (patch.calls) {
+      dbgChanged('admin/calls', Object.keys(patch.calls));
     }
 
   }
 
 
+  // 진행 중 주문 — 종료 안 됐거나, 노쇼 폐기 대기로 양쪽에 나온 것
+  isActive(o) {
+    return !o.ended || o.dup;
+  }
+
+
   // =======================================================
-  // COMPONENT 시작
+  // AGV 목적지 (AGV 1대)
+  //
+  //   unclaimed        → 폐기장소
+  //   arrived·verified → 조립대 N 에 정차
+  //   loaded           → 조립대 N 앞 통로까지 이동
+  //   pickup_reached   → 대기장소(= 픽업대)에서 적재 대기
+  //   그 외            → 대기장소
   // =======================================================
 
-  componentDidMount() {
+  agvTaskOf(orders) {
 
-    dbg('mount', {
-      api: API_BASE_URL,
-      polling: {
-        tick: '0.5s',
-        station: '1s',
-        stocks: '5s',
-        statistics: '5s',
-        orderStats: '10s'
+    const act = orders.filter(o => this.isActive(o));
+
+    const first = pred =>
+      act
+        .filter(pred)
+        .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))[0];
+
+    let o;
+
+    if ((o = first(x => x.stage === 'unclaimed'))) {
+      return { mode: 'discard', place: 'discard', order: o };
+    }
+
+    if ((o = first(x => (x.stage === 'arrived' || x.stage === 'verified') && x.sid))) {
+      return { mode: 'dock', place: `station:${o.sid}`, order: o };
+    }
+
+    if ((o = first(x => x.stage === 'loaded' && x.sid))) {
+      return { mode: 'travel', place: `corridor:${o.sid}`, order: o };
+    }
+
+    if ((o = first(x => x.stage === 'pickup_reached'))) {
+      return { mode: 'pickup', place: 'parking', order: o };
+    }
+
+    return { mode: 'idle', place: 'parking', order: null };
+
+  }
+
+
+  updateAgvTask(orders) {
+
+    const task = this.agvTaskOf(orders);
+
+    this.setState(s => {
+
+      const a = s.agv;
+
+      // 첫 로드 — 애니메이션 없이 바로 그 자리
+      if (!a.ready) {
+        const p = placePoint(task.place);
+        return {
+          agvTask: task,
+          agv: { ...a, x: p.x, y: p.y, place: task.place, leg: null, ready: true }
+        };
       }
+
+      if (a.place === task.place) {
+        return { agvTask: task };
+      }
+
+      // 새 구간 — 지금 위치에서 시작 (이전 경로는 지운다)
+      const pts = routeTo({ x: a.x, y: a.y }, placePoint(task.place));
+      const len = polyLen(pts);
+
+      dbg('agv', `${a.place} → ${task.place}`, Math.round(len) + 'px');
+
+      return {
+        agvTask: task,
+        agv: { ...a, place: task.place, leg: len > 0 ? { pts, len, dist: 0 } : null }
+      };
+
     });
 
+  }
 
 
-    this.timer =
-      setInterval(
-        () => this.tick(),
-        500
-      );
+  // =======================================================
+  // 현황 대시보드 시작 · 종료 (현황 모드에 들어올 때만 폴링)
+  // =======================================================
+
+  startStatus() {
+
+    dbg('status:start', { api: API_BASE_URL, polling: POLL });
+
+    // 다시 들어올 때 AGV 는 애니메이션 없이 현재 위치에서 시작
+    this.setState(s => ({ agv: { ...s.agv, leg: null, ready: false } }));
+
+    this.agvTimer = setInterval(() => this.agvTick(), TICK_MS);
 
 
-    // 처음 실행하자마자 호출
+    // 처음 들어오자마자 호출
 
+    this.fetchOrders();
     this.fetchStocks();
-
     this.fetchOrderStats();
-
     this.fetchStatistics();
 
-    this.fetchStations();
+
+    this.ordersTimer = setInterval(() => this.fetchOrders(), POLL.orders);
+
+    this.stockTimer = setInterval(() => this.fetchStocks(), POLL.stocks);
+
+    this.statisticsTimer = setInterval(() => this.fetchStatistics(), POLL.statistics);
+
+    this.orderTimer = setInterval(() => this.fetchOrderStats(), POLL.orderStats);
+
+  }
 
 
-    // 조립대 1초
+  stopStatus() {
 
-    this.stationTimer =
-      setInterval(
-        () => {
+    clearInterval(this.agvTimer);
+    clearInterval(this.ordersTimer);
+    clearInterval(this.stockTimer);
+    clearInterval(this.statisticsTimer);
+    clearInterval(this.orderTimer);
 
-          this.fetchStations();
-
-        },
-        1000
-      );
-
-
-    // 재고 5초
-
-    this.stockTimer =
-      setInterval(
-        () => {
-
-          this.fetchStocks();
-
-        },
-        5000
-      );
-
-
-    // 주문 건수 10초
-
-    this.orderTimer =
-      setInterval(
-        () => {
-
-          this.fetchOrderStats();
-
-        },
-        10000
-      );
-
-
-    // 주문 통계 5초
-
-    this.statisticsTimer =
-      setInterval(
-        () => {
-
-          this.fetchStatistics();
-
-        },
-        5000
-      );
+    this.agvTimer = this.ordersTimer = this.stockTimer =
+      this.statisticsTimer = this.orderTimer = null;
 
   }
 
 
   // =======================================================
-  // COMPONENT 종료
+  // AGV 이동 틱 (시각 갱신은 clockTimer 가 담당)
   // =======================================================
 
-  componentWillUnmount() {
+  agvTick() {
 
-    dbg('unmount', '폴링 타이머 5개 해제');
+    const leg = this.state.agv.leg;
 
+    if (!leg || leg.dist >= leg.len) return;
 
-    clearInterval(
-      this.timer
-    );
+    this.setState(s => {
 
-    clearInterval(
-      this.stockTimer
-    );
+      const l = s.agv.leg;
 
-    clearInterval(
-      this.orderTimer
-    );
+      if (!l || l.dist >= l.len) return {};
 
-    clearInterval(
-      this.statisticsTimer
-    );
+      const dist = Math.min(l.len, l.dist + AGV_SPEED * TICK_MS / 1000);
+      const { at } = walkPath(l.pts, dist);
 
-    clearInterval(
-      this.stationTimer
-    );
-
-  }
-
-
-  // =======================================================
-  // 화면 자동 전환
-  // =======================================================
-
-  get rotateSeconds() {
-
-    return (
-      this.props.rotateSeconds
-      ??
-      15
-    );
-
-  }
-
-
-  get rotating() {
-
-    return (
-
-      (
-        this.props.autoRotate
-        ??
-        true
-      )
-
-      &&
-
-      !this.state.paused
-
-    );
-
-  }
-
-
-  // =======================================================
-  // 화면 애니메이션
-  // =======================================================
-
-  tick() {
-
-    this.setState(
-      s => {
-
-
-        const t =
-          s.t + 0.5;
-
-
-        const next = {
-
-          t,
-
-          now:
-            new Date()
-
-        };
-
-
-        if (
-          this.rotating
-        ) {
-
-          const el =
-            s.elapsed + 0.5;
-
-
-          if (
-            el >=
-            this.rotateSeconds
-          ) {
-
-            next.elapsed =
-              0;
-
-            next.page =
-              (
-                s.page + 1
-              )
-              %
-              4;
-
-
-            dbg(
-              'auto-rotate',
-              `page ${s.page} → ${next.page}`
-            );
-
-          }
-
-          else {
-
-            next.elapsed =
-              el;
-
-          }
-
-        }
-
-
-        if (
-          t % 1 === 0
-        ) {
-
-          next.remain =
-            s.remain.map(
-              (v, i) => (
-
-                v > 0
-
-                  ? v - 1
-
-                  : i === 0
-
-                    ? 96
-
-                    : i === 2
-
-                      ? 148
-
-                      : 0
-
-              )
-            );
-
-        }
-
-
-        return next;
-
-      }
-    );
-
-  }
-
-
-  // =======================================================
-  // 페이지 이동
-  // =======================================================
-
-  goTo(i) {
-
-    dbg('goTo', {
-      from: this.state.page,
-      to: i
-    });
-
-
-    this.setState({
-
-      page:
-        i,
-
-      elapsed:
-        0
+      return { agv: { ...s.agv, x: at.x, y: at.y, leg: { ...l, dist } } };
 
     });
 
@@ -1747,11 +2189,8 @@ class Component extends DCLogic {
   invLevel(count, status) {
 
     if (status === 'disable') return 'off';
-
     if (count <= INV_SHORT) return 'short';
-
     if (count <= INV_LOW) return 'low';
-
     return 'ok';
 
   }
@@ -1759,47 +2198,48 @@ class Component extends DCLogic {
 
   invView(stocks, stocksAt) {
 
-    const letters =
-      ROWS.filter(r => r !== 'BD');
-
     const cells = [];
 
     let total = 0;
     let active = 0;
     let short = 0;
     let low = 0;
+    let known = 0;
 
     const shortIds = [];
     const lowIds = [];
     const offIds = [];
+    const missingIds = [];
 
 
-    letters.forEach(letter => {
+    INV_LETTERS.forEach(letter => {
 
       INV_ORDER.forEach((color, i) => {
 
-        const stock =
-          stocks[`${letter}_${color}`];
-
-        const count =
-          Number(stock?.count ?? 0);
-
-        const level =
-          this.invLevel(count, stock?.status);
-
-        const off =
-          level === 'off';
-
-
         const id = `${letter}_${color}`;
+        const stock = stocks[id];
 
-        if (!off) {
+        // 데이터가 없는 칸 — 0 으로 보지 않는다 (부족 집계에서도 뺀다)
+        const missing = !stock || stock.count === null || stock.count === undefined;
+
+        const count = missing ? null : Number(stock.count);
+
+        const level = missing ? 'none' : this.invLevel(count, stock.status);
+
+        const off = level === 'off';
+        const dim = off || missing;
+
+        if (missing) {
+          missingIds.push(id);
+        } else if (off) {
+          known += 1;
+          offIds.push(id);
+        } else {
+          known += 1;
           active += 1;
           total += count;
           if (level === 'short') { short += 1; shortIds.push(`${id}:${count}`); }
           if (level === 'low') { low += 1; lowIds.push(`${id}:${count}`); }
-        } else {
-          offIds.push(id);
         }
 
 
@@ -1810,59 +2250,56 @@ class Component extends DCLogic {
 
           letter,
 
-          text:
-            off ? 'OFF' : count,
+          text: missing ? '—' : off ? 'OFF' : count,
 
           wrap: {
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
+            gap: '9px',
             minHeight: 0,
-            paddingTop: topRow ? '8px' : '0',
-            paddingBottom: topRow ? '0' : '8px'
+            paddingTop: topRow ? '3px' : '0',
+            paddingBottom: topRow ? '0' : '3px'
           },
 
           badge: {
-            width: '28px',
-            height: '28px',
+            width: '22px',
+            height: '22px',
             flex: 'none',
-            borderRadius: '7px',
+            borderRadius: '6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontFamily: "'Chakra Petch',sans-serif",
-            fontSize: '14px',
+            fontFamily: FONT_NUM,
+            fontSize: '12px',
             fontWeight: 700,
             color: off ? P.sub : P.ink,
             background: off ? P.bg : CAP_PASTEL[color],
             border: '1px solid ' + (off ? P.line : 'transparent'),
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            opacity: missing ? 0.55 : 1
           },
 
-          num: off
+          num: dim
             ? {
-                fontFamily: "'JetBrains Mono',monospace",
+                fontFamily: FONT_MONO,
                 fontSize: '11px',
                 fontWeight: 700,
-                lineHeight: '17px',
+                lineHeight: '14px',
                 color: P.sub
               }
             : {
-                fontFamily: "'Chakra Petch',sans-serif",
-                fontSize: '17px',
+                fontFamily: FONT_NUM,
+                fontSize: '15px',
                 fontWeight: 600,
-                lineHeight: '17px',
+                lineHeight: '14px',
                 color: level === 'short' ? INV_BAR.short : P.ink
               },
 
           fill: {
             height: '100%',
             borderRadius: '3px',
-            width:
-              off
-                ? '0%'
-                : Math.max(0, Math.min(100, count / INV_MAX * 100)) + '%',
-            background: off ? P.line : INV_BAR[level],
+            width: dim ? '0%' : Math.max(0, Math.min(100, count / INV_MAX * 100)) + '%',
+            background: dim ? P.line : INV_BAR[level],
             transition: 'width .4s ease'
           }
 
@@ -1874,14 +2311,18 @@ class Component extends DCLogic {
 
 
     const boards =
-      INV_ORDER.map(color => ({
-        color,
-        count: Number(stocks[color]?.count ?? 0)
-      }));
+      INV_ORDER.map(color => {
+        const b = stocks[color];
+        const ok = b && b.count !== null && b.count !== undefined;
+        return { color, count: ok ? Number(b.count) : null };
+      });
+
+    const boardKnown = boards.some(b => b.count !== null);
 
     const boardTotal =
-      boards.reduce((sum, b) => sum + b.count, 0);
+      boards.reduce((sum, b) => sum + (b.count || 0), 0);
 
+    const hasData = known > 0;
 
 
     dbgChanged('inventory', {
@@ -1890,44 +2331,46 @@ class Component extends DCLogic {
       short: shortIds,
       low: lowIds,
       off: offIds,
-      boards: Object.fromEntries(boards.map(b => [b.color, b.count])),
-      missing: letters.length * INV_ORDER.length
-        - Object.keys(stocks).filter(k => k.includes('_')).length
+      missing: missingIds.length,
+      boards: Object.fromEntries(boards.map(b => [b.color, b.count]))
     });
+
 
     return {
 
       invCaption:
-        `카트리지 ${letters.length * INV_ORDER.length} · 각 ${INV_MAX}개`,
+        hasData
+          ? `카트리지 ${INV_LETTERS.length * INV_ORDER.length} · 각 ${INV_MAX}개`
+          : '재고 데이터 없음',
 
-      invTotal:
-        total.toLocaleString(),
+      invLiveDot: {
+        width: '7px',
+        height: '7px',
+        borderRadius: '50%',
+        background: hasData ? '#8ECB9A' : P.line,
+        animation: hasData ? 'omPulse 2s ease-in-out infinite' : 'none'
+      },
 
-      invCapacity:
-        (active * INV_MAX).toLocaleString(),
+      invTotal: hasData ? total.toLocaleString() : '—',
 
-      invShort:
-        short,
+      invCapacity: hasData ? (active * INV_MAX).toLocaleString() : '—',
 
-      invLow:
-        low,
+      invShort: hasData ? short : '—',
 
-      invLowMax:
-        INV_LOW,
+      invLow: hasData ? low : '—',
 
-      invShortMax:
-        INV_SHORT,
+      invLowMax: INV_LOW,
 
-      invCells:
-        cells,
+      invShortMax: INV_SHORT,
 
-      boardLabel:
-        `${boardTotal} / ${BOARD_MAX}`,
+      invCells: cells,
+
+      boardLabel: boardKnown ? `${boardTotal} / ${BOARD_MAX}` : '— / ' + BOARD_MAX,
 
       boardCells:
         boards.map(b => ({
           label: b.color.toUpperCase(),
-          count: b.count,
+          count: b.count === null ? '—' : b.count,
           dot: {
             width: '8px',
             height: '8px',
@@ -1936,7 +2379,7 @@ class Component extends DCLogic {
             display: 'inline-block'
           },
           code: {
-            fontFamily: "'JetBrains Mono',monospace",
+            fontFamily: FONT_MONO,
             fontSize: '11px',
             fontWeight: 700,
             color: CAP_HEX[b.color]
@@ -1954,295 +2397,60 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // AGV MOCK
+  // 상단 KPI
   // =======================================================
 
-  agv() {
+  kpiView(kpi) {
 
-    const BAY = {
-      x: 1157,
-      y: 215
-    };
+    const k = kpi || {};
 
+    const today = kpi ? k.today_orders : null;
+    const yday = kpi ? k.yesterday_same_time : null;
 
-    const CORRIDOR =
-      540;
+    let deltaText = '—';
+    let deltaColor = P.sub;
+    let deltaCaption = '비교 데이터 없음';
 
-    const DOCK_Y =
-      562;
+    if (today !== null && yday !== null) {
 
+      deltaCaption = `어제 이 시각 ${yday.toLocaleString()}건 → 오늘 ${today.toLocaleString()}건`;
 
-    const DOCK_X = [
-      243,
-      705,
-      1167
-    ];
-
-
-    const routeTo =
-      i => [
-
-        BAY,
-
-        {
-          x: BAY.x,
-          y: CORRIDOR
-        },
-
-        {
-          x: DOCK_X[i],
-          y: CORRIDOR
-        },
-
-        {
-          x: DOCK_X[i],
-          y: DOCK_Y
-        }
-
-      ];
-
-
-    const legs = [];
-
-
-    for (
-      let i = 0;
-      i < 3;
-      i++
-    ) {
-
-      const r =
-        routeTo(i);
-
-
-      legs.push({
-        path: r,
-        dock: i
-      });
-
-
-      legs.push({
-        path:
-          r.slice().reverse(),
-        dock: -1
-      });
-
-    }
-
-
-    const LEG =
-      6;
-
-
-    const cycle =
-      LEG
-      *
-      legs.length;
-
-
-    const p =
-      this.state.t
-      %
-      cycle;
-
-
-    const i =
-      Math.floor(
-        p / LEG
-      );
-
-
-    const lp =
-      p % LEG;
-
-
-    const leg =
-      legs[i];
-
-
-    const f =
-      Math.min(
-        1,
-        lp / 4
-      );
-
-
-    const dwelling =
-      lp >= 4;
-
-
-    const pts =
-      leg.path;
-
-
-    const segLen = [];
-
-
-    let total =
-      0;
-
-
-    for (
-      let k = 1;
-      k < pts.length;
-      k++
-    ) {
-
-      const d =
-        Math.hypot(
-
-          pts[k].x
-          -
-          pts[k - 1].x,
-
-          pts[k].y
-          -
-          pts[k - 1].y
-
-        );
-
-
-      segLen.push(d);
-
-      total += d;
-
-    }
-
-
-    let want =
-      total * f;
-
-
-    let x =
-      pts[
-        pts.length - 1
-      ].x;
-
-
-    let y =
-      pts[
-        pts.length - 1
-      ].y;
-
-
-    for (
-      let k = 0;
-      k < segLen.length;
-      k++
-    ) {
-
-      if (
-        want <= segLen[k]
-        ||
-        k ===
-        segLen.length - 1
-      ) {
-
-        const g =
-          segLen[k] === 0
-
-            ? 1
-
-            : Math.min(
-                1,
-                want / segLen[k]
-              );
-
-
-        x =
-          pts[k].x
-          +
-          (
-            pts[k + 1].x
-            -
-            pts[k].x
-          )
-          *
-          g;
-
-
-        y =
-          pts[k].y
-          +
-          (
-            pts[k + 1].y
-            -
-            pts[k].y
-          )
-          *
-          g;
-
-
-        break;
-
+      if (yday > 0) {
+        const pct = (today - yday) / yday * 100;
+        const r = Math.round(pct * 10) / 10;
+        if (r > 0) { deltaText = `▲ ${r.toFixed(1)}%`; deltaColor = '#3E9E6A'; }
+        else if (r < 0) { deltaText = `▼ ${Math.abs(r).toFixed(1)}%`; deltaColor = '#D46A5F'; }
+        else { deltaText = '0.0%'; deltaColor = P.ink; }
       }
 
-
-      want -=
-        segLen[k];
-
     }
-
-
-    const target =
-
-      leg.dock >= 0
-
-        ? 'A-0'
-          +
-          (
-            leg.dock + 1
-          )
-
-        : '대기공간';
-
 
     return {
 
-      x,
+      totalOrders: kpi ? fmtNum(k.total_orders) : '—',
 
-      y,
+      totalUnit: kpi ? '건' : '',
 
+      todayUnit: kpi ? '건' : '',
 
-      dock:
+      todayOrders: kpi ? fmtNum(k.today_orders) : '—',
 
-        dwelling
-        &&
-        leg.dock >= 0
+      waitingOrders: kpi ? fmtNum(k.waiting_orders) : '—',
 
-          ? leg.dock
+      completedToday: kpi ? fmtNum(k.completed_today) : '—',
 
-          : -1,
+      deltaText,
 
+      deltaCaption,
 
-      task:
-
-        dwelling
-
-          ? (
-              leg.dock >= 0
-
-                ? target
-                  +
-                  ' 부품 인계 중'
-
-                : '대기공간 정차 · 다음 호출 대기'
-            )
-
-          : target
-            +
-            ' 이동 중',
-
-
-      state:
-
-        dwelling
-        &&
-        leg.dock < 0
-
-          ? '대기 중 · 충전 88%'
-
-          : '주행 중 · 1.2 m/s'
+      deltaStyle: {
+        fontFamily: FONT_NUM,
+        fontSize: deltaText === '—' ? '64px' : '54px',
+        fontWeight: 600,
+        lineHeight: 1,
+        color: deltaColor,
+        whiteSpace: 'nowrap'
+      }
 
     };
 
@@ -2250,43 +2458,731 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // 시간 포맷
+  // 시간별 주문 추이 — 오늘 주문의 접수 시각, 1시간 단위
+  // x 축: 첫 주문이 들어온 시각(정시) ~ 현재
   // =======================================================
 
-  fmt(sec) {
+  hourlyView(orders, now) {
 
-    const m =
-      Math.floor(
-        sec / 60
-      );
+    const W = 396;
+    const H = 132;
+    const L = 30;          // y 라벨
+    const R = 12;
+    const T = 16;
+    const B = 22;          // x 라벨
 
+    const today = orders.filter(o => o.created && sameDay(o.created, now));
 
-    const s =
-      sec % 60;
-
-
-    return (
-      String(m)
-        .padStart(
-          2,
-          '0'
+    if (!today.length) {
+      return {
+        hourlyRange: '오늘',
+        hourlyChart: el(
+          'div',
+          {
+            style: {
+              position: 'absolute', inset: 0, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              fontSize: '14px', color: P.sub
+            }
+          },
+          this.state.ordersAt
+            ? '오늘 들어온 주문이 없습니다'
+            : this.state.ordersErr ? '주문 데이터 연결 오류' : '주문 데이터를 불러오는 중'
         )
-      +
-      ':'
-      +
-      String(s)
-        .padStart(
-          2,
-          '0'
-        )
+      };
+    }
+
+    const HOUR = 3600000;
+
+    const firstAt = Math.min(...today.map(o => o.created.getTime()));
+
+    const h0 = new Date(firstAt);
+    h0.setMinutes(0, 0, 0);
+
+    const t0 = h0.getTime();
+    const t1 = Math.max(now.getTime(), firstAt + 1);
+
+    const n = Math.floor((t1 - t0) / HOUR) + 1;
+
+    const counts = Array(n).fill(0);
+
+    today.forEach(o => {
+      const i = Math.min(n - 1, Math.floor((o.created.getTime() - t0) / HOUR));
+      if (i >= 0) counts[i] += 1;
+    });
+
+    const maxCount = Math.max(...counts);
+    const yMax = Math.max(2, Math.ceil(maxCount / 2) * 2);
+
+    const x = t => L + (t - t0) / (t1 - t0) * (W - L - R);
+    const y = v => T + (1 - v / yMax) * (H - T - B);
+
+    const pts = counts.map((c, i) => {
+      const s = t0 + i * HOUR;
+      const e = Math.min(s + HOUR, t1);
+      return { x: x((s + e) / 2), y: y(c), c, i };
+    });
+
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const area = `${line} L${pts[pts.length - 1].x.toFixed(1)},${y(0)} L${pts[0].x.toFixed(1)},${y(0)} Z`;
+
+    const LINE = '#4BA3CC';
+
+    const kids = [];
+
+    // 가로 눈금선 (0 · 중간 · 최대)
+    [0, yMax / 2, yMax].forEach((v, i) => {
+      kids.push(el('line', {
+        key: 'g' + i,
+        x1: L, x2: W - R, y1: y(v), y2: y(v),
+        stroke: i === 0 ? '#D3D7DD' : '#EDEFF2',
+        strokeWidth: 1
+      }));
+      kids.push(el('text', {
+        key: 'gy' + i,
+        x: L - 8, y: y(v) + 4,
+        textAnchor: 'end',
+        fontSize: 11,
+        fontFamily: FONT_MONO,
+        fill: P.sub
+      }, String(v)));
+    });
+
+    // 정시 라벨 — 최대 6개, 오른쪽 '현재' 라벨과 겹치면 생략
+    const step = Math.max(1, Math.ceil(n / 6));
+    for (let i = 0; i < n; i += step) {
+      const t = t0 + i * HOUR;
+      const lx = x(t);
+      if (lx > W - R - 64) continue;
+      kids.push(el('text', {
+        key: 'hx' + i,
+        x: lx, y: H - 4,
+        textAnchor: i === 0 ? 'start' : 'middle',
+        fontSize: 11,
+        fontFamily: FONT_MONO,
+        fill: P.sub
+      }, `${new Date(t).getHours()}시`));
+    }
+
+    // 현재 표시
+    kids.push(el('line', {
+      key: 'now',
+      x1: W - R, x2: W - R, y1: T - 6, y2: y(0),
+      stroke: '#C9CDD3',
+      strokeWidth: 1,
+      strokeDasharray: '3 3'
+    }));
+    kids.push(el('text', {
+      key: 'nowl',
+      x: W - R, y: H - 4,
+      textAnchor: 'end',
+      fontSize: 11,
+      fontFamily: FONT_MONO,
+      fill: P.ink
+    }, `현재 ${p2(now.getHours())}:${p2(now.getMinutes())}`));
+
+    // 면 + 선
+    kids.push(el('path', { key: 'area', d: area, fill: P.blue, opacity: 0.28 }));
+    kids.push(el('path', {
+      key: 'line', d: line, fill: 'none', stroke: LINE,
+      strokeWidth: 2, strokeLinejoin: 'round', strokeLinecap: 'round'
+    }));
+
+    // 점 — 최댓값과 마지막(현재 시간대)만 숫자 표시
+    const maxIdx = counts.indexOf(maxCount);
+
+    pts.forEach(p => {
+      const last = p.i === n - 1;
+      kids.push(el('circle', {
+        key: 'p' + p.i,
+        cx: p.x, cy: p.y,
+        r: last ? 4.5 : 3,
+        fill: last ? LINE : '#FFFFFF',
+        stroke: LINE,
+        strokeWidth: 2
+      }));
+      if (last || p.i === maxIdx) {
+        kids.push(el('text', {
+          key: 'pv' + p.i,
+          x: p.x, y: p.y - 9,
+          textAnchor: last && p.x > W - R - 20 ? 'end' : 'middle',
+          fontSize: 13,
+          fontWeight: 600,
+          fontFamily: FONT_NUM,
+          fill: P.ink
+        }, String(p.c)));
+      }
+    });
+
+    return {
+      hourlyRange: `${h0.getHours()}시 ~ 현재 · 1시간`,
+      hourlyChart: el('svg', {
+        width: W,
+        height: H,
+        viewBox: `0 0 ${W} ${H}`,
+        style: { position: 'absolute', left: 0, bottom: 0, overflow: 'visible' }
+      }, kids)
+    };
+
+  }
+
+
+  // =======================================================
+  // 하단 파이프라인 — 주문 프레임(보드색, 대기번호)이 현재 단계 칸에 놓인다
+  //   fault · 비정상 단계 → 회색
+  //   주문 완료 칸은 최근 COMPLETED_KEEP 건만
+  // =======================================================
+
+  pipelineView(orders, ordersErr) {
+
+    const W = 1850;
+    const n = FLOW.length;
+    const colW = W / n;
+    const F = 40;
+    const G = 6;
+    const MAX = 3;
+
+    const cols = FLOW.map(() => []);
+
+    const act = orders.filter(o => this.isActive(o));
+
+    act.forEach(o => {
+      const c = FLOW_COL[o.stage] ?? ABNORMAL_COL[o.stage];
+      if (c === undefined) return;
+      if (o.stage === 'completed') return;   // 아래에서 최근 건만
+      cols[c].push({ ...o, grey: !!o.fault || o.stage in ABNORMAL_COL });
+    });
+
+    const done = orders
+      .filter(o => o.stage === 'completed' && (!o.ended || !o.reason))
+      .sort((a, b) => (b.endedAt?.getTime() ?? 0) - (a.endedAt?.getTime() ?? 0))
+      .slice(0, COMPLETED_KEEP);
+
+    done.forEach(o => cols[n - 1].push({ ...o, grey: !!o.fault }));
+
+
+    const kids = [];
+
+    // 흐름선
+    kids.push(el('div', {
+      key: 'track',
+      style: {
+        position: 'absolute', left: colW / 2, width: W - colW, top: 31,
+        height: 2, background: '#EDEFF2'
+      }
+    }));
+
+    cols.forEach((list, c) => {
+
+      const cx = c * colW + colW / 2;
+      const [code, label] = FLOW[c];
+
+      kids.push(el('div', {
+        key: 'node' + c,
+        style: {
+          position: 'absolute', left: cx - 5, top: 27, width: 10, height: 10,
+          borderRadius: '50%', background: P.card, border: '2px solid #D3D7DD',
+          boxSizing: 'border-box'
+        }
+      }));
+
+      kids.push(el('div', {
+        key: 'lab' + c,
+        style: {
+          position: 'absolute', left: c * colW, width: colW, top: 64,
+          textAlign: 'center', lineHeight: 1.2
+        }
+      },
+        el('div', {
+          style: { fontSize: '15px', fontWeight: 600, color: list.length ? P.ink : P.sub }
+        }, label),
+        el('div', {
+          style: { fontFamily: FONT_MONO, fontSize: '10px', color: '#A3A8B0', marginTop: '3px' }
+        }, code)
+      ));
+
+      if (c < n - 1) {
+        kids.push(el('div', {
+          key: 'arr' + c,
+          style: {
+            position: 'absolute', left: (c + 1) * colW - 5, top: 64,
+            fontSize: '16px', lineHeight: 1.1, color: '#C9CDD3'
+          }
+        }, '›'));
+      }
+
+      const sorted = list.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      const over = sorted.length > MAX;
+      const vis = over ? sorted.slice(0, MAX - 1) : sorted;
+      const k = over ? MAX : vis.length;
+      const used = k * F + (k - 1) * G;
+      const x0 = cx - used / 2;
+
+      vis.forEach((o, i) => {
+
+        const bg = o.grey ? GREY_FILL : (CAP_PASTEL[o.board] || GREY_FILL);
+        const seqText = o.seq === null ? '?' : String(o.seq);
+
+        kids.push(el('div', {
+          key: o.id,
+          style: {
+            position: 'absolute',
+            left: x0 + i * (F + G),
+            top: 12,
+            width: F,
+            height: F,
+            borderRadius: '10px',
+            background: bg,
+            color: o.grey ? P.sub : P.ink,
+            border: '1px solid rgba(52,56,63,.08)',
+            boxSizing: 'border-box',
+            boxShadow: '0 2px 6px rgba(52,56,63,.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: FONT_NUM,
+            fontSize: seqText.length > 2 ? '15px' : '18px',
+            fontWeight: 700,
+            transition: 'left .9s cubic-bezier(.4,0,.2,1), background-color .4s, color .4s',
+            animation: 'omPop .45s ease-out',
+            zIndex: 2
+          }
+        }, seqText));
+
+      });
+
+      if (over) {
+        kids.push(el('div', {
+          key: 'more' + c,
+          style: {
+            position: 'absolute',
+            left: x0 + (MAX - 1) * (F + G),
+            top: 12,
+            width: F,
+            height: F,
+            borderRadius: '10px',
+            background: P.bg,
+            border: '1px dashed #C9CDD3',
+            boxSizing: 'border-box',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: FONT_NUM,
+            fontSize: '14px',
+            fontWeight: 700,
+            color: P.sub,
+            zIndex: 2
+          }
+        }, '+' + (sorted.length - (MAX - 1))));
+      }
+
+    });
+
+    if (ordersErr) {
+      kids.push(el('div', {
+        key: 'err',
+        style: {
+          position: 'absolute', right: 0, top: 6, fontSize: '11px',
+          color: '#D46A5F', fontFamily: FONT_MONO
+        }
+      }, '주문 데이터 연결 오류'));
+    }
+
+    return el('div', { style: { position: 'relative', width: W, height: '100%' } }, kids);
+
+  }
+
+
+  // =======================================================
+  // 조립대 카드
+  // =======================================================
+
+  stationsView(orders, calls, agv) {
+
+    const act = orders.filter(o => this.isActive(o) && o.stage !== 'completed');
+
+    const docked =
+      agv.place.startsWith('station:') && !(agv.leg && agv.leg.dist < agv.leg.len)
+        ? Number(agv.place.split(':')[1])
+        : null;
+
+    return [1, 2, 3].map(sid => {
+
+      // 조립대에 걸린 주문 — 여러 개면 가장 앞선 단계
+      const order = act
+        .filter(o => o.sid === sid)
+        .sort((a, b) => (STAGE_IDX[b.stage] ?? 0) - (STAGE_IDX[a.stage] ?? 0))[0] || null;
+
+      const status = stationStatusOf(order);
+
+      const lit = !!order && LIT_STAGES.includes(order.stage) && !order.fault;
+
+      const call = calls[sid];
+
+      const here = docked === sid;
+
+      const seqText = order ? (order.seq === null ? '?' : String(order.seq)) : '--';
+
+      return {
+
+        name: `조립대 ${sid}`,
+
+        status: status.label,
+
+        dot: {
+          width: '11px',
+          height: '11px',
+          borderRadius: '50%',
+          background: status.color,
+          flex: 'none'
+        },
+
+        callText: call ? `호출 중 · ${fmtSec(call.waited_sec)}` : '호출 없음',
+
+        callStyle: {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '7px',
+          alignSelf: 'flex-start',
+          fontSize: '14px',
+          fontWeight: call ? 600 : 400,
+          color: call ? '#C8574E' : P.sub,
+          background: call ? '#FDEEEC' : 'transparent',
+          border: '1px solid ' + (call ? '#F3C3BD' : 'transparent'),
+          borderRadius: '999px',
+          padding: call ? '3px 11px 3px 9px' : '3px 0'
+        },
+
+        callDot: {
+          width: '7px',
+          height: '7px',
+          borderRadius: '50%',
+          background: call ? '#E06A5E' : '#D3D7DD',
+          animation: call ? 'omPulse 1.2s ease-in-out infinite' : 'none'
+        },
+
+        // 주문번호 — 키에 주문·점등 여부를 넣어 바뀔 때 새로 마운트 → 깜박임이 한 번 재생된다
+        square: el('div', {
+          key: `${order ? order.id : 'none'}:${lit ? 'lit' : 'grey'}`,
+          style: {
+            width: '76px',
+            height: '76px',
+            borderRadius: '16px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: FONT_NUM,
+            fontSize: seqText.length > 2 ? '28px' : '34px',
+            fontWeight: 700,
+            background: !order ? 'transparent' : lit ? (CAP_PASTEL[order.board] || GREY_FILL) : GREY_FILL,
+            color: !order ? '#C9CDD3' : lit ? P.ink : P.sub,
+            border: !order ? '1.5px dashed #D3D7DD' : '1px solid rgba(52,56,63,.08)',
+            boxShadow: lit ? '0 6px 16px rgba(52,56,63,.14)' : 'none',
+            animation: lit ? 'omBlink .55s ease-in-out 4' : 'none'
+          }
+        }, seqText),
+
+        squareCap: order ? '배정 주문' : '배정 없음',
+
+        box: {
+          position: 'absolute',
+          left: MV.ST_X[sid - 1] + 'px',
+          top: MV.ST_TOP + 'px',
+          width: MV.ST_W + 'px',
+          height: MV.ST_H + 'px',
+          boxSizing: 'border-box',
+          padding: '18px 18px 16px 20px',
+          borderRadius: '16px',
+          display: 'flex',
+          gap: '12px',
+          border: '1px solid ' + (here ? P.yellow : P.line),
+          background: here ? '#FFFCF2' : P.card,
+          boxShadow: '0 2px 10px rgba(52,56,63,.05)',
+          transition: 'background .4s, border-color .4s'
+        }
+
+      };
+
+    });
+
+  }
+
+
+  // =======================================================
+  // AGV 표시 · 경로
+  // =======================================================
+
+  agvView(agv, task, ordersAt) {
+
+    const moving = !!(agv.leg && agv.leg.dist < agv.leg.len);
+    const o = task.order;
+    const seq = o ? `#${o.seq ?? '?'}` : '';
+    const sid = o ? o.sid : null;
+
+    let text;
+    let tone;   // 'move' | 'stop' | 'idle' | 'warn'
+
+    if (!ordersAt) {
+      text = '연결 대기';
+      tone = 'idle';
+    } else if (task.mode === 'discard') {
+      text = moving ? `${seq} 폐기 이동` : `${seq} 폐기 중`;
+      tone = moving ? 'move' : 'warn';
+    } else if (task.mode === 'dock') {
+      text = moving
+        ? `${seq} → 조립대 ${sid}`
+        : o.stage === 'verified'
+          ? `${seq} 조립대 ${sid} · 사용자 인증`
+          : `${seq} 조립대 ${sid} 도착`;
+      tone = moving ? 'move' : 'stop';
+    } else if (task.mode === 'travel') {
+      text = `${seq} → 조립대 ${sid} 이동 중`;
+      tone = 'move';
+    } else if (task.mode === 'pickup') {
+      text = moving ? '대기장소로 복귀 중' : `${seq} 부품 적재 대기`;
+      tone = moving ? 'move' : 'stop';
+    } else {
+      text = moving ? '대기장소로 복귀 중' : '대기 중';
+      tone = moving ? 'move' : 'idle';
+    }
+
+    if (o && o.fault) tone = 'warn';
+
+    const TONE = {
+      move: { line: P.yellow, dot: '#E5C46B', pulse: true },
+      stop: { line: '#B5E6CB', dot: '#8ECB9A', pulse: false },
+      idle: { line: P.line, dot: '#C9CDD3', pulse: false },
+      warn: { line: '#F3C3BD', dot: '#E06A5E', pulse: true }
+    }[tone];
+
+
+    // 경로 SVG — 바닥 통로(흐린 점선) + 현재 구간(지나온 길 실선 · 남은 길 점선)
+
+    const PATH_COLOR = '#E5C46B';
+
+    const track = [
+      [MV.PARK.x, MV.PARK.y, MV.PARK.x, MV.CY],
+      [MV.DISCARD_X, MV.CY, stationCx(3), MV.CY],
+      [MV.DISCARD_X, MV.CY, MV.DISCARD_X, MV.DOCK_Y],
+      ...[1, 2, 3].map(s => [stationCx(s), MV.CY, stationCx(s), MV.DOCK_Y])
+    ];
+
+    const kids = track.map((t, i) => el('line', {
+      key: 't' + i,
+      x1: t[0], y1: t[1], x2: t[2], y2: t[3],
+      stroke: '#E2E5E9',
+      strokeWidth: 2,
+      strokeDasharray: '2 7',
+      strokeLinecap: 'round'
+    }));
+
+    if (agv.leg) {
+
+      const { done, rest } = walkPath(agv.leg.pts, agv.leg.dist);
+      const toStr = pts => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+
+      kids.push(el('polyline', {
+        key: 'done',
+        points: toStr(done),
+        fill: 'none',
+        stroke: PATH_COLOR,
+        strokeWidth: 3,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        opacity: moving ? 0.55 : 0.35
+      }));
+
+      if (moving && rest.length > 1) {
+
+        kids.push(el('polyline', {
+          key: 'rest',
+          points: toStr(rest),
+          fill: 'none',
+          stroke: PATH_COLOR,
+          strokeWidth: 3,
+          strokeDasharray: '8 7',
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          style: { animation: 'omDash 1.2s linear infinite' }
+        }));
+
+        const end = rest[rest.length - 1];
+
+        kids.push(el('circle', {
+          key: 'goal',
+          cx: end.x, cy: end.y, r: 7,
+          fill: '#FFFFFF',
+          stroke: PATH_COLOR,
+          strokeWidth: 3
+        }));
+
+      }
+
+    }
+
+    return {
+
+      agvText: text,
+
+      agvPath: el('svg', {
+        width: '100%',
+        height: '100%',
+        style: { position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }
+      }, kids),
+
+      agvWrap: {
+        position: 'absolute',
+        left: agv.x + 'px',
+        top: agv.y + 'px',
+        transform: 'translate(-50%,-100%)',
+        transition: `left ${TICK_MS / 1000}s linear, top ${TICK_MS / 1000}s linear`,
+        zIndex: 5,
+        pointerEvents: 'none',
+        opacity: agv.ready ? 1 : 0.5
+      },
+
+      agvPill: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '7px',
+        background: P.card,
+        border: '1px solid ' + TONE.line,
+        borderRadius: '999px',
+        padding: '3px 11px',
+        boxShadow: '0 4px 12px rgba(52,56,63,.08)',
+        fontFamily: FONT_MONO,
+        fontSize: '12px',
+        color: P.ink
+      },
+
+      agvPillDot: {
+        width: '7px',
+        height: '7px',
+        borderRadius: '50%',
+        background: TONE.dot,
+        animation: TONE.pulse ? 'omPulse 1.2s ease-in-out infinite' : 'none'
+      },
+
+      parkingBox: {
+        position: 'absolute',
+        left: MV.PARK_BOX.x + 'px',
+        top: MV.PARK_BOX.y + 'px',
+        width: MV.PARK_BOX.w + 'px',
+        height: MV.PARK_BOX.h + 'px',
+        boxSizing: 'border-box',
+        border: '1.5px dashed ' + P.yellow,
+        borderRadius: '14px',
+        background: '#FFFCF2',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '3px',
+        paddingTop: '12px'
+      },
+
+      discardBox: {
+        position: 'absolute',
+        left: MV.DISCARD_BOX.x + 'px',
+        top: MV.DISCARD_BOX.y + 'px',
+        width: MV.DISCARD_BOX.w + 'px',
+        height: MV.DISCARD_BOX.h + 'px',
+        boxSizing: 'border-box',
+        border: '1.5px dashed ' + (task.mode === 'discard' ? '#F3C3BD' : '#D3D7DD'),
+        borderRadius: '16px',
+        background: task.mode === 'discard' ? '#FEF6F5' : 'repeating-linear-gradient(135deg,#F7F8FA 0 10px,#F1F3F6 10px 20px)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        paddingBottom: '18px',
+        gap: '2px',
+        transition: 'background .4s, border-color .4s'
+      }
+
+    };
+
+  }
+  // =======================================================
+  // FLOW 연결선
+  // =======================================================
+
+  // =======================================================
+  // 시스템 구성도 연결선
+  // =======================================================
+
+  archLinks() {
+
+    const h = React.createElement;
+
+    // [종류, 점 목록, 라벨, 라벨 x, 라벨 y, 라벨 정렬]
+    const LINKS = [
+      ['rest',   [[442, 222], [442, 292]],                             '주문',     456, 262, 'start'],
+      ['rest',   [[770, 294], [770, 224]],                             '조회',     756, 278, 'end'],
+      ['rest',   [[1570, 222], [1570, 254], [800, 254], [800, 292]],   'QR 인증',  1584, 242, 'start'],
+      ['cmd',    [[822, 400], [1048, 400]],                            '명령',     935, 388, 'middle'],
+      ['report', [[1050, 460], [824, 460]],                            '보고',     937, 486, 'middle'],
+      ['cmd',    [[1180, 582], [1180, 676]],                           '명령',     1166, 634, 'end'],
+      ['report', [[1300, 678], [1300, 584]],                           '보고',     1314, 634, 'start'],
+      ['cmd',    [[1590, 582], [1590, 676]],                           '명령',     1576, 634, 'end'],
+      ['report', [[1710, 678], [1710, 584]],                           '보고',     1724, 634, 'start']
+    ];
+
+    const marker = kind => h('marker', {
+      key: 'm-' + kind,
+      id: 'omArch-' + kind,
+      viewBox: '0 0 10 10',
+      refX: 8,
+      refY: 5,
+      markerWidth: 7,
+      markerHeight: 7,
+      orient: 'auto'
+    }, h('path', { d: 'M0,0 L10,5 L0,10 z', fill: ARCH_COLOR[kind] }));
+
+    const kids = [];
+
+    LINKS.forEach(([kind, pts, label, lx, ly, anchor], i) => {
+
+      kids.push(h('polyline', {
+        key: 'l' + i,
+        points: pts.map(p => p.join(',')).join(' '),
+        fill: 'none',
+        stroke: ARCH_COLOR[kind],
+        strokeWidth: kind === 'rest' ? 2 : 3,
+        strokeLinejoin: 'round',
+        strokeDasharray: kind === 'cmd' ? '8 6' : undefined,
+        markerEnd: `url(#omArch-${kind})`,
+        style: kind === 'cmd' ? { animation: 'omFlowDash 1.6s linear infinite' } : undefined
+      }));
+
+      kids.push(h('text', {
+        key: 't' + i,
+        x: lx,
+        y: ly,
+        textAnchor: anchor,
+        fontSize: 15,
+        fontWeight: 600,
+        fontFamily: "'IBM Plex Sans KR',sans-serif",
+        fill: kind === 'rest' ? P.sub : kind === 'cmd' ? '#3F93BA' : '#5BA56B',
+        stroke: P.bg,
+        strokeWidth: 4,
+        paintOrder: 'stroke'
+      }, label));
+
+    });
+
+    return h('svg', {
+      width: 1832,
+      height: 912,
+      viewBox: '0 0 1832 912',
+      style: { position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }
+    },
+      h('defs', null, ['rest', 'cmd', 'report'].map(marker)),
+      kids
     );
 
   }
 
-
-  // =======================================================
-  // FLOW 연결선
-  // =======================================================
 
   flowLinks() {
 
@@ -2297,11 +3193,7 @@ class Component extends DCLogic {
     ];
 
 
-    const cx =
-      c =>
-        110
-        +
-        c * 268;
+    const cx = flowCx;
 
 
     const paths =
@@ -2320,20 +3212,10 @@ class Component extends DCLogic {
               ];
 
 
-            const x1 =
-              cx(
-                s.col
-              )
-              +
-              110;
+            const x1 = cx(s.col) + FLOW_BOX_W / 2;
 
 
-            const x2 =
-              cx(
-                nx.col
-              )
-              -
-              110;
+            const x2 = cx(nx.col) - FLOW_BOX_W / 2;
 
 
             const y1 =
@@ -2393,7 +3275,7 @@ class Component extends DCLogic {
                 style: {
 
                   animation:
-                    'omDash 1.6s linear infinite'
+                    'omFlowDash 1.6s linear infinite'
 
                 }
 
@@ -2508,1440 +3390,616 @@ class Component extends DCLogic {
   }
 
 
-  // =======================================================
+  // #######################################################
   // 화면 값
-  // =======================================================
+  // #######################################################
 
   renderVals() {
 
+    const { mode, now } = this.state;
+
+    const base = {
+
+      isHome: mode === 'home',
+      isIntroMode: mode === 'intro',
+      isStatusMode: mode === 'status',
+
+      goHome: () => this.enterMode('home'),
+      openIntro: () => this.enterMode('intro'),
+      openStatus: () => this.enterMode('status'),
+
+      clock: now.toTimeString().slice(0, 8),
+
+      dateLabel:
+        `${now.getFullYear()}.${p2(now.getMonth() + 1)}.${p2(now.getDate())} (${WEEKDAY[now.getDay()]})`
+
+    };
+
+    // 보이지 않는 화면의 값은 계산하지 않는다 (sc-if 는 보이는 쪽만 그린다)
+    if (mode === 'intro') return { ...base, ...this.introVals() };
+    if (mode === 'status') return { ...base, ...this.statusVals() };
+
+    return base;
+
+  }
+
+
+  // =======================================================
+  // 시스템 소개용 화면 값
+  // =======================================================
+
+  introVals() {
+
+    const { introPage: page, elapsed } = this.state;
+
+    const sec = this.rotateSeconds;
+
+    return {
+
+      isIntroPage: page === 0,
+      isArchPage: page === 1,
+      isFlowPage: page === 2,
+      isValuePage: page === 3,
+      isJoinPage: page === 4,
+
+      prev: () => this.goPage(page - 1),
+      next: () => this.goPage(page + 1),
+
+
+      // 자동 전환
+
+      autoLabel:
+        this.rotating
+          ? `AUTO ${Math.ceil(sec - elapsed)}s / ${sec}s`
+          : '자동 전환 정지',
+
+      progressStyle: {
+        height: '100%',
+        width: (this.rotating ? elapsed / sec * 100 : 0) + '%',
+        background: this.rotating ? P.blue : P.line,
+        transition: 'width .5s linear',
+        borderRadius: '3px'
+      },
+
+      togglePause: () => this.setState(s => ({ paused: !s.paused, elapsed: 0 })),
+
+      pauseIcon: this.rotating ? '❚❚' : '▶',
+
+      pauseLabel: this.rotating ? 'AUTO' : 'HOLD',
+
+      pauseStyle: {
+        height: '56px',
+        padding: '0 18px',
+        borderRadius: '14px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '9px',
+        boxSizing: 'border-box',
+        border: '1px solid ' + (this.rotating ? P.line : P.yellow),
+        background: this.rotating ? P.card : '#FFFCF2',
+        color: P.ink
+      },
+
+
+      // 탭
+
+      tabs: INTRO_TABS.map((t, i) => ({
+        n: t.n,
+        label: t.label,
+        go: () => this.goPage(i),
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '11px 18px',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          border: '1px solid ' + (i === page ? P.blue : P.line),
+          background: i === page ? P.card : 'transparent',
+          color: i === page ? P.ink : P.sub,
+          boxShadow: i === page ? CARD_SHADOW : 'none'
+        }
+      })),
+
+
+      // 시스템 소개
+
+      actors: ACTORS.map((a, i) => ({
+        ...a,
+        subStyle: {
+          fontSize: '15px',
+          fontWeight: 500,
+          color: P.ink,
+          background: ACTOR_COLORS[i] + '4D',
+          borderRadius: '999px',
+          padding: '4px 12px',
+          whiteSpace: 'nowrap'
+        },
+        box: {
+          border: '1px solid ' + P.line,
+          borderLeft: '4px solid ' + ACTOR_COLORS[i],
+          borderRadius: '18px',
+          background: P.card,
+          padding: '22px 26px',
+          display: 'flex',
+          gap: '20px',
+          alignItems: 'flex-start',
+          boxShadow: CARD_SHADOW
+        }
+      })),
+
+
+      // 프로세스 흐름
+
+      lanes: LANES.map(l => ({
+        tag: l.tag,
+        name: l.name,
+        chip: {
+          width: '100%',
+          padding: '16px 18px',
+          borderRadius: '14px',
+          boxSizing: 'border-box',
+          border: '1px solid ' + P.line,
+          borderLeft: '4px solid ' + l.color,
+          background: P.card,
+          boxShadow: CARD_SHADOW
+        }
+      })),
+
+      laneRails: LANES.map((l, i) => ({
+        style: {
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: (LANE_Y[i] / 640 * 100) + '%',
+          height: '1px',
+          background: P.line
+        }
+      })),
+
+      // 시스템 구성도
+
+      archLinks: page === 1 ? this.archLinks() : null,
+
+      archTiers: ARCH_TIERS.map(t => ({
+        tag: t.tag,
+        name: t.name,
+        chip: {
+          position: 'absolute',
+          left: 0,
+          top: (t.y - 38) + 'px',
+          width: '156px',
+          padding: '14px 16px',
+          borderRadius: '14px',
+          boxSizing: 'border-box',
+          border: '1px solid ' + P.line,
+          borderLeft: '4px solid ' + t.color,
+          background: P.card,
+          boxShadow: CARD_SHADOW
+        }
+      })),
+
+      archNodes: ARCH_NODES.map(n => ({
+        title: n.title,
+        role: n.role,
+        box: {
+          position: 'absolute',
+          left: n.x + 'px',
+          top: n.y + 'px',
+          width: n.w + 'px',
+          height: n.h + 'px',
+          boxSizing: 'border-box',
+          padding: '0 28px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: '6px',
+          borderRadius: '18px',
+          border: '1px solid ' + P.line,
+          borderTop: '3px solid ' + n.color,
+          background: P.card,
+          boxShadow: CARD_SHADOW
+        }
+      })),
+
+      archCores: ARCH_CORES.map(c => ({
+        tag: c.tag,
+        title: c.title,
+        role: c.role,
+        badgeText: c.badgeText,
+        badge: {
+          fontFamily: "'JetBrains Mono',monospace",
+          fontSize: '13px',
+          color: P.sub,
+          border: '1px solid ' + P.line,
+          borderRadius: '7px',
+          padding: '4px 10px'
+        },
+        items: c.items.map(it => ({
+          ...it,
+          box: {
+            background: c.tint,
+            borderRadius: '14px',
+            padding: '16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px'
+          }
+        })),
+        box: {
+          position: 'absolute',
+          left: c.x + 'px',
+          top: c.y + 'px',
+          width: c.w + 'px',
+          height: c.h + 'px',
+          boxSizing: 'border-box',
+          padding: '24px 30px 26px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          borderRadius: '22px',
+          border: '1px solid ' + P.line,
+          borderTop: '5px solid ' + c.color,
+          background: P.card,
+          boxShadow: '0 10px 30px rgba(52,56,63,.08)'
+        }
+      })),
+
+
+      // 프로젝트 핵심 효과
+
+      valueChain: VALUE_CHAIN.map((v, i) => ({
+        ...v,
+        n: p2(i + 1),
+        dot: {
+          width: '10px',
+          height: '10px',
+          borderRadius: '50%',
+          background: v.color,
+          animation: 'omPulse 2.5s ease-in-out infinite',
+          animationDelay: (i * 0.4) + 's'
+        },
+        node: {
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          padding: '26px 24px',
+          borderRadius: '18px',
+          border: '1px solid ' + P.line,
+          borderTop: '4px solid ' + v.color,
+          background: P.bg,
+          boxSizing: 'border-box'
+        },
+        arrow: i === VALUE_CHAIN.length - 1
+          ? { display: 'none' }
+          : {
+              width: '58px',
+              flex: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: "'Chakra Petch',sans-serif",
+              fontSize: '34px',
+              fontWeight: 600,
+              color: '#B9BEC6'
+            }
+      })),
+
+      valueEffects: VALUE_EFFECTS.map((e, i) => ({
+        ...e,
+        n: p2(i + 1),
+        box: {
+          border: '1px solid ' + P.line,
+          borderTop: '4px solid ' + ACTOR_COLORS[i],
+          borderRadius: '20px',
+          background: P.card,
+          padding: '26px 30px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
+          boxShadow: CARD_SHADOW
+        }
+      })),
+
+
+      // 방문객 참여 안내
+
+      joinSteps: JOIN_STEPS.map((st, i) => ({
+        ...st,
+        n: p2(i + 1),
+        dot: {
+          width: '10px',
+          height: '10px',
+          borderRadius: '50%',
+          background: st.color,
+          marginLeft: 'auto',
+          alignSelf: 'center'
+        },
+        box: {
+          flex: 1,
+          minWidth: 0,
+          padding: '24px 26px 26px',
+          borderRadius: '20px',
+          border: '1px solid ' + P.line,
+          borderTop: '4px solid ' + st.color,
+          background: P.card,
+          boxShadow: CARD_SHADOW,
+          boxSizing: 'border-box'
+        },
+        arrow: i === JOIN_STEPS.length - 1
+          ? { display: 'none' }
+          : {
+              width: '44px',
+              flex: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: "'Chakra Petch',sans-serif",
+              fontSize: '28px',
+              fontWeight: 600,
+              color: '#B9BEC6'
+            }
+      })),
+
+
+      // 프로세스 흐름
+
+      flowLinks: this.flowLinks(),
+
+      flowSteps: STEPS.map(s => ({
+        n: s.n,
+        title: s.title,
+        meta: s.meta,
+        box: {
+          position: 'absolute',
+          left: ((flowCx(s.col) - FLOW_BOX_W / 2) / 1560 * 100) + '%',
+          top: ((LANE_Y[s.lane] - FLOW_BOX_H / 2) / 640 * 100) + '%',
+          width: (FLOW_BOX_W / 1560 * 100) + '%',
+          height: (FLOW_BOX_H / 640 * 100) + '%',
+          boxSizing: 'border-box',
+          padding: '16px 18px',
+          borderRadius: '16px',
+          border: '1px solid ' + P.line,
+          borderTop: '3px solid ' + LANES[s.lane].color,
+          background: P.card,
+          boxShadow: CARD_SHADOW
+        }
+      }))
+
+    };
+
+  }
+
+
+  // =======================================================
+  // 현황용 화면 값
+  // =======================================================
+
+  statusVals() {
 
     const {
-
-      page,
-
-      elapsed,
-
+      now,
       stocks,
-
       stocksAt,
-
       kpi,
-
       statistics,
-
-      stations_api: stationsApi,
-
-      remain,
-
-      now
-
-    } =
-      this.state;
+      orders,
+      ordersAt,
+      ordersErr,
+      calls,
+      agv,
+      agvTask
+    } = this.state;
 
 
-    const agv =
-      this.agv();
-
-
-    dbgChanged('agv', {
-      state: agv.state,
-      task: agv.task,
-      dock: agv.dock
-    });
-
-    dbgChanged('render', {
-      page,
-      stockKeys: Object.keys(stocks || {}).length,
-      stations: Array.isArray(stationsApi) ? stationsApi.length : 0,
-      mbti: statistics?.mbti_stats?.length ?? 0
-    });
-
-
-    const sec =
-      this.rotateSeconds;
-
-
-    const laneY = [
-      100,
-      320,
-      540
-    ];
-
-
-    const cardShadow =
-      '0 2px 10px rgba(52,56,63,.05)';
+    const stats = statistics || {
+      completed_orders: null,
+      mbti_stats: [],
+      keycap_color_stats: {},
+      top_keycap_combo: null
+    };
 
 
     // =====================================================
-    // MBTI 도넛 실제 데이터 생성
+    // MBTI 도넛 — 상위 4 + 기타
     // =====================================================
 
-    const mbtiDonutTop =
-      statistics.mbti_stats
-        .slice(
-          0,
-          4
-        )
-        .map(
-          (m, i) => ({
-
-            type:
-              m.mbti,
-
-            pct:
-              Number(
-                m.ratio
-                ||
-                0
-              ),
-
-            color:
-              DONUT_COLORS[i]
-
-          })
-        );
-
+    const mbtiTop4 = stats.mbti_stats.slice(0, 4);
 
     const mbtiRest =
-      statistics.mbti_stats
+      stats.mbti_stats
         .slice(4)
-        .reduce(
-          (
-            sum,
-            m
-          ) =>
-            sum
-            +
-            Number(
-              m.ratio
-              ||
-              0
-            ),
-          0
-        );
-
+        .reduce((sum, m) => sum + Number(m.ratio || 0), 0);
 
     const donutData = [
+      ...mbtiTop4.map((m, i) => ({ pct: Number(m.ratio || 0), color: DONUT_COLORS[i] })),
+      { pct: mbtiRest, color: DONUT_COLORS[4] }
+    ].filter(d => d.pct > 0);
 
-      ...mbtiDonutTop,
+    let acc = 0;
 
-      {
-        type:
-          '기타',
+    const donutStops =
+      donutData.length
+        ? donutData.map(d => {
+            const start = acc;
+            acc += d.pct;
+            // 조각 사이 2px 가량 흰 틈
+            return `${d.color} ${start}% ${Math.max(start, acc - 0.6)}%, #FFFFFF ${Math.max(start, acc - 0.6)}% ${acc}%`;
+          }).join(',')
+        : `${P.line} 0% 100%`;
 
-        pct:
-          mbtiRest,
-
-        color:
-          DONUT_COLORS[5]
-      }
-
-    ];
+    const first = mbtiTop4[0];
 
 
     // =====================================================
-    // 색상 최대값
+    // 색상별 주문수
     // =====================================================
 
     const colorValues =
-      Object
-        .values(
-          statistics.keycap_color_stats
-          ||
-          {}
-        )
-        .map(
-          item =>
-            Number(
-              item?.count
-              ||
-              0
-            )
-        );
+      COLOR_INFO.map(c => Number(stats.keycap_color_stats?.[c.code]?.count || 0));
+
+    const maxColorValue = Math.max(1, ...colorValues);
 
 
-    const maxColorValue =
-      Math.max(
-        1,
-        ...colorValues
-      );
+    // =====================================================
+    // 최다 조합
+    // =====================================================
+
+    const combo = stats.top_keycap_combo;
+
+    const comboLetters =
+      (combo && typeof combo.mbti === 'string' && combo.mbti.length === 4)
+        ? combo.mbti.split('')
+        : null;
+
+
+    dbgChanged('render', {
+      stockKeys: Object.keys(stocks || {}).length,
+      orders: orders.length,
+      mbti: stats.mbti_stats.length,
+      agv: agv.place
+    });
 
 
     return {
 
 
       // ===================================================
-      // PAGE
+      // 상단 KPI · 시간별 추이
       // ===================================================
 
-      isLive:
-        page === 0,
+      ...this.kpiView(kpi),
 
-      isIntro:
-        page === 1,
-
-      isStats:
-        page === 2,
-
-      isFlow:
-        page === 3,
-
-
-      prev:
-        () =>
-          this.goTo(
-            (
-              page + 3
-            )
-            %
-            4
-          ),
-
-
-      next:
-        () =>
-          this.goTo(
-            (
-              page + 1
-            )
-            %
-            4
-          ),
-
-
-      // ===================================================
-      // 시간
-      // ===================================================
-
-      clock:
-        now
-          .toTimeString()
-          .slice(
-            0,
-            8
-          ),
-
-
-      autoLabel:
-
-        this.rotating
-
-          ? `AUTO ${Math.ceil(sec - elapsed)}s / ${sec}s`
-
-          : '자동 전환 정지',
-
-
-      progressStyle: {
-
-        height:
-          '100%',
-
-        width:
-          (
-            this.rotating
-
-              ? (
-                  elapsed
-                  /
-                  sec
-                  *
-                  100
-                )
-
-              : 0
-          )
-          +
-          '%',
-
-        background:
-
-          this.rotating
-
-            ? P.blue
-
-            : P.line,
-
-        transition:
-          'width .5s linear',
-
-        borderRadius:
-          '3px'
-
-      },
-
-
-      // ===================================================
-      // 일시정지
-      // ===================================================
-
-      togglePause:
-
-        () =>
-          this.setState(
-            s => ({
-
-              paused:
-                !s.paused,
-
-              elapsed:
-                0
-
-            })
-          ),
-
-
-      pauseIcon:
-
-        this.rotating
-
-          ? '❚❚'
-
-          : '▶',
-
-
-      pauseLabel:
-
-        this.rotating
-
-          ? 'AUTO'
-
-          : 'HOLD',
-
-
-      pauseStyle: {
-
-        height:
-          '56px',
-
-        padding:
-          '0 18px',
-
-        borderRadius:
-          '14px',
-
-        cursor:
-          'pointer',
-
-        display:
-          'flex',
-
-        alignItems:
-          'center',
-
-        gap:
-          '9px',
-
-        boxSizing:
-          'border-box',
-
-        border:
-          '1px solid '
-          +
-          (
-            this.rotating
-
-              ? P.line
-
-              : P.yellow
-          ),
-
-        background:
-
-          this.rotating
-
-            ? P.card
-
-            : '#FFFCF2',
-
-        color:
-          P.ink
-
-      },
-
-
-      // ===================================================
-      // TAB
-      // ===================================================
-
-      tabs:
-
-        TABS.map(
-          (t, i) => ({
-
-            n:
-              t.n,
-
-            label:
-              t.label,
-
-            go:
-              () =>
-                this.goTo(i),
-
-            style: {
-
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              gap:
-                '10px',
-
-              padding:
-                '11px 20px',
-
-              borderRadius:
-                '12px',
-
-              cursor:
-                'pointer',
-
-              border:
-                '1px solid '
-                +
-                (
-                  i === page
-
-                    ? P.blue
-
-                    : P.line
-                ),
-
-              background:
-
-                i === page
-
-                  ? P.card
-
-                  : 'transparent',
-
-              color:
-
-                i === page
-
-                  ? P.ink
-
-                  : P.sub,
-
-              boxShadow:
-
-                i === page
-
-                  ? cardShadow
-
-                  : 'none'
-
-            }
-
-          })
-        ),
+      ...this.hourlyView(orders, now),
 
 
       // ===================================================
       // 재고
       // ===================================================
 
-      ...this.invView(
-        stocks,
-        stocksAt
-      ),
+      ...this.invView(stocks, stocksAt),
 
 
       // ===================================================
-      // AGV
+      // 메인 비주얼
       // ===================================================
 
-      agvState:
-        agv.state,
+      ...this.agvView(agv, agvTask, ordersAt),
 
-      agvTask:
-        agv.task,
+      stations: this.stationsView(orders, calls, agv),
 
-      agvWrap: {
 
-        position:
-          'absolute',
+      // ===================================================
+      // 하단 파이프라인
+      // ===================================================
 
-        left:
-          agv.x
-          +
-          'px',
+      pipeline: this.pipelineView(orders, ordersErr),
 
-        top:
-          agv.y
-          +
-          'px',
 
-        transform:
-          'translate(-50%,-50%)',
+      // ===================================================
+      // MBTI 순위
+      // ===================================================
 
-        transition:
-          'left .5s linear, top .5s linear'
+      completedOrders: fmtNum(stats.completed_orders),
 
+      mbtiFirstType: first ? first.mbti : '—',
+
+      mbtiFirstPct: first ? Number(first.ratio || 0).toFixed(1) + '%' : '',
+
+      mbtiEmpty: statistics !== null && mbtiTop4.length === 0,
+
+      donut: {
+        position: 'absolute',
+        inset: 0,
+        borderRadius: '50%',
+        background: `conic-gradient(from -90deg,${donutStops})`
       },
 
-
-      // ===================================================
-      // 조립대 현황
-      // GET /dashboard/station
-      // ===================================================
-
-      stations:
-
-        [0, 1, 2]
-          .map(
-            i => {
-
-
-              const stationId =
-                i + 1;
-
-
-              const live =
-
-                (
-                  Array.isArray(
-                    stationsApi
-                  )
-                    ? stationsApi
-                    : []
-                )
-                  .find(
-                    s =>
-                      Number(
-                        s.station_id
-                      )
-                      ===
-                      stationId
-                  )
-                ||
-                {};
-
-
-              const stage =
-                live.stage
-                ||
-                'idle';
-
-
-              const seq =
-
-                (
-                  live.order_seq
-                  ===
-                  null
-                  ||
-                  live.order_seq
-                  ===
-                  undefined
-                )
-
-                  ? null
-
-                  : Number(
-                      live.order_seq
-                    );
-
-
-              const docked =
-                agv.dock === i;
-
-
-              const color =
-                STAGE_COLOR[stage]
-                ||
-                P.green;
-
-
-              return {
-
-                name:
-                  '조립대 '
-                  +
-                  stationId,
-
-                code:
-
-                  (
-                    seq === null
-                    ||
-                    Number.isNaN(seq)
-                  )
-
-                    ? '--'
-
-                    : '#'
-                      +
-                      String(seq)
-                        .padStart(3, '0'),
-
-                status:
-                  STAGE_LABEL[stage]
-                  ||
-                  stage,
-
-                dot: {
-
-                  width:
-                    '11px',
-
-                  height:
-                    '11px',
-
-                  borderRadius:
-                    '50%',
-
-                  background:
-                    color,
-
-                  border:
-                    '1px solid '
-                    +
-                    color
-
-                },
-
-                box: {
-
-                  display:
-                    'flex',
-
-                  flexDirection:
-                    'column',
-
-                  gap:
-                    '12px',
-
-                  justifyContent:
-                    'center',
-
-                  padding:
-                    '20px 22px',
-
-                  borderRadius:
-                    '18px',
-
-                  boxSizing:
-                    'border-box',
-
-                  height:
-                    '100%',
-
-                  border:
-                    '1px solid '
-                    +
-                    (
-                      docked
-
-                        ? P.yellow
-
-                        : P.line
-                    ),
-
-                  background:
-
-                    docked
-
-                      ? '#FFFCF2'
-
-                      : P.card,
-
-                  boxShadow:
-                    cardShadow
-
-                }
-
-              };
-
-            }
-          ),
-
-
-      // ===================================================
-      // 소개
-      // ===================================================
-
-      actors:
-
-        [
-
-          {
-            n: '01',
-            title: '주문 플랫폼',
-            desc: '키오스크·웹에서 MBTI 키캡 키링 맞춤 주문',
-            tag: 'KIOSK'
-          },
-
-          {
-            n: '02',
-            title: '스마트창고',
-            desc: '부품 재고 조회 후 필요한 키캡 자동 출고',
-            tag: 'WAREHOUSE'
-          },
-
-          {
-            n: '03',
-            title: 'AGV',
-            desc: '출고된 부품을 지정 조립대까지 자율 운반',
-            tag: 'AGV'
-          },
-
-          {
-            n: '04',
-            title: '조립대',
-            desc: '공정 상태·호출번호·잔여 시간 실시간 전송',
-            tag: 'STATION'
-          }
-
-        ]
-        .map(
-          (a, i) => ({
-
-            ...a,
-
-            box: {
-
-              border:
-                '1px solid '
-                +
-                P.line,
-
-              borderLeft:
-                '4px solid '
-                +
-                ACTOR_COLORS[i],
-
-              borderRadius:
-                '18px',
-
-              background:
-                P.card,
-
-              padding:
-                '24px 26px',
-
-              display:
-                'flex',
-
-              gap:
-                '22px',
-
-              alignItems:
-                'center',
-
-              boxShadow:
-                cardShadow
-
-            }
-
-          })
-        ),
-
-
-      // ===================================================
-      // 실제 MBTI 통계
-      // ===================================================
-
-      completedOrders:
-        statistics.completed_orders,
-
-
       mbtiTop:
-
-        statistics.mbti_stats
-          .slice(
-            0,
-            4
-          )
-          .map(
-            (m, i) => {
-
-
-              const c =
-                RANK_COLORS[i];
-
-
-              return {
-
-                no:
-                  m.rank,
-
-                type:
-                  m.mbti,
-
-                pct:
-                  Number(
-                    m.ratio
-                    ||
-                    0
-                  )
-                  .toFixed(1)
-                  +
-                  '%',
-
-                count:
-                  Number(
-                    m.count
-                    ||
-                    0
-                  )
-                  +
-                  '건',
-
-                row: {
-
-                  display:
-                    'flex',
-
-                  alignItems:
-                    'center',
-
-                  gap:
-                    '14px',
-
-                  padding:
-                    '17px 18px',
-
-                  borderRadius:
-                    '14px',
-
-                  border:
-                    '1px solid '
-                    +
-                    P.line,
-
-                  borderLeft:
-                    '4px solid '
-                    +
-                    c,
-
-                  background:
-                    P.card
-
-                },
-
-                rank: {
-
-                  width:
-                    '32px',
-
-                  height:
-                    '32px',
-
-                  borderRadius:
-                    '9px',
-
-                  display:
-                    'flex',
-
-                  alignItems:
-                    'center',
-
-                  justifyContent:
-                    'center',
-
-                  fontFamily:
-                    "'Chakra Petch',sans-serif",
-
-                  fontSize:
-                    '17px',
-
-                  fontWeight:
-                    700,
-
-                  color:
-                    P.ink,
-
-                  background:
-                    c
-
-                }
-
-              };
-
-            }
-          ),
+        mbtiTop4.map((m, i) => ({
+          no: m.rank ?? i + 1,
+          type: m.mbti,
+          pct: Number(m.ratio || 0).toFixed(1) + '%',
+          count: Number(m.count || 0) + '건',
+          row: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '11px',
+            padding: '7px 12px',
+            borderRadius: '11px',
+            border: '1px solid ' + P.line,
+            background: i === 0 ? '#FFF7F8' : P.card
+          },
+          rank: {
+            width: '24px',
+            height: '24px',
+            borderRadius: '7px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: FONT_NUM,
+            fontSize: '14px',
+            fontWeight: 700,
+            color: P.ink,
+            background: RANK_COLORS[i]
+          }
+        })),
 
 
       // ===================================================
-      // 실제 MBTI 도넛
-      // ===================================================
-
-      donut:
-
-        (() => {
-
-
-          let acc =
-            0;
-
-
-          const validData =
-            donutData.filter(
-              d =>
-                d.pct > 0
-            );
-
-
-          const stops =
-
-            validData.length > 0
-
-              ? validData
-                  .map(
-                    d => {
-
-
-                      const start =
-                        acc;
-
-
-                      acc +=
-                        d.pct;
-
-
-                      return (
-                        `${d.color} ${start}% ${acc}%`
-                      );
-
-                    }
-                  )
-                  .join(',')
-
-              : `${P.line} 0% 100%`;
-
-
-          return {
-
-            position:
-              'absolute',
-
-            inset:
-              0,
-
-            borderRadius:
-              '50%',
-
-            background:
-              `conic-gradient(from -90deg,${stops})`
-
-          };
-
-        })(),
-
-
-      donutLegend:
-
-        donutData.map(
-          d => ({
-
-            type:
-              d.type,
-
-            pct:
-              Number(
-                d.pct
-                ||
-                0
-              )
-              .toFixed(1)
-              +
-              '%',
-
-            swatch: {
-
-              width:
-                '13px',
-
-              height:
-                '13px',
-
-              borderRadius:
-                '4px',
-
-              background:
-                d.color,
-
-              display:
-                'inline-block'
-
-            }
-
-          })
-        ),
-
-
-      // ===================================================
-      // 실제 색상별 사용 개수
+      // 색상별 주문수
       // ===================================================
 
       colorOrders:
-
-        COLOR_INFO
-          .map(
-            c => {
-
-
-              const stat =
-                statistics
-                  .keycap_color_stats?.[
-                    c.code
-                  ];
-
-
-              const value =
-                Number(
-                  stat?.count
-                  ||
-                  0
-                );
-
-
-              return {
-
-                name:
-                  c.name,
-
-                value,
-
-                bar: {
-
-                  width:
-                    '100%',
-
-                  height:
-                    (
-                      value
-                      /
-                      maxColorValue
-                      *
-                      330
-                    )
-                    +
-                    'px',
-
-                  borderRadius:
-                    '14px 14px 6px 6px',
-
-                  background:
-                    c.color,
-
-                  border:
-                    '1px solid '
-                    +
-                    P.line,
-
-                  boxSizing:
-                    'border-box'
-
-                }
-
-              };
-
-            }
-          ),
+        COLOR_INFO.map((c, i) => ({
+          name: c.name,
+          value: statistics ? colorValues[i].toLocaleString() : '—',
+          bar: {
+            width: '100%',
+            maxWidth: '52px',
+            height: Math.max(3, colorValues[i] / maxColorValue * 96) + 'px',
+            borderRadius: '6px 6px 0 0',
+            background: CAP_PASTEL[c.code],
+            transition: 'height .5s ease'
+          }
+        })),
 
 
       // ===================================================
-      // 실제 최다 색상 조합
+      // 최다 조합
       // ===================================================
 
       topCombo:
-
-        (
-          statistics
-            .top_keycap_combo
-            ?.colors
-          ||
-          []
-        )
-        .map(
-          color => ({
-
-            cap: {
-
-              width:
-                '86px',
-
-              height:
-                '86px',
-
-              borderRadius:
-                '14px',
-
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              justifyContent:
-                'center',
-
-              background:
-                KEYCAP_COLORS[color]
-                ||
-                P.line,
-
-              boxShadow:
-                'inset 0 -5px 0 rgba(52,56,63,.10), 0 8px 18px rgba(52,56,63,.10)'
-
-            }
-
-          })
-        ),
-
-
-      // ===================================================
-      // 최다 조합 설명
-      // count / 전체 완료 주문 비율
-      // ===================================================
+        (combo?.colors || []).map((color, i) => ({
+          letter: comboLetters ? comboLetters[i] : '',
+          cap: {
+            width: '62px',
+            height: '62px',
+            borderRadius: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: FONT_NUM,
+            fontSize: '24px',
+            fontWeight: 700,
+            color: P.ink,
+            background: CAP_PASTEL[color] || P.line,
+            boxShadow: 'inset 0 -5px 0 rgba(52,56,63,.10), 0 6px 14px rgba(52,56,63,.10)'
+          }
+        })),
 
       topComboInfo:
-
-        statistics.top_keycap_combo
-
-          ? (
-              Number(
-                statistics
-                  .top_keycap_combo
-                  .count
-                ||
-                0
-              )
-              +
-              '건 · 전체의 '
-              +
-              (
-                statistics.completed_orders > 0
-
-                  ? (
-                      Number(
-                        statistics
-                          .top_keycap_combo
-                          .count
-                        ||
-                        0
-                      )
-                      /
-                      statistics.completed_orders
-                      *
-                      100
-                    )
-                    .toFixed(1)
-
-                  : '0.0'
-              )
-              +
-              '%'
-            )
-
-          : '데이터 없음',
-
-
-      // ===================================================
-      // 실제 주문 건수
-      // ===================================================
-
-      kpis:
-
-        [
-
-          {
-            label:
-              '총 주문',
-
-            value:
-              kpi.total_orders,
-
-            accent:
-              P.blue
-          },
-
-          {
-            label:
-              '오늘',
-
-            value:
-              kpi.today_orders,
-
-            accent:
-              P.green
-          },
-
-          {
-            label:
-              '대기',
-
-            value:
-              kpi.waiting_orders,
-
-            accent:
-              P.yellow
-          },
-
-          {
-            label:
-              '완료',
-
-            value:
-              kpi.completed_today,
-
-            accent:
-              P.red
-          }
-
-        ]
-        .map(
-          k => ({
-
-            label:
-              k.label,
-
-            value:
-              k.value,
-
-            box: {
-
-              minWidth:
-                '104px',
-
-              padding:
-                '14px 18px',
-
-              borderRadius:
-                '16px',
-
-              border:
-                '1px solid '
-                +
-                P.line,
-
-              borderTop:
-                '3px solid '
-                +
-                k.accent,
-
-              background:
-                P.bg,
-
-              display:
-                'flex',
-
-              flexDirection:
-                'column',
-
-              gap:
-                '4px'
-
-            }
-
-          })
-        ),
-
-
-      // ===================================================
-      // FLOW
-      // ===================================================
-
-      lanes:
-
-        LANES.map(
-          l => ({
-
-            tag:
-              l.tag,
-
-            name:
-              l.name,
-
-            chip: {
-
-              width:
-                '100%',
-
-              padding:
-                '16px 18px',
-
-              borderRadius:
-                '14px',
-
-              boxSizing:
-                'border-box',
-
-              border:
-                '1px solid '
-                +
-                P.line,
-
-              borderLeft:
-                '4px solid '
-                +
-                l.color,
-
-              background:
-                P.card,
-
-              boxShadow:
-                cardShadow
-
-            }
-
-          })
-        ),
-
-
-      laneRails:
-
-        LANES.map(
-          (l, i) => ({
-
-            style: {
-
-              position:
-                'absolute',
-
-              left:
-                0,
-
-              right:
-                0,
-
-              top:
-                (
-                  laneY[i]
-                  /
-                  640
-                  *
-                  100
-                )
-                +
-                '%',
-
-              height:
-                '1px',
-
-              background:
-                P.line
-
-            }
-
-          })
-        ),
-
-
-      flowLinks:
-        this.flowLinks(),
-
-
-      flowSteps:
-
-        STEPS.map(
-          s => ({
-
-            n:
-              s.n,
-
-            title:
-              s.title,
-
-            meta:
-              s.meta,
-
-            box: {
-
-              position:
-                'absolute',
-
-              left:
-                (
-                  (
-                    110
-                    +
-                    s.col
-                    *
-                    268
-                    -
-                    110
-                  )
-                  /
-                  1560
-                  *
-                  100
-                )
-                +
-                '%',
-
-              top:
-                (
-                  (
-                    laneY[s.lane]
-                    -
-                    54
-                  )
-                  /
-                  640
-                  *
-                  100
-                )
-                +
-                '%',
-
-              width:
-                (
-                  220
-                  /
-                  1560
-                  *
-                  100
-                )
-                +
-                '%',
-
-              height:
-                (
-                  108
-                  /
-                  640
-                  *
-                  100
-                )
-                +
-                '%',
-
-              boxSizing:
-                'border-box',
-
-              padding:
-                '16px 18px',
-
-              borderRadius:
-                '16px',
-
-              border:
-                '1px solid '
-                +
-                P.line,
-
-              borderTop:
-                '3px solid '
-                +
-                LANES[
-                  s.lane
-                ].color,
-
-              background:
-                P.card,
-
-              boxShadow:
-                cardShadow
-
-            }
-
-          })
-        )
+        combo
+          ? `${Number(combo.count || 0)}건 · 전체의 ${
+              stats.completed_orders > 0
+                ? (Number(combo.count || 0) / stats.completed_orders * 100).toFixed(1)
+                : '0.0'
+            }%`
+          : '데이터 없음'
 
     };
 
@@ -3950,3 +4008,5 @@ class Component extends DCLogic {
 }
 
 </script>
+</body>
+</html>
