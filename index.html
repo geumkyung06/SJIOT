@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
 <style>
-  body { margin:0; background:#F5F6F8; font-family:'IBM Plex Sans KR',sans-serif; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#F5F6F8; font-family:'IBM Plex Sans KR',sans-serif; }
   a { color:#34383F; text-decoration:none; }
   a:hover { color:#8B9098; }
   @keyframes omPulse { 0%,100%{opacity:.35} 50%{opacity:1} }
@@ -27,7 +27,8 @@
 </style>
 </helmet>
 
-<div style="width:1920px;height:1080px;position:relative;overflow:hidden;background:#F5F6F8;color:#34383F;font-family:'IBM Plex Sans KR',sans-serif">
+<div style="position:fixed;inset:0;overflow:hidden;background:#F5F6F8">
+<div style="{{ stageStyle }}">
 
   <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(52,56,63,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(52,56,63,.035) 1px,transparent 1px);background-size:60px 60px;pointer-events:none"></div>
 
@@ -349,7 +350,7 @@
 
       <sc-if value="{{ isArchPage }}">
 
-        <div style="position:absolute;left:0;top:0;width:1832px;height:912px;animation:omRise .5s ease-out">
+        <div style="position:absolute;inset:0;animation:omRise .5s ease-out">
 
 
           <!-- 제목 -->
@@ -362,7 +363,7 @@
           </div>
 
 
-          <div style="position:absolute;left:0;top:36px;width:1832px;height:876px">
+          <div style="position:absolute;left:50%;top:50%;width:1832px;height:876px;margin:-420px 0 0 -916px">
 
           <!-- 계층 라벨 -->
 
@@ -438,7 +439,7 @@
 
       <sc-if value="{{ isValuePage }}">
 
-        <div style="position:absolute;left:0;top:0;width:1832px;height:912px;display:flex;flex-direction:column;gap:34px;animation:omRise .5s ease-out">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;gap:34px;animation:omRise .5s ease-out">
 
 
           <!-- 제목 -->
@@ -501,7 +502,7 @@
 
       <sc-if value="{{ isJoinPage }}">
 
-        <div style="position:absolute;left:0;top:0;width:1832px;height:912px;display:flex;flex-direction:column;gap:30px;animation:omRise .5s ease-out">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;gap:30px;animation:omRise .5s ease-out">
 
 
           <!-- 제목 · 안내 문구 -->
@@ -671,7 +672,7 @@
 
   <sc-if value="{{ isStatusMode }}">
 
-  <div style="position:relative;height:100%;padding:18px;box-sizing:border-box;display:grid;grid-template-columns:390px 1126px 340px;grid-template-rows:220px 676px 120px;gap:14px">
+  <div style="position:relative;height:100%;padding:18px;box-sizing:border-box;display:grid;grid-template-columns:390px minmax(0,1fr) 340px;grid-template-rows:220px minmax(0,1fr) 120px;gap:14px">
 
 
     <!-- ================================================= -->
@@ -695,7 +696,7 @@
     <!-- 상단 가운데 : 오늘 주문 · 증감 · 시간별 추이 -->
     <!-- ================================================= -->
 
-    <div style="display:grid;grid-template-columns:360px 300px 438px;gap:14px;min-width:0">
+    <div style="display:grid;grid-template-columns:360fr 300fr 438fr;gap:14px;min-width:0">
 
       <!-- 오늘 주문 건수 -->
       <div style="border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:20px 24px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0">
@@ -847,11 +848,11 @@
 
     <!-- ================================================= -->
     <!-- 메인 비주얼 : 창고 카메라 · AGV · 조립대 -->
-    <!-- GET /admin/orders · /admin/calls -->
+    <!-- GET /admin/orders · /admin/stations -->
     <!-- ================================================= -->
 
-    <div style="position:relative;border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px;box-sizing:border-box;overflow:hidden;min-width:0">
-      <div style="position:relative;width:100%;height:100%">
+    <div style="position:relative;border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:18px;box-sizing:border-box;overflow:hidden;min-width:0;display:flex;align-items:center;justify-content:center">
+      <div style="position:relative;width:1088px;height:638px;flex:none">
 
 
         <!-- ----------------------------------------------- -->
@@ -1075,7 +1076,7 @@
     <!-- GET /admin/orders -->
     <!-- ================================================= -->
 
-    <div style="grid-column:1 / -1;position:relative;border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:0 16px;box-sizing:border-box;overflow:hidden">
+    <div style="grid-column:1 / -1;position:relative;border:1px solid #E2E5E9;border-radius:18px;background:#FFFFFF;box-shadow:0 2px 10px rgba(52,56,63,.04);padding:0 16px;box-sizing:border-box;overflow:hidden;display:flex;justify-content:center">
       {{ pipeline }}
     </div>
 
@@ -1083,6 +1084,7 @@
 
   </sc-if>
 
+</div>
 </div>
 
 </x-dc>
@@ -1107,6 +1109,23 @@
 // =========================================================
 
 const MODES = ['home', 'intro', 'status'];
+
+
+// =========================================================
+// 화면 맞춤 — 1920 × 1080 으로 그린 화면을 창 크기에 맞춰
+// 비율(16:9)을 유지한 채 확대·축소하고 가운데에 둔다
+// =========================================================
+
+const STAGE_W = 1920;
+const STAGE_H = 1080;
+
+function viewportSize() {
+  try {
+    return { vw: window.innerWidth || STAGE_W, vh: window.innerHeight || STAGE_H };
+  } catch (e) {
+    return { vw: STAGE_W, vh: STAGE_H };
+  }
+}
 
 
 // =========================================================
@@ -1512,11 +1531,83 @@ const AGV_SPEED = 170;     // px / s
 const TICK_MS = 200;
 
 const POLL = {
-  orders: 5000,            // /admin/orders + /admin/calls
+  orders: 5000,            // /admin/orders + /admin/stations
   stocks: 5000,
   statistics: 5000,
   orderStats: 10000
 };
+
+
+// =========================================================
+// AGV 실제 이동 — GET /dashboard/mark/movement
+//
+// 받은 점을 큐에 쌓고, 일정 속도로 하나씩 따라간다 (밀리면 빨라짐).
+// 이 API 에 연결되지 않으면 예전 방식(주문 단계로 위치 추정)으로 동작한다.
+// =========================================================
+
+const AGV_MOVE = {
+  path: '/dashboard/mark/movement',
+
+  tickMs: 100,             // 화면 갱신 간격
+  cellSec: 2.0,            // 기본 속도 — 한 칸 이동 시간(초). 실제 AGV 좌표 보고 간격(2초)과 같게
+  // 남은 점 수에 따른 속도 — 다음 좌표가 오기 전에 마지막 점에 먼저 닿아 서지 않게
+  //   1개 남음 → slowFactor 배 (천천히 가며 다음 좌표를 기다림)
+  //   2개 남음 → 1배
+  //   3개 이상 → 1개당 +boostPerPoint 배 (따라잡기, 최대 maxBoost)
+  //   마지막 점이 도착점(checkpoint)이면 늦추지 않는다 — 어차피 거기서 선다
+  slowFactor: 0.75,
+  boostPerPoint: 0.5,
+  maxBoost: 3,             // 따라잡기 최대 배속
+  speedEase: 0.2,          // 배속이 바뀔 때 한 틱에 따라가는 비율 (급가속·급감속 방지)
+  teleportPoints: 8,       // 밀린 점이 이만큼 쌓이면 마지막 점으로 바로 이동
+
+  pollMoving: 1200,        // 이동 중 폴링 — 보고 간격(2초)보다 짧게 두어 새 점을 빨리 받는다
+  pollIdle: 4000,          // 정차 중 · 위치 모름
+  staleMs: 10000,          // 이 시간 동안 새 점이 없으면 정차로 본다
+  backoff: [2000, 4000, 8000, 10000],   // 요청 실패 시 재시도 간격
+  legacyRetryMs: 30000,    // 예전 방식으로 동작 중일 때 API 재확인 간격
+  failToLegacy: 3          // 한 번도 성공 못 하고 이만큼 실패하면 예전 방식
+};
+
+
+// ---------------------------------------------------------
+// 좌표 [c, r] → 화면 위치 (메인 비주얼 안쪽 1088 × 638 px)
+//
+// ※ 임시값 — 실제 격자 크기·방향을 받으면 이 값만 고치면 된다.
+//   swap: true 면 coord 를 [r, c] 로 본다.
+//   checkpoint 가 붙은 점(대기장소·조립대·폐기)은 이 값과 상관없이
+//   화면의 해당 위치에 정확히 놓인다.
+// ---------------------------------------------------------
+
+const AGV_GRID = {
+  x0: 75,                  // coord x = 0 일 때 화면 x
+  y0: 150,                 // coord y = 0 일 때 화면 y
+  dx: 120,                 // x 한 칸 = px
+  dy: 96,                  // y 한 칸 = px
+  swap: false
+};
+
+const AGV_CELL_PX = (AGV_GRID.dx + AGV_GRID.dy) / 2;
+
+function coordToPx(coord) {
+  if (!Array.isArray(coord) || coord.length < 2) return null;
+  const [a, b] = AGV_GRID.swap ? [coord[1], coord[0]] : coord;
+  return { x: AGV_GRID.x0 + Number(a) * AGV_GRID.dx, y: AGV_GRID.y0 + Number(b) * AGV_GRID.dy };
+}
+
+// API 의 점 → 화면 점
+function movePoint(p) {
+  if (!p) return null;
+  const at = p.checkpoint ? placePoint(p.checkpoint) : coordToPx(p.coord);
+  if (!at) return null;
+  return {
+    x: at.x,
+    y: at.y,
+    seq: Number(p.seq),
+    leg: p.leg,
+    checkpoint: p.checkpoint || null
+  };
+}
 
 
 // =========================================================
@@ -1587,6 +1678,7 @@ function routeTo(from, to) {
 function placePoint(place) {
   if (place === 'parking') return { ...MV.PARK };
   if (place === 'discard') return { x: MV.DISCARD_X, y: MV.DOCK_Y };
+  if (typeof place !== 'string' || !place.includes(':')) return { ...MV.PARK };
   const [kind, n] = place.split(':');
   const x = stationCx(Number(n));
   return { x, y: kind === 'station' ? MV.DOCK_Y : MV.CY };
@@ -1609,6 +1701,8 @@ class Component extends DCLogic {
     mode: 'home',
 
     now: new Date(),
+
+    ...viewportSize(),
 
 
     // -----------------------------------------------------
@@ -1645,7 +1739,7 @@ class Component extends DCLogic {
 
     // -----------------------------------------------------
     // 주문 목록 · GET /admin/orders
-    // 사용자 호출 · GET /admin/calls
+    // 사용자 호출 · GET /admin/stations (help · help_at)
     // -----------------------------------------------------
 
     orders: [],
@@ -1666,7 +1760,27 @@ class Component extends DCLogic {
       ready: false
     },
 
-    agvTask: { mode: 'idle', order: null }
+    agvTask: { mode: 'idle', order: null },
+
+
+    // -----------------------------------------------------
+    // AGV 실제 이동 · GET /dashboard/mark/movement
+    //   mode: 'init'(확인 중) | 'api'(실제 좌표) | 'legacy'(추정)
+    // -----------------------------------------------------
+
+    mv: {
+      mode: 'init',
+      visible: false,
+      x: MV.PARK.x,
+      y: MV.PARK.y,
+      queue: [],           // 아직 안 간 점
+      trail: [],           // 이번 구간에서 지나온 점
+      lastSeq: null,
+      leg: null,
+      stopped: false,
+      place: null,         // 정차한 checkpoint
+      lastPointAt: 0       // 새 점을 마지막으로 받은 시각
+    }
 
   };
 
@@ -1684,6 +1798,11 @@ class Component extends DCLogic {
     this.onKey = e => this.handleKey(e);
     window.addEventListener('keydown', this.onKey);
 
+    // 창 크기가 바뀌면 다시 맞춤
+    this.onResize = () => this.setState(viewportSize());
+    window.addEventListener('resize', this.onResize);
+    this.onResize();
+
     // 주소의 #intro / #status 를 바꾸면 그 화면으로
     this.onHash = () => this.enterMode(this.modeFromHash());
     window.addEventListener('hashchange', this.onHash);
@@ -1700,6 +1819,7 @@ class Component extends DCLogic {
     clearInterval(this.clockTimer);
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('hashchange', this.onHash);
+    window.removeEventListener('resize', this.onResize);
 
     this.stopIntro();
     this.stopStatus();
@@ -1945,7 +2065,7 @@ class Component extends DCLogic {
 
 
   // =======================================================
-  // 주문 목록 · GET /admin/orders  (+ 사용자 호출 · GET /admin/calls)
+  // 주문 목록 · GET /admin/orders  (+ 사용자 호출 · GET /admin/stations)
   //
   // 앞쪽이 진행 중 주문, 뒤쪽이 오늘 아카이브.
   // 노쇼(unclaimed) 주문은 AGV 가 폐기를 마칠 때까지 양쪽에 다 나온다
@@ -1986,7 +2106,9 @@ class Component extends DCLogic {
 
     const [ordersRes, callsRes] = await Promise.allSettled([
       this.getJson('/admin/orders', '주문 목록 조회 실패'),
-      this.getJson('/admin/calls', '호출 조회 실패')
+      // 호출 상태(station:call:{n})는 /admin/stations 의 help · help_at 으로 온다.
+      // /admin/calls 는 점유·주문만 주고 호출 여부를 주지 않는다.
+      this.getJson('/admin/stations', '조립대 조회 실패')
     ]);
 
     const patch = {};
@@ -2002,7 +2124,14 @@ class Component extends DCLogic {
 
     if (callsRes.status === 'fulfilled') {
       const m = {};
-      (callsRes.value.calls || []).forEach(c => { m[Number(c.station_id)] = c; });
+      (callsRes.value.stations || []).forEach(st => {
+        if (!st.help) return;
+        const at = st.help_at ? new Date(st.help_at) : null;
+        m[Number(st.station_id)] = {
+          station_id: st.station_id,
+          calledAt: at && !Number.isNaN(at.getTime()) ? at : null
+        };
+      });
       patch.calls = m;
     } else {
       console.error('[호출 API ERROR]', callsRes.reason);
@@ -2018,7 +2147,7 @@ class Component extends DCLogic {
     }
 
     if (patch.calls) {
-      dbgChanged('admin/calls', Object.keys(patch.calls));
+      dbgChanged('admin/stations:help', Object.keys(patch.calls));
     }
 
   }
@@ -2077,6 +2206,9 @@ class Component extends DCLogic {
     const task = this.agvTaskOf(orders);
 
     this.setState(s => {
+
+      // 실제 좌표를 쓰는 중이면 위치는 건드리지 않고 상태 문구용 정보만
+      if (s.mv.mode !== 'legacy') return { agvTask: task };
 
       const a = s.agv;
 
@@ -2139,10 +2271,32 @@ class Component extends DCLogic {
 
     this.orderTimer = setInterval(() => this.fetchOrderStats(), POLL.orderStats);
 
+
+    // AGV 실제 이동
+
+    this.mvFails = 0;
+    this.mvEverOk = false;
+    this.setState(s => ({ mv: { ...s.mv, mode: 'init', visible: false, queue: [], trail: [], lastSeq: null, leg: null, stopped: false, place: null } }));
+    this.mvTimer = setInterval(() => this.mvTick(), AGV_MOVE.tickMs);
+    this.onVisibility = () => {
+      if (document.hidden) {
+        clearTimeout(this.mvPollTimer);
+      } else {
+        this.fetchMovement(true);
+      }
+    };
+    document.addEventListener('visibilitychange', this.onVisibility);
+    this.fetchMovement(true);
+
   }
 
 
   stopStatus() {
+
+    clearInterval(this.mvTimer);
+    clearTimeout(this.mvPollTimer);
+    this.mvTimer = this.mvPollTimer = null;
+    if (this.onVisibility) document.removeEventListener('visibilitychange', this.onVisibility);
 
     clearInterval(this.agvTimer);
     clearInterval(this.ordersTimer);
@@ -2157,10 +2311,285 @@ class Component extends DCLogic {
 
 
   // =======================================================
+  // AGV 실제 이동 — 폴링
+  // =======================================================
+
+  scheduleMovement(ms) {
+
+    clearTimeout(this.mvPollTimer);
+
+    if (this.state.mode !== 'status') return;
+
+    this.mvPollTimer = setTimeout(() => this.fetchMovement(false), ms);
+
+  }
+
+
+  async fetchMovement(full) {
+
+    if (this.state.mode !== 'status') return;
+
+    try { if (document.hidden) return; } catch (e) { }
+
+    const m = this.state.mv;
+    const since = !full && m.lastSeq !== null ? `?since=${m.lastSeq}` : '';
+
+    let data;
+
+    try {
+
+      data = await this.getJson(AGV_MOVE.path + since, 'AGV 이동경로 조회 실패');
+
+    } catch (error) {
+
+      this.mvFails = (this.mvFails || 0) + 1;
+
+      // 한 번도 연결된 적 없이 계속 실패 → 예전 방식(주문 단계로 추정)
+      if (!this.mvEverOk && this.mvFails >= AGV_MOVE.failToLegacy) {
+        if (this.state.mv.mode !== 'legacy') {
+          dbg('agv', '이동경로 API 연결 안 됨 → 주문 단계로 위치 추정');
+          this.setState(s => ({
+            mv: { ...s.mv, mode: 'legacy', visible: false },
+            agv: { ...s.agv, ready: false }
+          }));
+          if (this.state.orders.length || this.state.ordersAt) this.updateAgvTask(this.state.orders);
+        }
+        this.scheduleMovement(AGV_MOVE.legacyRetryMs);
+        return;
+      }
+
+      const b = AGV_MOVE.backoff;
+      this.scheduleMovement(b[Math.min(this.mvFails - 1, b.length - 1)]);
+      console.error('[AGV 이동경로 API ERROR]', error);
+      return;
+
+    }
+
+    this.mvFails = 0;
+    this.mvEverOk = true;
+
+    // 다음 폴링 간격은 응답으로 정한다 (setState 반영 전 state 를 읽지 않도록)
+    const before = this.state.mv.lastSeq ?? -1;
+    const fresh = (Array.isArray(data.points) ? data.points : []).some(p => Number(p.seq) > before);
+    if (fresh || data.resync) this.mvLastNewAt = Date.now();
+
+    this.mvApply(data, full);
+
+    const cur = data.current;
+    const idle =
+      !cur
+      || !!cur.checkpoint
+      || Date.now() - (this.mvLastNewAt || 0) > AGV_MOVE.staleMs;
+
+    this.scheduleMovement(idle ? AGV_MOVE.pollIdle : AGV_MOVE.pollMoving);
+
+  }
+
+
+  // 응답 반영 — 프론트 규칙
+  //   current == null       → 위치 모름, 마커 숨김
+  //   처음 · resync · full  → current 위치로 바로, 경로는 points 로 다시
+  //   그 외                 → seq 가 새로운 점만 큐에 추가
+  mvApply(data, full) {
+
+    this.setState(s => {
+
+      const m = s.mv;
+      const current = movePoint(data.current);
+      const points = (Array.isArray(data.points) ? data.points : [])
+        .map(movePoint)
+        .filter(Boolean)
+        .sort((a, b) => a.seq - b.seq);
+
+      const maxSeq = points.reduce((v, p) => Math.max(v, p.seq), m.lastSeq ?? -1);
+
+      if (!current) {
+        dbgChanged('agv:movement', 'current = null → 위치 모름');
+        return {
+          mv: { ...m, mode: 'api', visible: false, queue: [], trail: [], stopped: false, place: null, lastSeq: maxSeq >= 0 ? maxSeq : m.lastSeq }
+        };
+      }
+
+      if (full || data.resync || m.lastSeq === null || !m.visible) {
+        // agv:trail 맨 앞에는 직전 구간의 도착점(출발점)이 남아 있을 수 있다 → 함께 그린다
+        const legPts = points.filter((p, i) =>
+          p.seq <= current.seq && (p.leg === current.leg || (i === 0 && points.length > 1)));
+        dbg('agv', 'resync', { seq: current.seq, leg: current.leg, points: legPts.length });
+        return {
+          mv: {
+            ...m,
+            mode: 'api',
+            visible: true,
+            x: current.x,
+            y: current.y,
+            queue: [],
+            trail: legPts.length ? legPts : [current],
+            leg: current.leg,
+            stopped: !!current.checkpoint,
+            place: current.checkpoint,
+            lastSeq: Math.max(maxSeq, current.seq),
+            lastPointAt: Date.now()
+          }
+        };
+      }
+
+      const fresh = points.filter(p => p.seq > (m.lastSeq ?? -1));
+
+      if (!fresh.length) return { mv: { ...m, mode: 'api' } };
+
+      dbg('agv', `새 점 ${fresh.length}개`, fresh.map(p => `${p.seq}@${p.leg}${p.checkpoint ? ':' + p.checkpoint : ''}`).join(' '));
+
+      return {
+        mv: {
+          ...m,
+          mode: 'api',
+          queue: [...m.queue, ...fresh],
+          lastSeq: maxSeq,
+          lastPointAt: Date.now()
+        }
+      };
+
+    });
+
+  }
+
+
+  // =======================================================
+  // AGV 실제 이동 — 일정 속도로 큐를 따라감 (밀리면 빨라짐)
+  // =======================================================
+
+  mvTick() {
+
+    const m0 = this.state.mv;
+
+    if (m0.mode !== 'api' || !m0.visible || !m0.queue.length) return;
+
+    this.setState(s => {
+
+      const m = { ...s.mv, queue: s.mv.queue.slice(), trail: s.mv.trail.slice() };
+
+      // 다음 점으로 출발할 때 — 구간이 바뀌면 경로를 지우고 직전 도착점에서 새로
+      const begin = next => {
+        if (next.leg !== m.leg) {
+          m.trail = [{ x: m.x, y: m.y }];
+          m.leg = next.leg;
+          m.stopped = false;
+          m.place = null;
+        }
+      };
+
+      // 점에 도착
+      const arrive = p => {
+        m.x = p.x;
+        m.y = p.y;
+        m.trail.push(p);
+        if (p.checkpoint) {
+          m.stopped = true;
+          m.place = p.checkpoint;
+        }
+      };
+
+      // 정차 중인데 같은 구간 점이 오면 버린다 (checkpoint 가 구간의 끝)
+      const dropStale = () => {
+        while (m.queue.length && m.stopped && m.queue[0].leg === m.leg) m.queue.shift();
+      };
+
+      dropStale();
+
+      // 너무 밀렸으면 마지막 점까지 바로
+      if (m.queue.length >= AGV_MOVE.teleportPoints) {
+        while (m.queue.length) {
+          const p = m.queue.shift();
+          begin(p);
+          arrive(p);
+        }
+        return { mv: m };
+      }
+
+      // 남은 점 수로 목표 배속을 정하고, 지금 배속을 그쪽으로 조금씩 옮긴다
+      const n = m.queue.length;
+      const endsAtStop = !!m.queue[n - 1].checkpoint;
+      const target =
+        n <= 1 ? (endsAtStop ? 1 : AGV_MOVE.slowFactor)
+          : n === 2 ? 1
+            : Math.min(AGV_MOVE.maxBoost, 1 + (n - 2) * AGV_MOVE.boostPerPoint);
+
+      const prevMul = m.speedMul || 1;
+      m.speedMul = prevMul + (target - prevMul) * AGV_MOVE.speedEase;
+
+      let step = (AGV_CELL_PX / AGV_MOVE.cellSec) * m.speedMul * (AGV_MOVE.tickMs / 1000);
+
+      while (step > 0 && m.queue.length) {
+
+        dropStale();
+        if (!m.queue.length) break;
+
+        const next = m.queue[0];
+        begin(next);
+
+        const d = Math.hypot(next.x - m.x, next.y - m.y);
+
+        if (step >= d) {
+          m.queue.shift();
+          arrive(next);
+          step -= d;
+        } else {
+          m.x += (next.x - m.x) / d * step;
+          m.y += (next.y - m.y) / d * step;
+          step = 0;
+        }
+
+      }
+
+      return { mv: m };
+
+    });
+
+  }
+
+
+  // 화면에 그릴 AGV — 실제 좌표 모드면 큐·경로로, 아니면 예전 값 그대로
+  agvForView() {
+
+    const { mv: m, agv } = this.state;
+
+    if (m.mode !== 'api') return { ...agv, hidden: false, tickMs: TICK_MS };
+
+    if (!m.visible) {
+      return { x: MV.PARK.x, y: MV.PARK.y, place: 'unknown', leg: null, ready: false, hidden: true, tickMs: AGV_MOVE.tickMs };
+    }
+
+    const here = { x: m.x, y: m.y };
+    const done = [...m.trail, here];
+    const pts = [...done, ...m.queue.filter(p => p.leg === m.leg || !m.stopped)];
+    const doneLen = polyLen(done);
+
+    const moving = m.queue.length > 0 && !(m.stopped && m.queue.every(p => p.leg === m.leg));
+    const stale = !moving && !m.stopped && Date.now() - m.lastPointAt > AGV_MOVE.staleMs;
+
+    return {
+      x: m.x,
+      y: m.y,
+      place: m.stopped && m.place ? m.place : moving ? 'moving' : 'idle',
+      leg: pts.length > 1 ? { pts, len: polyLen(pts), dist: doneLen } : null,
+      ready: true,
+      hidden: false,
+      stale,
+      // 다음 점을 기다리는 잠깐도 '이동 중' — checkpoint 에 도착해야 정차
+      inTransit: !m.stopped && !stale,
+      tickMs: AGV_MOVE.tickMs
+    };
+
+  }
+
+
+  // =======================================================
   // AGV 이동 틱 (시각 갱신은 clockTimer 가 담당)
   // =======================================================
 
   agvTick() {
+
+    if (this.state.mv.mode !== 'legacy') return;
 
     const leg = this.state.agv.leg;
 
@@ -2788,7 +3217,7 @@ class Component extends DCLogic {
       }, '주문 데이터 연결 오류'));
     }
 
-    return el('div', { style: { position: 'relative', width: W, height: '100%' } }, kids);
+    return el('div', { style: { position: 'relative', width: W, height: '100%', flex: 'none' } }, kids);
 
   }
 
@@ -2802,7 +3231,7 @@ class Component extends DCLogic {
     const act = orders.filter(o => this.isActive(o) && o.stage !== 'completed');
 
     const docked =
-      agv.place.startsWith('station:') && !(agv.leg && agv.leg.dist < agv.leg.len)
+      String(agv.place || '').startsWith('station:') && !(agv.leg && agv.leg.dist < agv.leg.len)
         ? Number(agv.place.split(':')[1])
         : null;
 
@@ -2837,7 +3266,9 @@ class Component extends DCLogic {
           flex: 'none'
         },
 
-        callText: call ? `호출 중 · ${fmtSec(call.waited_sec)}` : '호출 없음',
+        callText: call
+          ? (call.calledAt ? `호출 중 · ${fmtSec((Date.now() - call.calledAt.getTime()) / 1000)}` : '호출 중')
+          : '호출 없음',
 
         callStyle: {
           display: 'inline-flex',
@@ -2915,7 +3346,8 @@ class Component extends DCLogic {
 
   agvView(agv, task, ordersAt) {
 
-    const moving = !!(agv.leg && agv.leg.dist < agv.leg.len);
+    const pathMoving = !!(agv.leg && agv.leg.dist < agv.leg.len);
+    const moving = agv.inTransit !== undefined ? agv.inTransit : pathMoving;
     const o = task.order;
     const seq = o ? `#${o.seq ?? '?'}` : '';
     const sid = o ? o.sid : null;
@@ -2949,6 +3381,15 @@ class Component extends DCLogic {
 
     if (o && o.fault) tone = 'warn';
 
+    // 실제 좌표 모드 — 위치 모름 · 신호 끊김
+    if (agv.hidden) {
+      text = '위치 확인 중';
+      tone = 'idle';
+    } else if (agv.stale) {
+      text = '신호 대기';
+      tone = 'idle';
+    }
+
     const TONE = {
       move: { line: P.yellow, dot: '#E5C46B', pulse: true },
       stop: { line: '#B5E6CB', dot: '#8ECB9A', pulse: false },
@@ -2977,7 +3418,7 @@ class Component extends DCLogic {
       strokeLinecap: 'round'
     }));
 
-    if (agv.leg) {
+    if (agv.leg && !agv.hidden) {
 
       const { done, rest } = walkPath(agv.leg.pts, agv.leg.dist);
       const toStr = pts => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
@@ -2993,7 +3434,7 @@ class Component extends DCLogic {
         opacity: moving ? 0.55 : 0.35
       }));
 
-      if (moving && rest.length > 1) {
+      if (pathMoving && rest.length > 1) {
 
         kids.push(el('polyline', {
           key: 'rest',
@@ -3036,10 +3477,10 @@ class Component extends DCLogic {
         left: agv.x + 'px',
         top: agv.y + 'px',
         transform: 'translate(-50%,-100%)',
-        transition: `left ${TICK_MS / 1000}s linear, top ${TICK_MS / 1000}s linear`,
+        transition: `left ${(agv.tickMs || TICK_MS) / 1000}s linear, top ${(agv.tickMs || TICK_MS) / 1000}s linear`,
         zIndex: 5,
         pointerEvents: 'none',
-        opacity: agv.ready ? 1 : 0.5
+        opacity: agv.hidden ? 0 : agv.ready ? 1 : 0.5
       },
 
       agvPill: {
@@ -3396,9 +3837,25 @@ class Component extends DCLogic {
 
   renderVals() {
 
-    const { mode, now } = this.state;
+    const { mode, now, vw, vh } = this.state;
+
+    const scale = Math.min(vw / STAGE_W, vh / STAGE_H);
 
     const base = {
+
+      stageStyle: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: (vw / scale) + 'px',
+        height: (vh / scale) + 'px',
+        transform: `scale(${scale})`,
+        transformOrigin: '0 0',
+        overflow: 'hidden',
+        background: P.bg,
+        color: P.ink,
+        fontFamily: "'IBM Plex Sans KR',sans-serif"
+      },
 
       isHome: mode === 'home',
       isIntroMode: mode === 'intro',
@@ -3791,9 +4248,10 @@ class Component extends DCLogic {
       ordersAt,
       ordersErr,
       calls,
-      agv,
       agvTask
     } = this.state;
+
+    const agvShown = this.agvForView();
 
 
     const stats = statistics || {
@@ -3861,7 +4319,7 @@ class Component extends DCLogic {
       stockKeys: Object.keys(stocks || {}).length,
       orders: orders.length,
       mbti: stats.mbti_stats.length,
-      agv: agv.place
+      agv: agvShown.place
     });
 
 
@@ -3888,9 +4346,9 @@ class Component extends DCLogic {
       // 메인 비주얼
       // ===================================================
 
-      ...this.agvView(agv, agvTask, ordersAt),
+      ...this.agvView(agvShown, agvTask, ordersAt),
 
-      stations: this.stationsView(orders, calls, agv),
+      stations: this.stationsView(orders, calls, agvShown),
 
 
       // ===================================================

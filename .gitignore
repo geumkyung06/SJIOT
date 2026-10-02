@@ -1,0 +1,7 @@
+# 로컬 데모용 (커밋하지 않음)
+tools/demo_seed.py
+tools/seed_agv_movement.py
+tools/__pycache__/
+
+# Redis 로컬 저장 파일
+dump.rdb
