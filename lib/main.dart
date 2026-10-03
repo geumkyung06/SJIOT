@@ -19,6 +19,9 @@ import 'services/kiosk_window_web.dart'
     if (dart.library.io) 'services/kiosk_window_io.dart';
 
 import 'services/receipt_printer_service.dart';
+// [신규] 영수증 용지 부족 확인(Windows 드라이버 상태 조회). printer_status_io.dart
+// 안에서 또 한 번 조건부 임포트로 분기하므로 여기서는 그냥 일반 임포트입니다.
+import 'services/printer_status_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/mbti_choice_screen.dart';
 import 'screens/mbti_quiz_screen.dart';
@@ -73,14 +76,19 @@ const bool kApiEnabled = true;
 // 백엔드/조립대 작업이 끝나서 주문이 정상적으로 만들어지면 false로 바꾸세요.
 // (true인 채로 행사에 나가면 주문이 안 만들어진 손님에게도 주문번호 '-'와
 // QR 없음 안내만 찍힌 영수증이 나와서 종이만 낭비됩니다.)
-const bool kPrintReceiptWithoutOrder = true;
+// [복구] 프린터 자체는 실제 기기에서 2회 출력 성공으로 확인이 끝났으므로
+// false로 되돌립니다. 만약 실제 QR 주문으로 영수증이 나오는 것까지는 아직
+// 확인 전이라면, 그 확인이 끝나기 전까지만 다시 true로 돌려서 쓰세요.
+const bool kPrintReceiptWithoutOrder = false;
 
 // [임시/프린터 연동 확인용] 콘솔을 볼 수 없는 exe 실행에서도 영수증 출력이
 // 됐는지/안 됐다면 왜인지 화면 우측 상단에 표시합니다.
 // 영수증 화면에서 출력하고, 처음 화면으로 돌아온 뒤에도 다음 주문을 시작할
 // 때까지 남아있습니다. 확인이 끝나면 false로 바꾸고 exe를 다시 빌드하세요.
 // (false면 화면에 아무것도 표시되지 않고 원래 화면 그대로입니다.)
-const bool kShowPrintDebugOverlay = true;
+// [복구] 프린터 점검이 끝났으므로 false로 되돌립니다. 행사 중 다시 점검이
+// 필요하면 true로 바꿔서 다시 빌드하세요.
+const bool kShowPrintDebugOverlay = false;
 
 enum AppStep {
   home,
@@ -340,6 +348,19 @@ class _AppRootState extends State<AppRoot> {
   //   false — 여유 있음. 평소대로 동작.
   bool? _queueFull;
 
+  // ---------------- 영수증 용지 상태 ----------------
+  // [신규] 대기열 현황과 똑같은 방식으로, 시작 화면에 머무는 동안 영수증
+  // 프린터의 Windows 드라이버 상태를 계속 조회해서 용지가 떨어진 상태면
+  // 주문을 "시작조차" 못 하게 막습니다(대기열 가득 참과 동일한 처리 방식).
+  static const Duration _paperPollInterval = Duration(seconds: 2);
+  Timer? _paperPollTimer;
+  bool _paperPollInFlight = false;
+  // null  — 아직 모름(프린터를 못 찾음/드라이버가 상태를 안 알려줌 포함).
+  //         판단 보류 = 시작 허용.
+  // true  — 용지 없음으로 확인됨. 시작하기를 막고 안내 문구를 띄웁니다.
+  // false — 용지 있음. 평소대로 동작.
+  bool? _printerPaperOut;
+
   // ---------------- 영수증 화면 표시용 값 ----------------
   String? _receiptOrderNumber;
   String? _receiptTime;
@@ -402,6 +423,8 @@ class _AppRootState extends State<AppRoot> {
     );
     // [신규] 시작 화면 대기열 현황 폴링 시작(앱이 살아있는 동안 계속 돕니다).
     _startQueuePolling();
+    // [신규] 시작 화면 영수증 용지 상태 폴링 시작.
+    _startPaperPolling();
   }
 
   void _resetLetters() {
@@ -448,6 +471,56 @@ class _AppRootState extends State<AppRoot> {
         }
       } finally {
         _queuePollInFlight = false;
+      }
+    });
+  }
+
+  //------------ 영수증 용지 상태 폴링 -------------
+  // 대기열 폴링과 똑같은 원리입니다: 타이머는 앱이 사는 동안 계속 돌리되,
+  // 실제 조회는 시작 화면일 때만 합니다. 다만 이건 서버가 아니라 "이 PC에
+  // 꽂혀 있는 프린터의 Windows 드라이버"에게 묻는 것이라 네트워크와는 무관하고,
+  // 조회 자체가 가벼운 편은 아니라서 주기를 대기열(1초)보다 살짝 길게(2초)
+  // 뒀습니다.
+  void _startPaperPolling() {
+    _paperPollTimer?.cancel();
+    _paperPollTimer = Timer.periodic(_paperPollInterval, (_) async {
+      if (!mounted) return;
+      // 대기열 폴링과 동일하게, 시작 화면에 있을 때만 확인합니다.
+      if (_step != AppStep.home) return;
+      if (_paperPollInFlight) return;
+
+      _paperPollInFlight = true;
+      try {
+        // 프린터 자체를 못 찾으면(이름이 다르거나 아직 설치 전 등) 판단을
+        // 보류합니다 — 그렇다고 주문을 막아버리면 안 되기 때문입니다.
+        final printer = await ReceiptPrinterService.findTargetPrinter();
+        if (printer == null) return;
+
+        final status = PrinterStatusService.checkPaperStatus(printer.name);
+        if (!mounted) return;
+
+        bool? paperOut;
+        switch (status) {
+          case PaperStatus.paperOut:
+            paperOut = true;
+            break;
+          case PaperStatus.ok:
+            paperOut = false;
+            break;
+          case PaperStatus.unknown:
+            paperOut = null;
+            break;
+        }
+
+        // null은 "조회 실패/지원 안 함 = 판단 보류"라는 뜻이므로 직전 값을
+        // 그대로 둡니다(대기열 현황 폴링과 동일한 정책).
+        if (paperOut != null && paperOut != _printerPaperOut) {
+          setState(() => _printerPaperOut = paperOut);
+        }
+      } catch (_) {
+        // 조회 중 예외 — 판단 보류(직전 값 유지), 주문은 막지 않습니다.
+      } finally {
+        _paperPollInFlight = false;
       }
     });
   }
@@ -797,8 +870,12 @@ class _AppRootState extends State<AppRoot> {
       //   }
       //   break;
       case AppStep.home:
-        // [수정] 대기열이 가득 찬 동안에는 Enter도 무시합니다.
-        if (isEnter && !_stockLoading && _queueFull != true) {
+        // [수정] 대기열이 가득 찼거나 영수증 용지가 없는 동안에는 Enter도
+        // 무시합니다.
+        if (isEnter &&
+            !_stockLoading &&
+            _queueFull != true &&
+            _printerPaperOut != true) {
           _startOrder();
         }
         break;
@@ -1706,6 +1783,7 @@ class _AppRootState extends State<AppRoot> {
     _doneRestartTimer?.cancel();
     _exitDialogTimeoutTimer?.cancel();
     _queuePollTimer?.cancel();
+    _paperPollTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -1717,8 +1795,11 @@ class _AppRootState extends State<AppRoot> {
       case AppStep.home:
         screen = HomeScreen(
           onEnter: () => _startOrder(),
-          // [수정] 재고 조회 중이거나 대기열이 가득 찬 동안에는 탭도 막습니다.
-          enabled: !_stockLoading && _queueFull != true,
+          // [수정] 재고 조회 중이거나 대기열이 가득 찼거나 영수증 용지가
+          // 없는 동안에는 탭도 막습니다.
+          enabled: !_stockLoading &&
+              _queueFull != true &&
+              _printerPaperOut != true,
           queueFull: _queueFull == true,
         );
         break;
@@ -1934,6 +2015,21 @@ class _AppRootState extends State<AppRoot> {
                     top: KioskCanvas.margin + 44,
                     left: KioskCanvas.margin + 56,
                     child: _BackButton(onTap: _goBack),
+                  ),
+                // [신규] 영수증 용지 부족 안내 — 대기열이 가득 찼을 때와 같은
+                // 원리로, 시작 화면에서 주문을 막고 스태프에게 문의하라고
+                // 안내합니다. (참고) home_screen.dart 파일이 이 작업에서는
+                // 없어서 그 안의 "대기열이 가득 찼습니다" 문구와 완전히 같은
+                // 자리에 통합하지는 못했고, 화면 위에 덧그리는 방식입니다.
+                if (_step == AppStep.home && _printerPaperOut == true)
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: Center(child: _PaperOutBadge()),
+                    ),
                   ),
                 // [임시] 서버에 연결하지 않는 테스트 모드(kApiEnabled = false)일 때만
                 // 화면 위쪽 가운데에 표시합니다. 터치는 통과시킵니다.
@@ -2442,6 +2538,51 @@ class _OfflineModeBadge extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: AppColors.danger,
         ),
+      ),
+    );
+  }
+}
+
+/// [신규] 영수증 용지가 떨어졌을 때 시작 화면에 보여주는 안내 카드.
+/// 대기열이 가득 찼을 때와 같은 목적(손님이 주문을 "시작조차" 못 하게 막고,
+/// 왜 못 하는지 알려주기)이라 생김새도 비슷한 톤으로 맞췄습니다.
+class _PaperOutBadge extends StatelessWidget {
+  const _PaperOutBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 640),
+      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 28),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.danger, width: 3),
+      ),
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '영수증 용지가 부족합니다',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: AppColors.danger,
+            ),
+          ),
+          SizedBox(height: 10),
+          Text(
+            '스태프에게 문의해주세요.\n용지를 채우면 자동으로 다시 시작할 수 있습니다.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              height: 1.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
       ),
     );
   }
