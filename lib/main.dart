@@ -1801,6 +1801,11 @@ class _AppRootState extends State<AppRoot> {
               _queueFull != true &&
               _printerPaperOut != true,
           queueFull: _queueFull == true,
+          // [수정] home_screen.dart에 paperOut을 추가해서, 이제는 대기열
+          // 가득 참과 똑같은 방식으로 화면 안에서 직접 안내합니다. (기존에는
+          // home_screen.dart가 없어서 화면 위에 덧그리는 badge였습니다 —
+          // 이제 파일을 받아서 제대로 통합했습니다)
+          paperOut: _printerPaperOut == true,
         );
         break;
 
@@ -2015,21 +2020,6 @@ class _AppRootState extends State<AppRoot> {
                     top: KioskCanvas.margin + 44,
                     left: KioskCanvas.margin + 56,
                     child: _BackButton(onTap: _goBack),
-                  ),
-                // [신규] 영수증 용지 부족 안내 — 대기열이 가득 찼을 때와 같은
-                // 원리로, 시작 화면에서 주문을 막고 스태프에게 문의하라고
-                // 안내합니다. (참고) home_screen.dart 파일이 이 작업에서는
-                // 없어서 그 안의 "대기열이 가득 찼습니다" 문구와 완전히 같은
-                // 자리에 통합하지는 못했고, 화면 위에 덧그리는 방식입니다.
-                if (_step == AppStep.home && _printerPaperOut == true)
-                  const Positioned(
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: IgnorePointer(
-                      child: Center(child: _PaperOutBadge()),
-                    ),
                   ),
                 // [임시] 서버에 연결하지 않는 테스트 모드(kApiEnabled = false)일 때만
                 // 화면 위쪽 가운데에 표시합니다. 터치는 통과시킵니다.
@@ -2538,51 +2528,6 @@ class _OfflineModeBadge extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: AppColors.danger,
         ),
-      ),
-    );
-  }
-}
-
-/// [신규] 영수증 용지가 떨어졌을 때 시작 화면에 보여주는 안내 카드.
-/// 대기열이 가득 찼을 때와 같은 목적(손님이 주문을 "시작조차" 못 하게 막고,
-/// 왜 못 하는지 알려주기)이라 생김새도 비슷한 톤으로 맞췄습니다.
-class _PaperOutBadge extends StatelessWidget {
-  const _PaperOutBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 640),
-      padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 28),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.danger, width: 3),
-      ),
-      child: const Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '영수증 용지가 부족합니다',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: AppColors.danger,
-            ),
-          ),
-          SizedBox(height: 10),
-          Text(
-            '스태프에게 문의해주세요.\n용지를 채우면 자동으로 다시 시작할 수 있습니다.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 18,
-              height: 1.5,
-              fontWeight: FontWeight.w600,
-              color: AppColors.ink,
-            ),
-          ),
-        ],
       ),
     );
   }
