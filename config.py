@@ -47,6 +47,10 @@ STATION_UNCLAIM_MIN_SEC = int(os.getenv("STATION_UNCLAIM_MIN_SEC", "150"))  # 2�
 
 ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
 
+# 영수증 용지 총량. 남은 용지 = 이 값 - 오늘 주문 수(order:counter:{YYYYMMDD}).
+# 카운터가 날짜별이라 매일 0시(KST)에 다시 이 값부터 센다. GET /admin/paper
+PAPER_MAX_COUNT = int(os.getenv("PAPER_MAX_COUNT", "900"))
+
 # 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관.
 ARCHIVE_PREFIX = os.getenv("ARCHIVE_PREFIX", "orders:archive:")
 ARCHIVE_TTL = int(os.getenv("ARCHIVE_TTL", str(90 * 24 * 3600)))

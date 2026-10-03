@@ -16,6 +16,8 @@ from config import (QUEUE_KEY,
                     STATION_RESET_PASSWORD,
                     ARCHIVE_PREFIX,
                     KST,
+                    ORDER_COUNTER_KEY,
+                    PAPER_MAX_COUNT,
                    )
 from infra.extensions import r
 from infra.logger import logger
@@ -26,7 +28,7 @@ from services import snapshot as debug_snapshot
 from services.process import clear_fault
 from services.station_service import STATIONS, close_call, open_call, open_calls
 from services.watchdog import CALL_EXTEND, MAX_CALL_EXTENDS
-from services.stock import get_stocks
+from services.stock import get_stocks, max_count, ALL_SLOTS as STOCK_SLOTS
 
 bp = Blueprint("admin", __name__)
 
@@ -60,15 +62,14 @@ def _to_int(v):
 
 def _max_for_part(part):
     """
-    STOCK 슬롯 이름(part)에서 최대 수량을 찾는다.
+    STOCK 슬롯 이름(part)의 1칸 최대 수량 — 키캡 40 · 보드 3 (config, 리셋과 같은 값).
     보드: "r"·"y"·"g"·"b" (밑줄 없음)
     키캡: "E_r" 형식 (글자_색상)
     존재하지 않는 part면 None.
     """
-    if "_" in part:
-        letter, _, color = part.partition("_")
-        return WAREHOUSE_MAX["keycap"].get(letter, {}).get(color)
-    return WAREHOUSE_MAX["board"].get(part)
+    if part not in STOCK_SLOTS:
+        return None
+    return max_count(part)
 
 
 def _live_order_ids():
@@ -657,36 +658,34 @@ def station_admin_call_ok(station_id):
 @bp.route('/admin/calls', methods=['GET'])
 def list_calls():
     """
-    열려 있는 호출 목록 — 관리자 화면용
+    열려 있는 호출 목록 — 관리자 화면용 (오래 기다린 순)
     ---
     tags:
       - Admin
+    description: |
+      호출 상태는 조립대 소유(station:call:{sid})다. 주문 없이 걸린 호출은 order_id 가 null 이다.
+      조립대 점유·배정 주문은 GET /admin/stations 를 본다.
     responses:
       200:
-        description: 조립대 3칸의 점유 여부 + 배정된 주문 정보
+        description: 열린 호출. 없으면 빈 배열
+        schema:
+          type: object
+          properties:
+            calls:
+              type: array
+              items:
+                type: object
+              example: [{"station_id": "3", "order_id": "ord_a1b2c3d4", "order_seq": "9",
+                         "stage": "verified", "fault": null,
+                         "called_at": "2026-10-01T11:24:03+09:00", "waited_sec": 74, "count": 2}]
     """
-    occupancy = r.hgetall(STATION_KEY)
-
-    stations = []
-    for sid in STATION_IDS:
-        status = occupancy.get(sid, "idle")
-        order_id = r.get(f"{STATION_ORDER_PREFIX}{sid}")
-
-        order_info = _get_order_summary(order_id) if order_id else None
-
-        stations.append({
-            "station_id": sid,
-            "occupancy": status,
-            "order": order_info,
-        })
-
-    return jsonify({"stations": stations}), 200
+    return jsonify({"calls": open_calls()}), 200
 
 
 @bp.route('/admin/stock', methods=['GET'])
 def admin_stock():
     """
-    창고 재고 현황 (관리자 페이지용) — services.stock.get_stocks() 재사용 + max 추가
+    창고 재고 현황 (관리자 페이지용) — services.stock.get_stocks() 재사용 + 칸 최대(키캡 40 · 보드 3) 추가
     ---
     tags:
       - Admin
@@ -705,7 +704,7 @@ def admin_stock():
     for color, qty in stocks.get("board", {}).items():
         result["board"][color] = {
             "qty": qty,
-            "max": WAREHOUSE_MAX["board"].get(color, 0),
+            "max": max_count(color),
         }
 
     for slot, qty in stocks.get("keycap", {}).items():
@@ -713,7 +712,7 @@ def admin_stock():
         result["keycap"].setdefault(letter, {})
         result["keycap"][letter][color] = {
             "qty": qty,
-            "max": WAREHOUSE_MAX["keycap"].get(letter, {}).get(color, 0),
+            "max": max_count(slot),
         }
 
     return jsonify(result), 200
@@ -844,3 +843,31 @@ def admin_orders():
     orders.extend(_get_archived_orders_today())
 
     return jsonify({"orders": orders}), 200
+
+
+@bp.route('/admin/paper', methods=['GET'])
+def admin_paper():
+    """
+    영수증 용지 잔량 (관리자 페이지 "영수증 용지" 탭)
+    ---
+    tags:
+      - Admin
+    description: |
+      남은 용지 = PAPER_MAX_COUNT(900) - 오늘 접수된 주문 수(order:counter:{YYYYMMDD}).
+      카운터가 날짜별이라 매일 0시(KST)에 다시 900부터 센다. 0 밑으로는 내려가지 않는다.
+      접수에 성공한 주문만 센다 (대기열 가득 409 · 입력 오류 400 은 제외, 중단·노쇼는 포함).
+      hard 리셋은 카운터를 지우므로 900으로 돌아간다.
+    responses:
+      200:
+        description: 남은 용지 수
+        schema:
+          type: object
+          properties:
+            remaining:
+              type: integer
+          example: {"remaining": 873}
+    """
+    # _order_counter_key() 는 부를 때마다 TTL 을 갱신(쓰기)한다 — 폴링용 조회라 GET 한 번만 한다
+    today = datetime.now(KST).strftime("%Y%m%d")
+    used = _to_int(r.get(f"{ORDER_COUNTER_KEY}:{today}")) or 0
+    return jsonify({"remaining": max(PAPER_MAX_COUNT - used, 0)}), 200
