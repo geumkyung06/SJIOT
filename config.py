@@ -47,8 +47,11 @@ STATION_UNCLAIM_MIN_SEC = int(os.getenv("STATION_UNCLAIM_MIN_SEC", "150"))  # 2�
 
 ORDER_COUNTER_KEY = os.getenv("ORDER_COUNTER_KEY", "order:counter")
 
-# 영수증 용지 총량. 남은 용지 = 이 값 - 오늘 주문 수(order:counter:{YYYYMMDD}).
-# 카운터가 날짜별이라 매일 0시(KST)에 다시 이 값부터 센다. GET /admin/paper
+# 영수증 용지. kiosk:paper 해시의 used = 마지막 채우기 이후 접수된 주문 수 (주문 1건 = 1매).
+# 남은 용지 = PAPER_MAX_COUNT - used. POST /order 가 +1, POST /admin/paper/refill 이 0 으로.
+# 대기번호 카운터(order:counter)와 따로 둔다 — 채우기로 대기번호가 1부터 다시 매겨지면 안 된다.
+# 실물 재고라 TTL 도 없고 /admin/reset 도 안 지운다. 조회: GET /admin/paper
+PAPER_KEY = os.getenv("PAPER_KEY", "kiosk:paper")
 PAPER_MAX_COUNT = int(os.getenv("PAPER_MAX_COUNT", "900"))
 
 # 종료 주문 상세 · 집계 (Redis ERD 5장). 90일 보관.

@@ -16,7 +16,7 @@ from config import (QUEUE_KEY,
                     STATION_RESET_PASSWORD,
                     ARCHIVE_PREFIX,
                     KST,
-                    ORDER_COUNTER_KEY,
+                    PAPER_KEY,
                     PAPER_MAX_COUNT,
                    )
 from infra.extensions import r
@@ -845,6 +845,11 @@ def admin_orders():
     return jsonify({"orders": orders}), 200
 
 
+def _paper_remaining():
+    used = _to_int(r.hget(PAPER_KEY, "used")) or 0
+    return max(PAPER_MAX_COUNT - used, 0)
+
+
 @bp.route('/admin/paper', methods=['GET'])
 def admin_paper():
     """
@@ -853,10 +858,10 @@ def admin_paper():
     tags:
       - Admin
     description: |
-      남은 용지 = PAPER_MAX_COUNT(900) - 오늘 접수된 주문 수(order:counter:{YYYYMMDD}).
-      카운터가 날짜별이라 매일 0시(KST)에 다시 900부터 센다. 0 밑으로는 내려가지 않는다.
-      접수에 성공한 주문만 센다 (대기열 가득 409 · 입력 오류 400 은 제외, 중단·노쇼는 포함).
-      hard 리셋은 카운터를 지우므로 900으로 돌아간다.
+      남은 용지 = PAPER_MAX_COUNT(900) - kiosk:paper.used.
+      used 는 마지막 채우기(POST /admin/paper/refill) 이후 접수된 주문 수다 (주문 1건 = 1매).
+      접수에 성공한 주문만 센다 — 대기열 가득 409 · 입력 오류 400 · 접수 마감 503 은 제외, 중단·노쇼는 포함.
+      0 밑으로는 내려가지 않는다. /admin/reset 은 모드와 상관없이 이 값을 건드리지 않는다.
     responses:
       200:
         description: 남은 용지 수
@@ -867,7 +872,32 @@ def admin_paper():
               type: integer
           example: {"remaining": 873}
     """
-    # _order_counter_key() 는 부를 때마다 TTL 을 갱신(쓰기)한다 — 폴링용 조회라 GET 한 번만 한다
-    today = datetime.now(KST).strftime("%Y%m%d")
-    used = _to_int(r.get(f"{ORDER_COUNTER_KEY}:{today}")) or 0
-    return jsonify({"remaining": max(PAPER_MAX_COUNT - used, 0)}), 200
+    return jsonify({"remaining": _paper_remaining()}), 200
+
+
+@bp.route('/admin/paper/refill', methods=['POST'])
+def admin_paper_refill():
+    """
+    영수증 용지 채우기 (관리자 페이지 "용지 채우기" 버튼) — 다시 900매부터 센다
+    ---
+    tags:
+      - Admin
+    description: |
+      kiosk:paper.used 를 0 으로 되돌린다. 대기번호(order:counter)·주문 통계는 건드리지 않는다.
+      body 는 받지 않는다 (항상 가득 = PAPER_MAX_COUNT).
+    responses:
+      200:
+        description: 채움 완료
+        schema:
+          type: object
+          properties:
+            ok:
+              type: boolean
+            remaining:
+              type: integer
+          example: {"ok": true, "remaining": 900}
+    """
+    before = _paper_remaining()
+    r.hset(PAPER_KEY, "used", 0)
+    logger.info(f"[admin] 영수증 용지 채움: {before} -> {PAPER_MAX_COUNT}")
+    return jsonify({"ok": True, "remaining": _paper_remaining()}), 200

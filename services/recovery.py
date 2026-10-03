@@ -103,6 +103,7 @@ _ARCHIVE_PATTERNS = [f"{ARCHIVE_PREFIX}*", "stats:*", f"{ORDER_COUNTER_KEY}*"]
 _KNOWN_PREFIXES = ("order:", "station:", "warehouse:", "agv:", "process:",
                    "idempotency:", ARCHIVE_PREFIX, "stats:",   # stats: 는 레거시
                    "line:",                                    # 영업 상태 (services/line.py)
+                   "kiosk:",                                   # 영수증 용지 kiosk:paper — 리셋해도 안 지움
                    "robot:status", "watchdog:lock", "stock:seed:lock")
 
 KEEP_NOTE = ["orders:archive:*", "order:counter:*"]

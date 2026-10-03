@@ -11,6 +11,7 @@ from config import (QUEUE_KEY,
                     COLOR_LIST,
                     BOARD_LIST,
                     KST,
+                    PAPER_KEY,
                    )
 
 from infra.logger import logger
@@ -170,6 +171,7 @@ def post_order_list():
 
         order_id = f"ord_{uuid.uuid4().hex[:8]}"
         order_seq = r.incr(_order_counter_key())
+        r.hincrby(PAPER_KEY, "used", 1)          # 영수증 1매 — 잔량은 GET /admin/paper
 
         # 일단 무조건 큐에 넣고 상태 queued 생성
         r.rpush(QUEUE_KEY, order_id)
