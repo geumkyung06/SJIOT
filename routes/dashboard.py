@@ -1,9 +1,15 @@
 import json
+import re
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 
 from infra.logger import logger
 from infra.extensions import r
-from services.dashboard import today_key, get_exhibition_dates, get_completed_archive_orders
+from services.dashboard import (today_key,
+                                get_exhibition_dates,
+                                get_completed_archive_orders,
+                                get_order_times,
+                               )
 from services import agv_trail
 
 bp = Blueprint("dashboard",__name__, url_prefix="/dashboard")
@@ -147,6 +153,104 @@ def get_order_summary():
             "success": False,
             "error": "주문 현황을 조회하지 못했습니다."
         }), 400
+
+@bp.route("/orders/timeline", methods=["GET"])
+def get_order_timeline():
+    """
+    대시보드 시간별 주문 추이 조회
+    ---
+    tags:
+      - Dashboard
+    summary: 그 날짜에 접수된 주문의 접수 시각 리스트
+    description: |
+      date 날짜(KST)에 들어온 모든 주문의 접수 시각(HH:MM)을 오름차순으로 반환합니다.
+      date 를 생략하면 오늘입니다.
+      개수 집계(10분 · 1시간 단위, 어제 같은 시각 대비 증감 등)는 프론트에서 합니다.
+
+      조회 대상
+      - order:{order_id} — 진행 중 주문 (대기열 + 조립대 + 창고)
+      - orders:archive:{date} — 그 날짜에 종료된 주문
+
+      규칙
+      - 같은 분에 여러 건이 들어오면 그 수만큼 같은 시각이 들어갑니다
+      - 정상 완료 / unclaimed / timeout / admin_abort 구분 없이 모두 포함 (접수 시각 기준)
+      - created_at(2026-10-03T19:55:38.131711+09:00)을 KST 기준 HH:MM(19:55)으로 자릅니다
+      - 차트는 주문이 없는 구간을 프론트에서 0으로 채워야 합니다
+
+      어제 같은 시각 대비 증감 (프론트)
+      - 오늘 = 오늘 times 길이
+      - 어제 같은 시각 = 어제 times 중 지금 KST HH:MM 이하인 개수
+      - 어제 목록은 하루 동안 바뀌지 않으므로 날짜가 바뀔 때만 다시 받으면 됩니다
+    parameters:
+      - name: date
+        in: query
+        type: string
+        required: false
+        description: 조회 날짜 (KST, YYYYMMDD). 생략하면 오늘
+        example: "20261002"
+    responses:
+      200:
+        description: 시간별 주문 추이 조회 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            date:
+              type: string
+              description: 조회 날짜 (KST, YYYYMMDD)
+              example: "20261003"
+            count:
+              type: integer
+              description: 그 날짜에 접수된 주문 건수 (times 길이)
+              example: 4
+            times:
+              type: array
+              description: 주문 접수 시각 (HH:MM, 오름차순, 같은 시각 중복 포함)
+              items:
+                type: string
+              example: ["10:02", "13:40", "19:55", "19:55"]
+      400:
+        description: date 형식 오류 또는 조회 실패
+    """
+    date = request.args.get("date") or None
+
+    if date is not None and not _valid_date(date):
+        return jsonify({
+            "success": False,
+            "error": "date 는 YYYYMMDD 형식이어야 합니다.",
+            "got": date
+        }), 400
+
+    try:
+        date, times = get_order_times(date)
+
+        return jsonify({
+            "success": True,
+            "date": date,
+            "count": len(times),
+            "times": times
+        }), 200
+
+    except Exception as e:
+        logger.error(f"[dashboard/orders/timeline ERROR] {e}")
+
+        return jsonify({
+            "success": False,
+            "error": "시간별 주문 추이를 조회하지 못했습니다."
+        }), 400
+
+
+def _valid_date(value):
+    """YYYYMMDD 8자리이고 실제 있는 날짜인가. strptime 만 쓰면 '2026101' 같은 7자리도 통과한다."""
+    if not re.fullmatch(r"\d{8}", value):
+        return False
+    try:
+        datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return False
+    return True
 
 @bp.route("/statistics", methods=["GET"])
 def get_dashboard_statistics():
