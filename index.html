@@ -47,8 +47,11 @@
 
   /* 호출 영역 */
   /* 상단 로고 */
-  .hdr { flex: none; height: 110px; padding: 0 var(--space-12); display: flex; align-items: center; justify-content: space-between; }
-  .hdr img { height: 86px; width: auto; display: block; mix-blend-mode: multiply; user-select: none; -webkit-user-drag: none; }
+  .hdr { flex: none; height: 110px; padding: 0 var(--space-6); display: flex; align-items: center; justify-content: center; gap: 28px; }
+  .brand { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+  .brand img { height: 80px; width: auto; display: block; mix-blend-mode: multiply; user-select: none; -webkit-user-drag: none; }
+  .brand span { font-size: 34px; font-weight: 800; color: var(--text); letter-spacing: -1px; }
+  .hdr .bar { width: 3px; height: 56px; background: var(--border); border-radius: var(--radius-pill); }
   #logoIot { cursor: default; -webkit-tap-highlight-color: transparent; }
 
   /* 관리자 팝업 */
@@ -123,8 +126,9 @@
 <body>
 <div class="stage" id="stage">
   <header class="hdr">
-    <img src="logo_sejong.png" alt="세종대학교">
-    <img src="logo_iot.png" alt="사물인터넷혁신융합대학사업단" id="logoIot">
+    <div class="brand"><img src="logo_sejong.png" alt=""><span>세종대학교</span></div>
+    <div class="bar"></div>
+    <div class="brand" id="logoIot"><img src="logo_iot.png" alt=""><span>사물인터넷혁신융합대학사업단</span></div>
   </header>
 
   <section class="calls">
