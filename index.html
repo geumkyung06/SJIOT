@@ -36,6 +36,8 @@
     font-family: var(--font-sans); display: flex; flex-direction: column;
   }
 
+  .sec-label .guide { font-size: 28px; white-space: nowrap; font-weight: 500; letter-spacing: -.5px; margin-left: 8px; }
+  .sec-label .offline { margin: 0 0 0 auto; }
   .offline { display: none; margin-right: 20px; font-size: 24px; font-weight: 700; color: var(--text); background: var(--red);
              padding: 8px 20px; border-radius: var(--radius-pill); }
   .offline.show { display: inline-block; }
@@ -126,7 +128,7 @@
 <body>
 <div class="stage" id="stage">
   <section class="calls">
-    <div class="sec-label"><span class="dot"></span>호출 중</div>
+    <div class="sec-label"><span class="dot"></span>호출 중<span class="guide">번호가 호출되면 해당 조립대로 와주세요</span><span class="offline" id="offline">연결 끊김</span></div>
     <div class="slots" id="slots"></div>
   </section>
 
@@ -151,7 +153,6 @@
     </div>
   </div>
 
-  <footer class="ftr"><span class="offline" id="offline">연결 끊김</span>번호가 호출되면 해당 조립대로 와주세요</footer>
   <div class="hdr">
     <div class="brand"><img src="logo_sejong.png" alt=""><span>세종대학교</span></div>
     <div class="bar"></div>
