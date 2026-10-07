@@ -50,3 +50,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 내부에 복제된 저장소(서브모듈 아님) - 커밋 제외
+SJIOT/
