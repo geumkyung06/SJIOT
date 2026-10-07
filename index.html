@@ -399,6 +399,21 @@ function chime() {
   } catch (e) {}
 }
 
+/* ---------- 음성 호출 (새로 '호출 중'이 된 조립대만, 번호당 딱 한 번) ---------- */
+// 새 호출이 들어온 순간(entered)에만 실행되고, 조립 중 전환·같은 번호 재조회·첫 로딩 때는 실행되지 않음.
+const synth = window.speechSynthesis || null;
+function particle(name) { return '036'.includes(String(name).trim().slice(-1)) ? '으로' : '로'; }
+function speakCall(idx) {
+  try {
+    if (!synth) return;
+    const c = state.calls[idx], name = CONFIG.STATIONS[idx].name;
+    if (!c) return;
+    const u = new SpeechSynthesisUtterance(`${parseInt(c.no, 10)}번 고객님, ${name}${particle(name)} 와주세요.`);
+    u.lang = 'ko-KR'; u.rate = 0.95;
+    synth.speak(u);                                  // 여러 조립대가 동시에 호출되면 순서대로 읽음
+  } catch (e) {}
+}
+
 /* =====================================================================
    외부에서 호출하는 함수:  QueueBoard.update({ calls, waiting })
    ===================================================================== */
@@ -423,7 +438,7 @@ window.QueueBoard = {
     }
     renderSlots(entered);
     if (waitingChanged) renderWaiting();      // 목록이 바뀌었을 때만 다시 그림
-    if (entered.length) chime();
+    if (entered.length) { chime(); setTimeout(() => entered.forEach(speakCall), 800); }   // 차임이 끝난 뒤 한 번씩 음성 안내
   },
   setOnline(ok) { $('offline').classList.toggle('show', !ok); },
 };
