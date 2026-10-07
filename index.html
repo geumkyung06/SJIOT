@@ -47,11 +47,11 @@
 
   /* 호출 영역 */
   /* 상단 로고 */
-  .hdr { flex: none; height: 110px; padding: 0 var(--space-6); display: flex; align-items: center; justify-content: center; gap: 28px; }
-  .brand { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
-  .brand img { height: 80px; width: auto; display: block; mix-blend-mode: multiply; user-select: none; -webkit-user-drag: none; }
-  .brand span { font-size: 34px; font-weight: 800; color: var(--text); letter-spacing: -1px; }
-  .hdr .bar { width: 3px; height: 56px; background: var(--border); border-radius: var(--radius-pill); }
+  .hdr { flex: none; height: 84px; padding: 0 var(--space-6); display: flex; align-items: center; justify-content: center; gap: 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .brand img { height: 48px; width: auto; display: block; mix-blend-mode: multiply; user-select: none; -webkit-user-drag: none; }
+  .brand span { font-size: 22px; font-weight: 700; color: var(--text-sub); letter-spacing: -.5px; }
+  .hdr .bar { width: 2px; height: 32px; background: var(--border); border-radius: var(--radius-pill); }
   #logoIot { cursor: default; -webkit-tap-highlight-color: transparent; }
 
   /* 관리자 팝업 */
@@ -72,7 +72,7 @@
   .admin .row button { flex: 1; font: 800 32px var(--font-sans); }
   .admin .row .ok { background: var(--text); color: var(--surface); border-color: var(--text); }
 
-  .calls { flex: none; padding: 32px var(--space-12) 32px; }
+  .calls { flex: none; padding: 48px var(--space-12) 32px; }
   .slots { display: flex; flex-direction: column; gap: var(--space-6); }
   .slot {
     height: 220px; border-radius: var(--radius-md); background: var(--surface); border: 2px solid var(--border);
@@ -125,12 +125,6 @@
 </head>
 <body>
 <div class="stage" id="stage">
-  <header class="hdr">
-    <div class="brand"><img src="logo_sejong.png" alt=""><span>세종대학교</span></div>
-    <div class="bar"></div>
-    <div class="brand" id="logoIot"><img src="logo_iot.png" alt=""><span>사물인터넷혁신융합대학사업단</span></div>
-  </header>
-
   <section class="calls">
     <div class="sec-label"><span class="dot"></span>호출 중</div>
     <div class="slots" id="slots"></div>
@@ -158,6 +152,11 @@
   </div>
 
   <footer class="ftr"><span class="offline" id="offline">연결 끊김</span>번호가 호출되면 해당 조립대로 와주세요</footer>
+  <div class="hdr">
+    <div class="brand"><img src="logo_sejong.png" alt=""><span>세종대학교</span></div>
+    <div class="bar"></div>
+    <div class="brand" id="logoIot"><img src="logo_iot.png" alt=""><span>사물인터넷혁신융합대학사업단</span></div>
+  </div>
 </div>
 
 <script>
