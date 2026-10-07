@@ -26,7 +26,8 @@
     --slide-time: 700ms;
   }
 
-  html, body { margin: 0; height: 100%; background: var(--background); overflow: hidden; cursor: none; }
+  html, body { margin: 0; height: 100%; background: var(--background); overflow: hidden; cursor: none;
+               touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
 
   /* 1080×1920 무대를 화면에 맞춰 축소/확대 */
   .stage {
@@ -45,7 +46,30 @@
            border: 2px solid var(--border); padding: 6px 20px; border-radius: var(--radius-pill); }
 
   /* 호출 영역 */
-  .calls { flex: none; padding: 48px var(--space-12) 32px; }
+  /* 상단 로고 */
+  .hdr { flex: none; height: 110px; padding: 0 var(--space-12); display: flex; align-items: center; justify-content: space-between; }
+  .hdr img { height: 86px; width: auto; display: block; mix-blend-mode: multiply; user-select: none; -webkit-user-drag: none; }
+  #logoIot { cursor: default; -webkit-tap-highlight-color: transparent; }
+
+  /* 관리자 팝업 */
+  .admin { position: absolute; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center;
+           background: rgba(52, 56, 63, .86); cursor: auto; }
+  .admin.show { display: flex; }
+  .admin .box { width: 640px; background: var(--surface); border-radius: var(--radius-md); padding: 48px; box-sizing: border-box; text-align: center; }
+  .admin h2 { margin: 0 0 8px; font-size: 44px; font-weight: 800; }
+  .admin p { margin: 0 0 24px; font-size: 26px; color: var(--text-sub); }
+  .admin .pw { height: 84px; margin-bottom: 8px; border: 2px solid var(--border); border-radius: var(--radius-sm); display: flex; align-items: center;
+               justify-content: center; font-size: 56px; letter-spacing: 14px; font-weight: 700; }
+  .admin .msg { height: 36px; font-size: 24px; font-weight: 700; color: #d6455a; }
+  .admin .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 8px 0 16px; }
+  .admin button { height: 96px; border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--background);
+                  font: 700 44px var(--font-num); color: var(--text); cursor: pointer; }
+  .admin button:active { background: var(--yellow); }
+  .admin .row { display: flex; gap: 12px; }
+  .admin .row button { flex: 1; font: 800 32px var(--font-sans); }
+  .admin .row .ok { background: var(--text); color: var(--surface); border-color: var(--text); }
+
+  .calls { flex: none; padding: 32px var(--space-12) 32px; }
   .slots { display: flex; flex-direction: column; gap: var(--space-6); }
   .slot {
     height: 220px; border-radius: var(--radius-md); background: var(--surface); border: 2px solid var(--border);
@@ -98,6 +122,11 @@
 </head>
 <body>
 <div class="stage" id="stage">
+  <header class="hdr">
+    <img src="logo_sejong.png" alt="세종대학교">
+    <img src="logo_iot.png" alt="사물인터넷혁신융합대학사업단" id="logoIot">
+  </header>
+
   <section class="calls">
     <div class="sec-label"><span class="dot"></span>호출 중</div>
     <div class="slots" id="slots"></div>
@@ -112,6 +141,17 @@
   </section>
 
   <div class="unlock" id="unlock"><b>화면을 터치해 시작</b><span>호출 알림음을 켜려면 한 번 터치해 주세요</span></div>
+
+  <div class="admin" id="admin">
+    <div class="box">
+      <h2>관리자 확인</h2>
+      <p>비밀번호를 입력하면 화면을 종료할 수 있습니다</p>
+      <div class="pw" id="pwView"></div>
+      <div class="msg" id="pwMsg"></div>
+      <div class="pad" id="pwPad"></div>
+      <div class="row"><button type="button" id="pwCancel">취소</button><button type="button" class="ok" id="pwOk">확인</button></div>
+    </div>
+  </div>
 
   <footer class="ftr"><span class="offline" id="offline">연결 끊김</span>번호가 호출되면 해당 조립대로 와주세요</footer>
 </div>
@@ -134,6 +174,8 @@ const CONFIG = {
   API_BASE: 'https://sjiot-backend-294910862364.asia-northeast1.run.app',
   POLL_MS: 2000,         // 상태 조회 주기
   FETCH_TIMEOUT_MS: 5000, // 요청 하나가 이보다 오래 걸리면 실패 처리 (폴링 멈춤 방지)
+  ADMIN_PW: '202611',     // 관리자 비밀번호 (로고 3초 안에 7번 클릭 시 팝업)
+  ADMIN_TAPS: 7, ADMIN_WINDOW_MS: 3000,
   OFFLINE_AFTER: 3,      // 연속 이 횟수만큼 조회 실패해야 '연결 끊김' 표시
 };
 
@@ -381,10 +423,11 @@ let audio = null;
 try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
 /* 전체화면: 브라우저 정책상 터치/키 입력 직후에만 가능 → 첫 터치 때 진입, 풀리면 다음 터치에 복귀.
    (크롬이면 Esc를 약 2초 길게 눌러야 해제 — 실수로 풀리는 것 방지) */
+let adminExited = false;                 // 관리자가 종료한 뒤에는 자동 전체화면 복귀 안 함
 function goFullscreen() {
   try {
     const el = document.documentElement;
-    if (document.fullscreenElement || !el.requestFullscreen) return;
+    if (adminExited || document.fullscreenElement || !el.requestFullscreen) return;
     el.requestFullscreen({ navigationUI: 'hide' }).then(() => {
       if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {});
     }).catch(() => {});
@@ -454,6 +497,60 @@ window.QueueBoard = {
   },
   setOnline(ok) { $('offline').classList.toggle('show', !ok); },
 };
+
+/* ---------- 관리자 팝업 (사업단 로고 3초 안에 7번 클릭) ---------- */
+const adminEl = $('admin'); let pw = '', taps = [];
+function pwRender(msg = '') { $('pwView').textContent = '●'.repeat(pw.length); $('pwMsg').textContent = msg; }
+function adminOpen() { pw = ''; pwRender(); adminEl.classList.add('show'); }
+function adminClose() { adminEl.classList.remove('show'); pw = ''; }
+function adminExit() {
+  adminExited = true; adminClose();
+  try { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } catch (e) {}
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  try { window.close(); } catch (e) {}       // 스크립트로 연 창이 아니면 브라우저가 무시함
+}
+function pwSubmit() {
+  if (pw === CONFIG.ADMIN_PW) { adminExit(); return; }
+  pw = ''; pwRender('비밀번호가 틀렸습니다');
+}
+function pwPress(d) { if (pw.length < 12) { pw += d; pwRender(); } }
+(function () {
+  const pad = $('pwPad');
+  ['1','2','3','4','5','6','7','8','9','⌫','0','C'].forEach(k => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = k;
+    b.onclick = () => k === '⌫' ? (pw = pw.slice(0, -1), pwRender()) : k === 'C' ? (pw = '', pwRender()) : pwPress(k);
+    pad.appendChild(b);
+  });
+  $('pwOk').onclick = pwSubmit; $('pwCancel').onclick = adminClose;
+  $('logoIot').addEventListener('click', () => {
+    const now = Date.now();
+    taps = taps.filter(t => now - t < CONFIG.ADMIN_WINDOW_MS); taps.push(now);
+    if (taps.length >= CONFIG.ADMIN_TAPS) { taps = []; adminOpen(); }
+  });
+  addEventListener('keydown', e => {          // 물리 키보드로도 입력 가능
+    if (!adminEl.classList.contains('show')) return;
+    if (/^[0-9]$/.test(e.key)) pwPress(e.key);
+    else if (e.key === 'Backspace') { pw = pw.slice(0, -1); pwRender(); }
+    else if (e.key === 'Enter') pwSubmit();
+  });
+})();
+
+/* ---------- 전시용 안전장치 ---------- */
+// 우클릭 메뉴·드래그·선택·확대(핀치, Ctrl+휠, Ctrl +/-)·새로고침/닫기 실수 방지
+['contextmenu', 'dragstart', 'selectstart', 'gesturestart'].forEach(ev => addEventListener(ev, e => e.preventDefault()));
+addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) e.preventDefault();
+});
+addEventListener('beforeunload', e => { if (!adminExited) { e.preventDefault(); e.returnValue = ''; } });   // 실수로 닫기·새로고침 시 확인창
+
+// 화면 꺼짐 방지 (HTTPS 필요, 탭이 다시 보이면 재요청)
+let wakeLock = null;
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && !adminExited) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+keepAwake();
 
 renderSlots(); renderWaiting();
 poll();
