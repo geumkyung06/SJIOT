@@ -73,9 +73,6 @@ def create_app():
             "version": "1.0.0",
         },
         "basePath": "/",
-        # 배포는 https, 로컬(127.0.0.1:5000)은 http 다. https 만 선언하면
-        # Swagger UI 가 로컬에서도 https 로 요청을 만들어 Execute 가 실패한다.
-        "schemes": ["https", "http"],
     }
     Swagger(app, config=swagger_config, template=template)
 
