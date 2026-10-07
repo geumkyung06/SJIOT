@@ -379,9 +379,21 @@ setInterval(() => { if (pages < 2) return; page = (page + 1) % pages; move(); re
 // (크롬을 --autoplay-policy=no-user-gesture-required 로 띄우면 안내 없이 바로 재생)
 let audio = null;
 try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+/* 전체화면: 브라우저 정책상 터치/키 입력 직후에만 가능 → 첫 터치 때 진입, 풀리면 다음 터치에 복귀.
+   (크롬이면 Esc를 약 2초 길게 눌러야 해제 — 실수로 풀리는 것 방지) */
+function goFullscreen() {
+  try {
+    const el = document.documentElement;
+    if (document.fullscreenElement || !el.requestFullscreen) return;
+    el.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+      if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {});
+    }).catch(() => {});
+  } catch (e) {}
+}
 function unlockAudio() {
   if (audio && audio.state === 'suspended') audio.resume().catch(() => {});
   $('unlock').classList.remove('show');
+  goFullscreen();
 }
 if (audio && audio.state !== 'running') $('unlock').classList.add('show');
 ['pointerdown', 'touchstart', 'keydown'].forEach(ev => addEventListener(ev, unlockAudio));
