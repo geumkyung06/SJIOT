@@ -34,7 +34,7 @@ class ApiException implements Exception {
 /// - 응답이 JSON이 아니면(Cloud Run 502 HTML 등) 경고로 출력한다.
 class ApiService {
   final String baseUrl =
-      'https://sjiot-backend-294910862364.asia-northeast1.run.app';
+      'https://charry-erminia-revelational.ngrok-free.dev';
 
   static const Duration timeout = Duration(seconds: 5);
 
@@ -125,12 +125,16 @@ class ApiService {
 
     try {
       final Future<http.Response> request = method == 'GET'
-          ? http.get(uri, headers: {'Accept': 'application/json'})
+          ? http.get(uri, headers: {
+              'Accept': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            })
           : http.post(
               uri,
               headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
               },
               body: encodedBody,
             );

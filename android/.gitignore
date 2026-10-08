@@ -12,3 +12,15 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# 빌드 결과물 (APK/AAB 파일 자체)
+*.apk
+*.aab
+build/
+
+# 로컬 환경 설정 (SDK 경로 등, 컴퓨터마다 다름)
+local.properties
+
+# 비밀 값
+.env
+*.env

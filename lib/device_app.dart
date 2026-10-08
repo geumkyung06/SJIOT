@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 
 import 'debug/app_log.dart';
 import 'dev/demo_menu.dart';
@@ -92,7 +91,6 @@ class DeviceRoot extends StatefulWidget {
 class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
   // 서비스
   final ApiService _api = ApiService();
-  final FlutterTts _tts = FlutterTts();
 
   // 앱 진행 상태
   DeviceStep _currentStep = DeviceStep.workstationSetup;
@@ -103,23 +101,19 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
   // 대기번호 호출 상태
   int? _orderCallNumber;
   String? _calledOrderId;
-  String? _lastSpokenOrderId;
 
   // 조립대 상태 조회
   Timer? _stationStatusTimer;
   bool _isFetchingStationStatus = false;
 
-  // 주문 호출 재알림 / 노쇼 처리
+  // 노쇼 처리
   //
-  // 호출된 뒤 30초마다 음성으로 다시 부르고,
-  // 3분 안에 QR 인증이 없으면 노쇼로 보고 주문을 취소한다.
-  static const Duration _orderRecallInterval = Duration(seconds: 30);
+  // 호출된 뒤 3분 안에 QR 인증이 없으면 노쇼로 보고 주문을 취소한다.
   static const Duration _noShowTimeout = Duration(minutes: 3);
 
-  Timer? _orderRecallTimer;
   Timer? _noShowTimer;
 
-  // QR 스캐너를 보고 있는 동안에는 음성 재호출을 하지 않는다.
+  // QR 스캐너가 열려 있는지 여부
   bool _isQrScannerOpen = false;
 
   // 노쇼 취소 요청이 중복 실행되는 것을 막는다.
@@ -140,8 +134,6 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _initTts();
-
     WidgetsBinding.instance.addObserver(this);
 
     // 화면이 올라온 뒤에 고정을 건다. (액티비티가 resumed 상태여야 함)
@@ -166,9 +158,6 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
     _stationStatusTimer?.cancel();
     _stopCallTimers();
-
-    // TTS 음성이 재생 중이면 종료
-    _tts.stop();
 
     super.dispose();
   }
@@ -253,9 +242,6 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
       if (!mounted) return;
 
-      // 이미 음성으로 호출했던 주문인지 확인
-      final bool shouldSpeak = _lastSpokenOrderId != orderId;
-
       setState(() {
         _calledOrderId = orderId;
         _orderCallNumber = orderSeq;
@@ -263,22 +249,14 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
       AppLog.i(
         LogTag.state,
-        '주문 배정 감지: order=$orderId 대기번호=$orderSeq '
-        '(조립대 $stationId, 음성 호출=${shouldSpeak ? '새 주문' : '이미 호출함'})',
+        '주문 배정 감지: order=$orderId 대기번호=$orderSeq (조립대 $stationId)',
       );
 
       // 주문을 찾았으므로 더 이상 폴링하지 않음
       _stopStationStatusPolling();
 
-      // 30초 재호출 · 3분 노쇼 타이머 시작
+      // 3분 노쇼 타이머 시작
       _startCallTimers();
-
-      // 새로 배정된 주문일 때만 음성 호출
-      if (shouldSpeak) {
-        _lastSpokenOrderId = orderId;
-
-        await _speakOrderCall(orderNumber: orderSeq, stationId: stationId);
-      }
     } on ApiException catch (e) {
       if (!mounted) return;
 
@@ -304,68 +282,15 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
     }
   }
 
-  // 3. 음성 호출
-  Future<void> _initTts() async {
-    await _tts.setLanguage('ko-KR');
-    await _tts.setSpeechRate(0.45);
-    await _tts.setPitch(1.0);
-    await _tts.setVolume(1.0);
-  }
-
-  Future<void> _speakOrderCall({
-    required int orderNumber,
-    required int stationId,
-  }) async {
-    final String message =
-        '주문번호 $orderNumber번 고객님, '
-        '$stationId번 조립대로 와 주세요.';
-
-    AppLog.i(LogTag.tts, '호출: "$message"');
-
-    // 이전 음성이 남아 있으면 정지
-    await _tts.stop();
-
-    // 주문번호 음성 호출
-    await _tts.speak(message);
-  }
-
-  // 3-1. 재호출 · 노쇼 타이머
+  // 3. 노쇼 타이머
   void _startCallTimers() {
     _stopCallTimers();
-
-    // 30초마다 대기번호 음성 재호출
-    _orderRecallTimer = Timer.periodic(_orderRecallInterval, (_) {
-      if (!mounted) return;
-
-      // 호출 화면이 아니거나 스캐너를 보고 있으면 재호출하지 않음
-      if (_currentStep != DeviceStep.orderCall) return;
-      if (_isQrScannerOpen) return;
-      if (_isStarting) return;
-
-      final int? orderNumber = _orderCallNumber;
-      final String? workstationNumber = _workstationNumber;
-
-      if (orderNumber == null || workstationNumber == null) return;
-
-      AppLog.i(
-        LogTag.timer,
-        '${_orderRecallInterval.inSeconds}초 경과 → 주문번호 $orderNumber번 재호출',
-      );
-
-      _speakOrderCall(
-        orderNumber: orderNumber,
-        stationId: int.parse(workstationNumber),
-      );
-    });
 
     // 3분 안에 QR 인증이 없으면 노쇼 처리
     _noShowTimer = Timer(_noShowTimeout, _handleNoShow);
   }
 
   void _stopCallTimers() {
-    _orderRecallTimer?.cancel();
-    _orderRecallTimer = null;
-
     _noShowTimer?.cancel();
     _noShowTimer = null;
   }
@@ -397,8 +322,6 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
     }
 
     _isHandlingNoShow = true;
-
-    await _tts.stop();
 
     // 스캐너를 열어둔 채 시간이 지난 경우 스캐너를 먼저 닫는다.
     if (_isQrScannerOpen) {
@@ -559,10 +482,8 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
 
       if (!mounted) return;
 
-      // QR 인증에 성공했으므로 재호출·노쇼 타이머 중지
+      // QR 인증에 성공했으므로 노쇼 타이머 중지
       _stopCallTimers();
-
-      await _tts.stop();
 
       _setStep(
         DeviceStep.waiting,
@@ -798,7 +719,6 @@ class _DeviceRootState extends State<DeviceRoot> with WidgetsBindingObserver {
   String _stateSnapshot() {
     final List<String> activeTimers = [
       if (_stationStatusTimer?.isActive ?? false) 'stationPolling',
-      if (_orderRecallTimer?.isActive ?? false) 'recall',
       if (_noShowTimer?.isActive ?? false) 'noShow',
     ];
 

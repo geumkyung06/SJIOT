@@ -6,7 +6,6 @@ class LogTag {
   static const String state = 'STATE'; // 화면(DeviceStep) 전이
   static const String api = 'API'; // 서버 요청 · 응답
   static const String timer = 'TIMER'; // 폴링 · 재호출 · 노쇼 타이머
-  static const String tts = 'TTS'; // 음성 호출
   static const String qr = 'QR'; // QR 스캔 · order_id 추출
   static const String screen = 'SCREEN'; // 각 화면 내부 동작
   static const String kiosk = 'KIOSK'; // 화면 고정
