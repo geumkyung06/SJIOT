@@ -477,8 +477,21 @@ class _AppRootState extends State<AppRoot> {
 
   //------------ 영수증 용지 상태 폴링 -------------
   // 대기열 폴링과 똑같은 원리입니다: 타이머는 앱이 사는 동안 계속 돌리되,
-  // 실제 조회는 시작 화면일 때만 합니다. 다만 이건 서버가 아니라 "이 PC에
-  // 꽂혀 있는 프린터의 Windows 드라이버"에게 묻는 것이라 네트워크와는 무관하고,
+  // 실제 조회는 시작 화면일 때만 합니다.
+  //
+  // [수정] 용지 상태를 두 군데에서 같이 확인합니다.
+  //   1. 이 PC에 꽂힌 프린터의 Windows 드라이버 상태(기존 방식) — 네트워크와
+  //      무관하고, 실제 기기에서 아직 검증 전입니다(드라이버가 용지부족
+  //      비트를 실제로 채워주는지 모름).
+  //   2. 팀장님이 새로 추가하신 백엔드 "남은 용지 수" API(GET /admin/paper,
+  //      {"remaining": 정수}) — 서버가 세고 있는 남은 매수가 0 이하면
+  //      용지부족으로 봅니다. 관리자 페이지에서 /admin/paper/refill로
+  //      수량을 바꿔보면 실제로 용지를 뽑지 않고도 이 기능을 테스트할 수
+  //      있습니다.
+  // 둘 중 하나라도 "없음"으로 확인되면 용지부족으로 판단합니다(OR). 둘 다
+  // 모르면(조회 실패 등) 직전 값을 그대로 둬서, 일시적인 조회 실패로 주문을
+  // 막아버리는 일이 없게 합니다.
+  //
   // 조회 자체가 가벼운 편은 아니라서 주기를 대기열(1초)보다 살짝 길게(2초)
   // 뒀습니다.
   void _startPaperPolling() {
@@ -491,31 +504,54 @@ class _AppRootState extends State<AppRoot> {
 
       _paperPollInFlight = true;
       try {
-        // 프린터 자체를 못 찾으면(이름이 다르거나 아직 설치 전 등) 판단을
-        // 보류합니다 — 그렇다고 주문을 막아버리면 안 되기 때문입니다.
-        final printer = await ReceiptPrinterService.findTargetPrinter();
-        if (printer == null) return;
-
-        final status = PrinterStatusService.checkPaperStatus(printer.name);
-        if (!mounted) return;
-
-        bool? paperOut;
-        switch (status) {
-          case PaperStatus.paperOut:
-            paperOut = true;
-            break;
-          case PaperStatus.ok:
-            paperOut = false;
-            break;
-          case PaperStatus.unknown:
-            paperOut = null;
-            break;
+        // 1. 이 PC에 꽂힌 프린터의 Windows 드라이버 상태.
+        bool? localPaperOut;
+        try {
+          // 프린터 자체를 못 찾으면(이름이 다르거나 아직 설치 전 등) 판단을
+          // 보류합니다 — 그렇다고 주문을 막아버리면 안 되기 때문입니다.
+          final printer = await ReceiptPrinterService.findTargetPrinter();
+          if (printer != null) {
+            final status = PrinterStatusService.checkPaperStatus(printer.name);
+            switch (status) {
+              case PaperStatus.paperOut:
+                localPaperOut = true;
+                break;
+              case PaperStatus.ok:
+                localPaperOut = false;
+                break;
+              case PaperStatus.unknown:
+                localPaperOut = null;
+                break;
+            }
+          }
+        } catch (_) {
+          // 드라이버 조회 중 예외 — 이 신호만 모름으로 둡니다.
         }
 
-        // null은 "조회 실패/지원 안 함 = 판단 보류"라는 뜻이므로 직전 값을
-        // 그대로 둡니다(대기열 현황 폴링과 동일한 정책).
-        if (paperOut != null && paperOut != _printerPaperOut) {
-          setState(() => _printerPaperOut = paperOut);
+        // 2. 백엔드가 세고 있는 남은 용지 수.
+        bool? remotePaperOut;
+        if (kApiEnabled) {
+          final remaining = await _api.getRemainingPaper();
+          if (remaining != null) {
+            remotePaperOut = remaining <= 0;
+          }
+        }
+
+        if (!mounted) return;
+
+        // 둘 중 하나라도 "없음"이면 용지부족, 하나라도 "있음"이고 나머지가
+        // 모름이면 "있음", 둘 다 모르면 판단 보류(직전 값 유지).
+        bool? combined;
+        if (localPaperOut == true || remotePaperOut == true) {
+          combined = true;
+        } else if (localPaperOut == false || remotePaperOut == false) {
+          combined = false;
+        } else {
+          combined = null;
+        }
+
+        if (combined != null && combined != _printerPaperOut) {
+          setState(() => _printerPaperOut = combined);
         }
       } catch (_) {
         // 조회 중 예외 — 판단 보류(직전 값 유지), 주문은 막지 않습니다.
