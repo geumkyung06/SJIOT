@@ -19,6 +19,9 @@ import 'services/kiosk_window_web.dart'
     if (dart.library.io) 'services/kiosk_window_io.dart';
 
 import 'services/receipt_printer_service.dart';
+// [신규] 영수증 용지 부족 확인(Windows 드라이버 상태 조회). printer_status_io.dart
+// 안에서 또 한 번 조건부 임포트로 분기하므로 여기서는 그냥 일반 임포트입니다.
+import 'services/printer_status_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/mbti_choice_screen.dart';
 import 'screens/mbti_quiz_screen.dart';
@@ -73,6 +76,9 @@ const bool kApiEnabled = true;
 // 백엔드/조립대 작업이 끝나서 주문이 정상적으로 만들어지면 false로 바꾸세요.
 // (true인 채로 행사에 나가면 주문이 안 만들어진 손님에게도 주문번호 '-'와
 // QR 없음 안내만 찍힌 영수증이 나와서 종이만 낭비됩니다.)
+// [복구] 프린터 자체는 실제 기기에서 2회 출력 성공으로 확인이 끝났으므로
+// false로 되돌립니다. 만약 실제 QR 주문으로 영수증이 나오는 것까지는 아직
+// 확인 전이라면, 그 확인이 끝나기 전까지만 다시 true로 돌려서 쓰세요.
 const bool kPrintReceiptWithoutOrder = false;
 
 // [임시/프린터 연동 확인용] 콘솔을 볼 수 없는 exe 실행에서도 영수증 출력이
@@ -80,6 +86,8 @@ const bool kPrintReceiptWithoutOrder = false;
 // 영수증 화면에서 출력하고, 처음 화면으로 돌아온 뒤에도 다음 주문을 시작할
 // 때까지 남아있습니다. 확인이 끝나면 false로 바꾸고 exe를 다시 빌드하세요.
 // (false면 화면에 아무것도 표시되지 않고 원래 화면 그대로입니다.)
+// [복구] 프린터 점검이 끝났으므로 false로 되돌립니다. 행사 중 다시 점검이
+// 필요하면 true로 바꿔서 다시 빌드하세요.
 const bool kShowPrintDebugOverlay = false;
 
 enum AppStep {
@@ -241,26 +249,26 @@ class _AppRootState extends State<AppRoot> {
       'options': [
         {'text': '전체적인 흐름과 가능성을 먼저 본다', 'letter': 'N'},
         {'text': '떠오르는 아이디어와 상상을 즐긴다', 'letter': 'N'},
-        {'text': '구체적인 사실과 세부사항을 먼저 본다', 'letter': 'S'},
-        {'text': '경험하거나 검증된 정보를 더 믿는다', 'letter': 'S'},
+        {'text': '구체적인 사실과 세부사항을 본다', 'letter': 'S'},
+        {'text': '경험하고 검증된 것을 믿는다', 'letter': 'S'},
       ],
     },
     {
       'question': '결정을 내릴 때 나는?',
       'options': [
-        {'text': '모두가 만족할 방향을 생각한다', 'letter': 'F'},
-        {'text': '모두가 만족할 수 있는 방향을 생각한다', 'letter': 'F'},
+        {'text': '사람들의 감정과 관계를 먼저 고려한다', 'letter': 'F'},
+        {'text': '공감과 조화를 중요하게 생각한다', 'letter': 'F'},
         {'text': '논리와 원칙을 기준으로 판단한다', 'letter': 'T'},
-        {'text': '사실과 근거를 기준으로 판단한다', 'letter': 'T'},
+        {'text': '객관적인 사실에 따라 결정한다', 'letter': 'T'},
       ],
     },
     {
       'question': '일정을 관리할 때 나는?',
       'options': [
         {'text': '미리 계획을 세우고 그대로 실행한다', 'letter': 'J'},
-        {'text': '해야 할 일을 정리하고 기한에 맞춰 끝낸다', 'letter': 'J'},
-        {'text': '상황에 따라 그때그때 조정하는 편이다', 'letter': 'P'},
-        {'text': '필요하면 계획을 유연하게 바꾼다', 'letter': 'P'},
+        {'text': '정리하고 마감을 철저히 지킨다', 'letter': 'J'},
+        {'text': '즉흥적으로 상황에 맞춰 움직인다', 'letter': 'P'},
+        {'text': '유연하게 계획을 바꾸는 걸 좋아한다', 'letter': 'P'},
       ],
     },
   ];
@@ -340,6 +348,19 @@ class _AppRootState extends State<AppRoot> {
   //   false — 여유 있음. 평소대로 동작.
   bool? _queueFull;
 
+  // ---------------- 영수증 용지 상태 ----------------
+  // [신규] 대기열 현황과 똑같은 방식으로, 시작 화면에 머무는 동안 영수증
+  // 프린터의 Windows 드라이버 상태를 계속 조회해서 용지가 떨어진 상태면
+  // 주문을 "시작조차" 못 하게 막습니다(대기열 가득 참과 동일한 처리 방식).
+  static const Duration _paperPollInterval = Duration(seconds: 2);
+  Timer? _paperPollTimer;
+  bool _paperPollInFlight = false;
+  // null  — 아직 모름(프린터를 못 찾음/드라이버가 상태를 안 알려줌 포함).
+  //         판단 보류 = 시작 허용.
+  // true  — 용지 없음으로 확인됨. 시작하기를 막고 안내 문구를 띄웁니다.
+  // false — 용지 있음. 평소대로 동작.
+  bool? _printerPaperOut;
+
   // ---------------- 영수증 화면 표시용 값 ----------------
   String? _receiptOrderNumber;
   String? _receiptTime;
@@ -402,6 +423,8 @@ class _AppRootState extends State<AppRoot> {
     );
     // [신규] 시작 화면 대기열 현황 폴링 시작(앱이 살아있는 동안 계속 돕니다).
     _startQueuePolling();
+    // [신규] 시작 화면 영수증 용지 상태 폴링 시작.
+    _startPaperPolling();
   }
 
   void _resetLetters() {
@@ -448,6 +471,92 @@ class _AppRootState extends State<AppRoot> {
         }
       } finally {
         _queuePollInFlight = false;
+      }
+    });
+  }
+
+  //------------ 영수증 용지 상태 폴링 -------------
+  // 대기열 폴링과 똑같은 원리입니다: 타이머는 앱이 사는 동안 계속 돌리되,
+  // 실제 조회는 시작 화면일 때만 합니다.
+  //
+  // [수정] 용지 상태를 두 군데에서 같이 확인합니다.
+  //   1. 이 PC에 꽂힌 프린터의 Windows 드라이버 상태(기존 방식) — 네트워크와
+  //      무관하고, 실제 기기에서 아직 검증 전입니다(드라이버가 용지부족
+  //      비트를 실제로 채워주는지 모름).
+  //   2. 팀장님이 새로 추가하신 백엔드 "남은 용지 수" API(GET /admin/paper,
+  //      {"remaining": 정수}) — 서버가 세고 있는 남은 매수가 0 이하면
+  //      용지부족으로 봅니다. 관리자 페이지에서 /admin/paper/refill로
+  //      수량을 바꿔보면 실제로 용지를 뽑지 않고도 이 기능을 테스트할 수
+  //      있습니다.
+  // 둘 중 하나라도 "없음"으로 확인되면 용지부족으로 판단합니다(OR). 둘 다
+  // 모르면(조회 실패 등) 직전 값을 그대로 둬서, 일시적인 조회 실패로 주문을
+  // 막아버리는 일이 없게 합니다.
+  //
+  // 조회 자체가 가벼운 편은 아니라서 주기를 대기열(1초)보다 살짝 길게(2초)
+  // 뒀습니다.
+  void _startPaperPolling() {
+    _paperPollTimer?.cancel();
+    _paperPollTimer = Timer.periodic(_paperPollInterval, (_) async {
+      if (!mounted) return;
+      // 대기열 폴링과 동일하게, 시작 화면에 있을 때만 확인합니다.
+      if (_step != AppStep.home) return;
+      if (_paperPollInFlight) return;
+
+      _paperPollInFlight = true;
+      try {
+        // 1. 이 PC에 꽂힌 프린터의 Windows 드라이버 상태.
+        bool? localPaperOut;
+        try {
+          // 프린터 자체를 못 찾으면(이름이 다르거나 아직 설치 전 등) 판단을
+          // 보류합니다 — 그렇다고 주문을 막아버리면 안 되기 때문입니다.
+          final printer = await ReceiptPrinterService.findTargetPrinter();
+          if (printer != null) {
+            final status = PrinterStatusService.checkPaperStatus(printer.name);
+            switch (status) {
+              case PaperStatus.paperOut:
+                localPaperOut = true;
+                break;
+              case PaperStatus.ok:
+                localPaperOut = false;
+                break;
+              case PaperStatus.unknown:
+                localPaperOut = null;
+                break;
+            }
+          }
+        } catch (_) {
+          // 드라이버 조회 중 예외 — 이 신호만 모름으로 둡니다.
+        }
+
+        // 2. 백엔드가 세고 있는 남은 용지 수.
+        bool? remotePaperOut;
+        if (kApiEnabled) {
+          final remaining = await _api.getRemainingPaper();
+          if (remaining != null) {
+            remotePaperOut = remaining <= 0;
+          }
+        }
+
+        if (!mounted) return;
+
+        // 둘 중 하나라도 "없음"이면 용지부족, 하나라도 "있음"이고 나머지가
+        // 모름이면 "있음", 둘 다 모르면 판단 보류(직전 값 유지).
+        bool? combined;
+        if (localPaperOut == true || remotePaperOut == true) {
+          combined = true;
+        } else if (localPaperOut == false || remotePaperOut == false) {
+          combined = false;
+        } else {
+          combined = null;
+        }
+
+        if (combined != null && combined != _printerPaperOut) {
+          setState(() => _printerPaperOut = combined);
+        }
+      } catch (_) {
+        // 조회 중 예외 — 판단 보류(직전 값 유지), 주문은 막지 않습니다.
+      } finally {
+        _paperPollInFlight = false;
       }
     });
   }
@@ -663,25 +772,12 @@ class _AppRootState extends State<AppRoot> {
           _step = AppStep.home;
           break;
         case AppStep.mbtiQuiz:
-          // [수정] 2번째 문항부터는 바로 앞 문항으로만 돌아감 (앞 답변은 지워서 다시 고르게 함)
-          // 첫 문항에서 누를 때만 선택 화면으로 나감
-          if (_quizIndex > 0) {
-            _quizIndex--;
-            _quizAnswers[_quizIndex] = null;
-          } else {
-            _resetQuiz();
-            _step = AppStep.mbtiChoice;
-          }
+          _resetQuiz();
+          _step = AppStep.mbtiChoice;
           break;
         case AppStep.mbtiManual:
-          // [수정] 직접 입력도 동일하게 한 단계씩 뒤로
-          if (_manualIndex > 0) {
-            _manualIndex--;
-            _manualAnswers[_manualIndex] = null;
-          } else {
-            _resetManual();
-            _step = AppStep.mbtiChoice;
-          }
+          _resetManual();
+          _step = AppStep.mbtiChoice;
           break;
         case AppStep.mbtiResult:
           _step = AppStep.mbtiChoice;
@@ -810,8 +906,12 @@ class _AppRootState extends State<AppRoot> {
       //   }
       //   break;
       case AppStep.home:
-        // [수정] 대기열이 가득 찬 동안에는 Enter도 무시합니다.
-        if (isEnter && !_stockLoading && _queueFull != true) {
+        // [수정] 대기열이 가득 찼거나 영수증 용지가 없는 동안에는 Enter도
+        // 무시합니다.
+        if (isEnter &&
+            !_stockLoading &&
+            _queueFull != true &&
+            _printerPaperOut != true) {
           _startOrder();
         }
         break;
@@ -1336,38 +1436,31 @@ class _AppRootState extends State<AppRoot> {
         // 주문이 정상 생성됐으면 그 order_id로 실제 QR 이미지를 받아옵니다.
         // (실패해도 영수증 자체는 이미 떠 있으므로 조용히 자리표시자로 남겨둠)
         final orderId = _orderId;
-
-        // [수정] QR을 기다리는 동안(최대 15초) 화면이 8초 뒤 처음으로 돌아가면
-        // 주문번호/MBTI 등 영수증 값이 초기화됩니다. 그래서 출력할 내용을
-        // 지금 시점에 미리 고정해 두고, QR이 오면 그 내용으로 출력합니다.
-        final receipt = _captureReceipt();
         Uint8List? qrBytes;
 
         if (orderId != null) {
-          final qrWatch = Stopwatch()..start();
           try {
-            // [수정] 예전에는 5초 한 번만 기다려서, 서버가 조금만 늦어도 QR이
-            // 빠졌습니다. 이제 getOrderQr 안에서 타임아웃/404/5xx 시 재시도하고
-            // 전체 최대 15초까지 기다립니다. (api_service.dart 참고)
-            qrBytes = await _api.getOrderQr(orderId);
+            // QR 서버가 응답하지 않아도 영수증 출력이 무한정 밀리지 않도록
+            // 5초까지만 기다립니다. (화면은 8초 뒤 자동으로 처음으로 돌아갑니다)
+            qrBytes = await _api
+                .getOrderQr(orderId)
+                .timeout(const Duration(seconds: 5));
 
             // 화면에 사용할 QR 저장
-            // 그 사이 처음 화면으로 돌아갔거나 다음 손님 주문이 시작됐으면
-            // (= _orderId가 바뀌었으면) 이전 손님 QR을 화면에 넣지 않습니다.
-            if (mounted && _orderId == orderId) {
+            if (mounted) {
               setState(() {
                 _receiptQrBytes = qrBytes;
               });
             }
           } catch (e) {
-            print('>>> QR 조회 실패 (${qrWatch.elapsedMilliseconds}ms): $e');
+            print('>>> QR 조회 실패: $e');
           }
         }
 
         // [수정] 영수증 화면이 뜨면 QR 조회가 성공했는지와 상관없이 영수증을
         // 출력합니다. QR이 없으면 프린터 서비스가 "QR 정보를 불러오지
         // 못했습니다." 문구를 대신 찍습니다.
-        await _printReceipt(qrBytes: qrBytes, receipt: receipt);
+        await _printReceipt(qrBytes: qrBytes);
 
         return; // 성공했으므로 재시도 루프 종료
       } on TimeoutException {
@@ -1507,39 +1600,23 @@ class _AppRootState extends State<AppRoot> {
     }
   }
 
-  // [신규] 지금 화면에 있는 영수증 내용을 그대로 복사해 둡니다.
-  _ReceiptSnapshot _captureReceipt() {
-    return _ReceiptSnapshot(
-      orderNumber: _receiptOrderNumber ?? '-',
-      time: _receiptTime ?? _formatNowHHmm(),
-      mbti: _mbtiResult ?? '----',
-      keycapLabels: List.generate(
-        _boardCount,
-        (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
-      ),
-    );
-  }
-
   // [영수증 출력] 영수증 화면이 뜬 직후에 호출됩니다.
   // qrBytes가 null이어도 출력합니다. 출력이 실패해도 화면 진행에는 영향이 없고
   // 콘솔(그리고 kShowPrintDebugOverlay가 켜져 있으면 화면 우측 상단)에
   // 실패 이유가 남습니다.
-  // [수정] receipt를 넘기면 그 내용으로 출력합니다(QR을 기다리는 사이 화면이
-  // 초기화돼도 원래 손님 내용이 찍히도록). 안 넘기면 지금 화면 값으로 출력합니다.
-  Future<void> _printReceipt({
-    Uint8List? qrBytes,
-    _ReceiptSnapshot? receipt,
-  }) async {
-    final data = receipt ?? _captureReceipt();
+  Future<void> _printReceipt({Uint8List? qrBytes}) async {
     final job = ++_printJobSeq;
     _setPrintDebug(job, '출력 중...', null);
 
     try {
       await ReceiptPrinterService.printReceipt(
-        orderNumber: data.orderNumber,
-        time: data.time,
-        mbti: data.mbti,
-        keycapLabels: data.keycapLabels,
+        orderNumber: _receiptOrderNumber ?? '-',
+        time: _receiptTime ?? _formatNowHHmm(),
+        mbti: _mbtiResult ?? '----',
+        keycapLabels: List.generate(
+          _boardCount,
+          (i) => _keycapColorLabels[_colorCodes[i]] ?? '-',
+        ),
         qrBytes: qrBytes,
       );
 
@@ -1548,7 +1625,7 @@ class _AppRootState extends State<AppRoot> {
       final detail = ReceiptPrinterService.lastPrintInfo;
       _setPrintDebug(
         job,
-        '출력 요청 성공 (QR ${qrBytes != null ? '포함' : '없음'})\n'
+        '출력 요청 성공\n'
         '${detail != null ? '$detail\n' : ''}'
         '프린터에서 용지가 나오는지 확인하세요',
         true,
@@ -1742,6 +1819,7 @@ class _AppRootState extends State<AppRoot> {
     _doneRestartTimer?.cancel();
     _exitDialogTimeoutTimer?.cancel();
     _queuePollTimer?.cancel();
+    _paperPollTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -1753,9 +1831,17 @@ class _AppRootState extends State<AppRoot> {
       case AppStep.home:
         screen = HomeScreen(
           onEnter: () => _startOrder(),
-          // [수정] 재고 조회 중이거나 대기열이 가득 찬 동안에는 탭도 막습니다.
-          enabled: !_stockLoading && _queueFull != true,
+          // [수정] 재고 조회 중이거나 대기열이 가득 찼거나 영수증 용지가
+          // 없는 동안에는 탭도 막습니다.
+          enabled: !_stockLoading &&
+              _queueFull != true &&
+              _printerPaperOut != true,
           queueFull: _queueFull == true,
+          // [수정] home_screen.dart에 paperOut을 추가해서, 이제는 대기열
+          // 가득 참과 똑같은 방식으로 화면 안에서 직접 안내합니다. (기존에는
+          // home_screen.dart가 없어서 화면 위에 덧그리는 badge였습니다 —
+          // 이제 파일을 받아서 제대로 통합했습니다)
+          paperOut: _printerPaperOut == true,
         );
         break;
 
@@ -2481,19 +2567,4 @@ class _OfflineModeBadge extends StatelessWidget {
       ),
     );
   }
-}
-
-/// [신규] 영수증에 찍을 내용을 한 시점에 고정해 둔 값.
-class _ReceiptSnapshot {
-  final String orderNumber;
-  final String time;
-  final String mbti;
-  final List<String> keycapLabels;
-
-  const _ReceiptSnapshot({
-    required this.orderNumber,
-    required this.time,
-    required this.mbti,
-    required this.keycapLabels,
-  });
 }

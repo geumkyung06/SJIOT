@@ -40,17 +40,20 @@ class ReceiptPrinterService {
     return PdfPageFormat(width, height, marginAll: 4 * mm);
   }
 
-  /// 실제 SLK-TS100으로 영수증 출력
-  static Future<void> printReceipt({
-    required String orderNumber,
-    required String time,
-    required String mbti,
-    required List<String> keycapLabels,
-    Uint8List? qrBytes,
-  }) async {
-    lastPrintInfo = null;
+  /// 프린터 이름이 우리가 찾는 영수증 프린터(SLK-TS100/SEWOO)인지 확인합니다.
+  static bool _isTargetPrinterName(String name) {
+    final lower = name.toLowerCase();
+    return lower.contains('slk-ts100') ||
+        lower.contains('slk ts100') ||
+        lower.contains('sewoo');
+  }
 
-    // 1. Windows에 설치된 프린터 목록 조회
+  /// [신규] 설치된 프린터 목록에서 영수증 프린터(SLK-TS100)를 찾습니다.
+  /// 실제 출력(printReceipt)과, 출력 전 용지 상태만 미리 확인하고 싶을 때
+  /// (printer_status_service.dart) 둘 다 이 메서드로 같은 탐색 로직을 씁니다.
+  /// 못 찾으면 예외를 던지지 않고 null을 돌려줍니다 — 호출하는 쪽에서
+  /// "프린터가 없으면 그냥 모름"처럼 각자 사정에 맞게 처리하도록 하기 위함입니다.
+  static Future<Printer?> findTargetPrinter() async {
     final printers = await Printing.listPrinters();
 
     debugPrint('========== 설치된 프린터 ==========');
@@ -65,19 +68,28 @@ class ReceiptPrinterService {
 
     debugPrint('===================================');
 
-    // 2. SLK-TS100 찾기
-    Printer? targetPrinter;
-
     for (final printer in printers) {
-      final name = printer.name.toLowerCase();
-
-      if (name.contains('slk-ts100') ||
-          name.contains('slk ts100') ||
-          name.contains('sewoo')) {
-        targetPrinter = printer;
-        break;
+      if (_isTargetPrinterName(printer.name)) {
+        return printer;
       }
     }
+
+    return null;
+  }
+
+  /// 실제 SLK-TS100으로 영수증 출력
+  static Future<void> printReceipt({
+    required String orderNumber,
+    required String time,
+    required String mbti,
+    required List<String> keycapLabels,
+    Uint8List? qrBytes,
+  }) async {
+    lastPrintInfo = null;
+
+    // 1~2. 설치된 프린터 목록에서 SLK-TS100 찾기 (findTargetPrinter 안에서
+    // 콘솔에 설치된 프린터 전체 목록도 같이 찍습니다)
+    final targetPrinter = await findTargetPrinter();
 
     if (targetPrinter == null) {
       throw Exception(

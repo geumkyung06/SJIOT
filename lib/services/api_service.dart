@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -14,8 +13,27 @@ import 'http_client_web.dart' if (dart.library.io) 'http_client_io.dart';
 /// Flask 백엔드(POST /order, GET /order/<id>/status) 연동.
 /// baseUrl은 실제 EC2 도메인으로 교체해서 쓰세요.
 class ApiService {
+  // [수정] 팀장님이 Redis 사용량 문제로 백엔드를 Cloud Run에서 로컬 서버로
+  // 옮기고, ngrok으로 외부 접속을 뚫어놓는 방식으로 바꿨습니다(2026-10-08).
+  // 예전 Cloud Run 주소("...run.app")는 더 이상 쓰지 않습니다.
+  //
+  // [주의] 이 ngrok 주소는 팀장님 컴퓨터가 로컬 서버 + ngrok을 계속 켜두고
+  // 있어야만 동작합니다. 팀장님 PC가 꺼지거나 ngrok이 종료되면 이 주소
+  // 전체가 응답하지 않게 되고, 무료 ngrok은 재시작할 때마다 주소 자체가
+  // 바뀔 수도 있습니다 — 이전처럼 "서버가 안 떠서 안 되는" 상황이 다시
+  // 생기면, 먼저 팀장님께 로컬 서버/ngrok이 켜져 있는지, 주소가 그대로인지
+  // 확인하는 게 우선입니다.
   static const String baseUrl =
-      'https://sjiot-backend-294910862364.asia-northeast1.run.app';
+      'https://charry-erminia-revelational.ngrok-free.dev';
+
+  // [신규] ngrok 무료 플랜은 브라우저가 아닌 요청(우리 앱 같은)에도 기본적으로
+  // "방문 경고" HTML 페이지를 끼워 보냅니다. 이 헤더를 안 보내면 서버가 내려준
+  // 정상 JSON 대신 그 경고 HTML이 와서 jsonDecode가 깨집니다(예전에 봤던
+  // FormatException/"Service Unavailable"류 증상과 똑같은 모양으로 나타날 수
+  // 있습니다). 팀장님이 알려주신 대로 모든 요청에 이 헤더를 추가합니다.
+  static const Map<String, String> _ngrokHeaders = {
+    'ngrok-skip-browser-warning': 'true',
+  };
 
   // [신규] 학교/전시장 네트워크(또는 이 PC에 걸린 프록시)의 SSL 검사
   // 장비가 발급한 루트 인증서를 신뢰 목록에 "추가"해서 HandshakeException
@@ -44,6 +62,43 @@ class ApiService {
     return _client!;
   }
 
+  // [신규] 서버(또는 그 앞단의 Cloud Run/프록시)가 JSON이 아닌 응답
+  // (예: 순수 텍스트 "Service Unavailable", HTML 에러 페이지 등)을 줄 때
+  // jsonDecode가 FormatException을 던지며 그대로 죽는 걸 막기 위한
+  // 공용 디코딩 헬퍼입니다.
+  //
+  // - 이런 응답은 보통 서버가 완전히 꺼져있거나(한도 초과로 중지 등)
+  //   Cloud Run 자체가 요청을 못 받아줄 때 나옵니다 — 앱 코드/배포 문제가
+  //   아니라 "지금 서버가 응답할 수 없다"는 뜻입니다.
+  // - statusCode가 200이 아니면 본문을 JSON으로 파싱 시도하기 "전에"
+  //   먼저 에러로 처리합니다. 바디가 JSON이면 그 안의 'error' 메시지를,
+  //   아니면 상태 코드와 원문 일부를 담아 예외를 던집니다.
+  Map<String, dynamic> _decodeOkJson(http.Response res, String fallbackLabel) {
+    if (res.statusCode != 200) {
+      // 실패 응답은 JSON이 아닐 수 있으므로, 파싱을 시도하되 실패하면
+      // 원문(앞부분)을 그대로 메시지에 담습니다.
+      String detail;
+      try {
+        final body = jsonDecode(utf8.decode(res.bodyBytes));
+        detail = (body is Map && body['error'] != null)
+            ? body['error'].toString()
+            : res.body;
+      } catch (_) {
+        detail = utf8.decode(res.bodyBytes, allowMalformed: true);
+      }
+      final shortDetail =
+          detail.length > 120 ? '${detail.substring(0, 120)}...' : detail;
+      throw Exception('$fallbackLabel (${res.statusCode}): $shortDetail');
+    }
+
+    try {
+      return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    } on FormatException {
+      // statusCode는 200인데 바디가 JSON이 아닌 극히 드문 경우에 대한 방어.
+      throw Exception('$fallbackLabel: 서버 응답을 해석할 수 없습니다(JSON 아님)');
+    }
+  }
+
   Future<Map<String, dynamic>> createOrder({
     // [수정] Mobius cnt_order 스펙 변경: 판(board) 크기 선택이 사라지고
     // 판 "색상"을 고르는 방식으로 바뀌면서 board가 int(칸 수)가 아니라
@@ -70,6 +125,7 @@ class ApiService {
         .post(
           Uri.parse('$baseUrl/order'),
           headers: {
+            ..._ngrokHeaders,
             'Content-Type': 'application/json',
             // [신규] 같은 uuid로 재시도해도 서버가 같은 주문으로 취급하게 하는 헤더
             'Idempotency-Key': idempotencyKey,
@@ -81,10 +137,12 @@ class ApiService {
         // 경우"로 판단해 같은 idempotencyKey로 재시도합니다.
         .timeout(const Duration(seconds: 10));
 
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) {
-      throw Exception(body['error'] ?? '주문 생성 실패 (${res.statusCode})');
-    }
+    // [수정] statusCode를 먼저 보지 않고 무조건 jsonDecode부터 하면, 서버가
+    // (예: Cloud Run 한도 초과 등으로) JSON이 아닌 텍스트를 줄 때
+    // FormatException이 그대로 터져서 "응답을 못 받은 경우"와 구분이 안 되는
+    // 채로 죽었습니다. 공용 헬퍼로 바꿔서 어떤 경우든 깔끔한 Exception으로
+    // 통일합니다.
+    final body = _decodeOkJson(res, '주문 생성 실패');
 
     // [수정] 이전에는 body['order_status'] 안쪽 내용만 반환해서, 그 바깥(최상위)에
     // order_seq 같은 필드가 있는 경우 통째로 유실되고 있었습니다.
@@ -102,95 +160,30 @@ class ApiService {
 
   Future<Map<String, dynamic>> getOrderStatus(String orderId) async {
     final client = await _getClient();
-    final res = await client.get(Uri.parse('$baseUrl/order/$orderId/status'));
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) {
-      throw Exception(body['error'] ?? '상태 조회 실패 (${res.statusCode})');
-    }
-    return body;
+    final res = await client.get(
+      Uri.parse('$baseUrl/order/$orderId/status'),
+      headers: _ngrokHeaders,
+    );
+    return _decodeOkJson(res, '상태 조회 실패');
   }
 
-  /// GET /order/{order_id}/qr — 주문 상태 페이지 QR 코드(PNG 이미지) 조회.
-  /// 서버는 PNG 이미지를 응답 바디에 그대로 실어 보냅니다.
-  ///
-  /// [수정] 예전에는 main.dart에서 5초 한 번만 기다리고 끝냈기 때문에,
-  /// 서버가 QR을 만드는 데 조금만 오래 걸려도(Cloud Run 인스턴스가 새로
-  /// 뜨는 경우 등) 영수증에 QR이 빠졌습니다. 이제 아래처럼 재시도합니다.
-  ///   - 한 번 요청에 최대 [perAttemptTimeout]까지 기다림
-  ///   - 타임아웃 / 연결 실패 / 404(주문이 아직 조회되지 않음) / 429 / 5xx 이면
-  ///     잠깐 쉬고 다시 요청 (최대 [maxAttempts]번)
-  ///   - 전체 대기 시간은 [totalBudget]을 넘지 않음 (영수증이 너무 늦게
-  ///     나오지 않도록)
-  ///   - 그 외 응답(400 등)은 다시 요청해도 결과가 같으므로 바로 실패 처리
-  Future<Uint8List> getOrderQr(
-    String orderId, {
-    int maxAttempts = 3,
-    Duration perAttemptTimeout = const Duration(seconds: 7),
-    Duration totalBudget = const Duration(seconds: 15),
-  }) async {
+  /// GET /order/{order_id}/qr — 주문 상태 페이지 QR 코드 생성.
+  /// [주의] 서버가 QR 이미지(PNG 등)를 응답 바디에 그대로 실어 보내는
+  /// 경우를 기준으로 작성했습니다. 만약 실제로는 JSON
+  /// (예: {"qr_base64": "..."} 또는 {"qr_url": "..."})으로 온다면
+  /// 그 형태를 알려주시면 파싱 방식을 맞춰 수정하겠습니다.
+  Future<Uint8List> getOrderQr(String orderId) async {
     final client = await _getClient();
-    final uri = Uri.parse('$baseUrl/order/$orderId/qr');
-    final stopwatch = Stopwatch()..start();
-    Object? lastError;
+    final res = await client.get(
+      Uri.parse('$baseUrl/order/$orderId/qr'),
+      headers: _ngrokHeaders,
+    );
 
-    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-      final remaining = totalBudget - stopwatch.elapsed;
-      if (remaining <= Duration.zero) break;
-      final timeout =
-          remaining < perAttemptTimeout ? remaining : perAttemptTimeout;
-
-      try {
-        final res = await client.get(uri).timeout(timeout);
-
-        if (res.statusCode == 200) {
-          final bytes = res.bodyBytes;
-          // 200인데 PNG가 아닌 내용(에러 페이지 등)이 오면 PDF 생성 자체가
-          // 실패해서 영수증이 통째로 안 나오므로, 여기서 미리 걸러냅니다.
-          if (!_isPng(bytes)) {
-            throw Exception(
-              'QR 응답이 PNG 이미지가 아닙니다 '
-              '(${bytes.length} bytes, content-type: ${res.headers['content-type']})',
-            );
-          }
-          print('>>> [QR] 조회 성공 — $attempt번째 시도, '
-              '${stopwatch.elapsedMilliseconds}ms, ${bytes.length} bytes');
-          return bytes;
-        }
-
-        final retryable = res.statusCode == 404 ||
-            res.statusCode == 429 ||
-            res.statusCode >= 500;
-        lastError = Exception('QR 코드 조회 실패 (${res.statusCode})');
-        print('>>> [QR] 응답 ${res.statusCode} — $attempt/$maxAttempts번째 시도');
-        if (!retryable) break;
-      } on TimeoutException {
-        lastError = TimeoutException(
-          'QR 응답 없음 (${timeout.inMilliseconds}ms 초과)',
-        );
-        print('>>> [QR] 응답 없음(타임아웃) — $attempt/$maxAttempts번째 시도');
-      } on http.ClientException catch (e) {
-        lastError = e;
-        print('>>> [QR] 네트워크 연결 실패 — $attempt/$maxAttempts번째 시도: $e');
-      }
-
-      // 다음 시도 전 잠깐 대기 (1초, 2초 ...)
-      if (attempt < maxAttempts) {
-        final wait = Duration(seconds: attempt);
-        if (stopwatch.elapsed + wait >= totalBudget) break;
-        await Future.delayed(wait);
-      }
+    if (res.statusCode != 200) {
+      throw Exception('QR 코드 조회 실패 (${res.statusCode})');
     }
 
-    throw lastError ?? TimeoutException('QR 조회 시간 초과');
-  }
-
-  static bool _isPng(Uint8List bytes) {
-    const signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    if (bytes.length < signature.length) return false;
-    for (var i = 0; i < signature.length; i++) {
-      if (bytes[i] != signature[i]) return false;
-    }
-    return true;
+    return res.bodyBytes;
   }
 
   /// GET /queue/status — 대기열 현황 조회.
@@ -218,15 +211,21 @@ class ApiService {
   Future<Map<String, dynamic>> getQueueStatus() async {
     final client = await _getClient();
     final res = await client
-        .get(Uri.parse('$baseUrl/queue/status'))
+        .get(
+          Uri.parse('$baseUrl/queue/status'),
+          headers: _ngrokHeaders,
+        )
         // [신규] 키오스크가 오류 처리 도중 멈춰 서지 않도록 짧은 타임아웃을 둡니다.
         .timeout(const Duration(seconds: 5));
-    // [수정] 한글 에러 메시지가 깨지지 않도록 utf8로 직접 디코딩합니다.
-    final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    if (res.statusCode != 200) {
-      throw Exception(body['error'] ?? '대기열 조회 실패 (${res.statusCode})');
-    }
-    return body;
+    // [수정] 예전에는 statusCode를 보기 전에 무조건 jsonDecode부터 했습니다.
+    // 서버가 완전히 응답 불가 상태(예: Cloud Run 한도 초과로 내려가 있을 때)면
+    // 몸통이 "Service Unavailable" 같은 순수 텍스트로 와서
+    // `FormatException: Unexpected character (at character 1)`가 그대로
+    // 터졌습니다 — 앱이 잘못된 게 아니라 "서버가 지금 응답을 못 준다"는
+    // 신호였는데, 예외 메시지만 보면 코드 문제처럼 보였던 것입니다.
+    // 이제는 공용 헬퍼가 statusCode를 먼저 확인하고, JSON이 아니어도
+    // 깔끔한 Exception으로 바꿔줍니다.
+    return _decodeOkJson(res, '대기열 조회 실패');
   }
 
   /// [신규] "대기열이 가득 찼는가"만 알면 되는 곳에서 쓰는 헬퍼.
@@ -249,6 +248,37 @@ class ApiService {
     }
   }
 
+  /// [신규] GET /admin/paper — 남은 영수증 용지 수 조회.
+  /// 팀장님이 관리자 페이지용으로 추가하신 API입니다(응답: {"remaining": 정수}).
+  /// 관리자 페이지에는 용지 리필용 POST /admin/paper/refill도 있지만, 그건
+  /// 스태프가 관리자 페이지에서 쓰는 것이라 키오스크 앱에서는 호출하지
+  /// 않습니다 — 키오스크는 "지금 남은 수"만 조회해서 0 이하면 용지부족으로
+  /// 판단하는 데 씁니다 (main.dart의 _startPaperPolling 참고).
+  ///
+  /// 반환값: 남은 매수(0 이상 정수). 조회 실패/형식이 다르면 null(판단 보류).
+  Future<int?> getRemainingPaper() async {
+    try {
+      final client = await _getClient();
+      final res = await client
+          .get(
+            Uri.parse('$baseUrl/admin/paper'),
+            headers: _ngrokHeaders,
+          )
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200) return null;
+
+      final body =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final remaining = body['remaining'];
+      if (remaining is int) return remaining;
+      if (remaining is num) return remaining.toInt();
+      return null;
+    } catch (e) {
+      print('>>> [용지 수] 조회 실패: $e');
+      return null;
+    }
+  }
+
   // [수정] /stock/out 응답 구조가 "품절 리스트"(List<String>)에서 "색상별
   // 재고 수량"(Map)으로 바뀔 예정입니다. 다만 백엔드 배포 시점이 프론트와
   // 맞지 않을 수 있으므로, 여기서 실제로 온 값의 타입을 보고 두 형태를
@@ -264,11 +294,18 @@ class ApiService {
   //   - board : "color" 형태의 품절 코드 Set<String>
   // 을 기대하므로, 최종적으로 이 형태로 통일해서 반환합니다.
   // switch(축)는 제품에서 제외되어 더 이상 조회하지 않습니다.
+  //
+  // [참고] 이 함수는 원래부터 statusCode == 200을 먼저 확인한 뒤에만
+  // jsonDecode를 하도록 되어 있어서(아래), 서버가 JSON이 아닌 응답을 줘도
+  // FormatException으로 죽지는 않습니다. 다만 "503인데 바디가 JSON도 아닌"
+  // 극단적인 경우(Cloud Run 자체가 요청을 못 받을 때 등)를 대비해 503 분기
+  // 메시지도 statusCode만 보고 판단하도록 유지합니다.
   Future<Map<String, Set<String>>> getSoldOutStock() async {
     final client = await _getClient();
     final res = await client.get(
       Uri.parse('$baseUrl/stock/out'),
       headers: {
+        ..._ngrokHeaders,
         'Content-Type': 'application/json',
       },
     );

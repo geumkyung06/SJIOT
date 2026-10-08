@@ -16,6 +16,15 @@ dependencies:
   window_manager: ^0.4.3
   pdf: ^3.13.0
   printing: ^5.15.0
+  # [신규] 영수증 프린터 용지 부족을 Windows 드라이버 상태로 직접 조회하기
+  # 위해 사용합니다(lib/services/printer_status_io.dart).
+  # ⚠️ 주의: win32 6.0.0부터 GetPrinter/OpenPrinter/ClosePrinter 같은 함수들이
+  # 반환값을 Win32Result<T>로 감싸는 방식으로 바뀌어서, 지금 작성한 코드가
+  # 그대로 컴파일되지 않을 수 있습니다. 반드시 5.x대(5.5.0 이상, 6.0.0 미만)로
+  # 버전을 고정합니다. `flutter pub get` 후 만약 win32 관련 타입 에러가 나면
+  # 이 버전 범위부터 의심해주세요.
+  win32: ^5.5.0
+  ffi: ^2.1.0
 
 
 dev_dependencies:
