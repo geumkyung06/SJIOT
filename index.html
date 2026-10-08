@@ -1158,7 +1158,7 @@ const P = {
 // =========================================================
 
 const API_BASE_URL =
-  'https://sjiot-backend-294910862364.asia-northeast1.run.app';
+  'https://charry-erminia-revelational.ngrok-free.dev';
 
 
 // =========================================================
@@ -1957,7 +1957,7 @@ class Component extends DCLogic {
 
   async getJson(path, failMsg) {
 
-    const response = await fetch(`${API_BASE_URL}${path}`);
+    const response = await fetch(`${API_BASE_URL}${path}`, { headers: { 'ngrok-skip-browser-warning': 'true' } });
 
     let data = null;
     try { data = await response.json(); } catch (e) { }
